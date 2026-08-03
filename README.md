@@ -20,6 +20,20 @@ npm run build    # outputs to dist/
 npm run preview
 ```
 
+## Deploying it
+
+The repo ships a GitHub Actions workflow (`.github/workflows/deploy-pages.yml`) that builds
+the app and publishes it to GitHub Pages on every push to `main`. Once the first run finishes,
+the demo is live at:
+
+```
+https://saran-sharma.github.io/GymflowAI/
+```
+
+That is a plain public URL — good for sending to a gym owner over WhatsApp, and it carries a
+link-preview card (`public/og.png`). If the first run fails on permissions, set
+**Settings → Pages → Source** to **GitHub Actions** and re-run the workflow.
+
 ## Pages
 
 | Route | Page | What it shows |
