@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Activity,
@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import Logo, { StudioLogoSlot } from '../components/Logo.jsx'
+import Scene from '../components/Scene.jsx'
 import { Badge, Card, Modal, Toast } from '../components/ui.jsx'
 import { live, pricingPlans, studio, testimonials } from '../data/gym.js'
 
@@ -28,36 +29,46 @@ const features = [
     body: 'Members see the crowd, equipment and wait times before they leave home. Evening congestion drops without adding a square foot.',
     points: ['Live occupancy and best-time-to-visit', 'Per-machine availability and waitlists'],
     hero: true,
+    scene: 'rack',
   },
   {
     icon: Sparkles,
     title: 'AI Member Assistant',
     body: 'Books PT, generates workouts and diets, renews memberships and answers the crowd question — in chat, day or night.',
     points: ['Handles the top 9 member requests', 'Escalates cleanly to a trainer'],
+    scene: 'kettlebells',
+    palette: 'ember',
   },
   {
     icon: Activity,
     title: 'InBody, Synced',
     body: 'Scans land in the member app and the trainer desk the moment the member steps off the machine. No clipboards, no re-typing.',
     points: ['15 metrics with monthly comparison', 'AI reads the trend, trainer confirms it'],
+    scene: 'figure',
+    palette: 'slate',
   },
   {
     icon: Fingerprint,
     title: 'Frictionless Entry',
     body: 'Fingerprint, face, QR or RFID — every entry and exit updates attendance and occupancy in the same second.',
     points: ['Members, guests, trainers and staff', 'Real-time headcount for the owner'],
+    scene: 'dumbbells',
   },
   {
     icon: CreditCard,
     title: 'Billing That Files Itself',
     body: 'GST invoices generated on payment and delivered on WhatsApp. EMI, promo codes, refunds and outstanding tracking included.',
     points: ['UPI, cards, net banking, cash, Razorpay', 'GSTR-1 ready reports'],
+    scene: 'cardio',
+    palette: 'slate',
   },
   {
     icon: MessagesSquare,
     title: 'WhatsApp & Instagram AI',
     body: 'Every enquiry answered in seconds, with pricing, timings and offers — and the lead captured with a phone number.',
     points: ['Instagram DM and story-reply automation', 'Free trials booked straight into the calendar'],
+    scene: 'rack',
+    palette: 'ember',
   },
 ]
 
@@ -74,7 +85,7 @@ function TopNav({ onTrial }) {
     ['Features', '#features'],
     ['Demo', '#video'],
     ['Customers', '#testimonials'],
-    ['Pricing', '#pricing'],
+    ['Plans', '#pricing'],
   ]
   return (
     <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-matte-950/80 backdrop-blur-xl">
@@ -313,6 +324,16 @@ export default function Landing() {
   const [trial, setTrial] = useState(false)
   const [toast, setToast] = useState('')
 
+  // Smooth scrolling is scoped to this page, where the anchor links live —
+  // enabling it globally makes route changes animate and can leave a phone
+  // viewport in empty space.
+  useEffect(() => {
+    document.documentElement.style.scrollBehavior = 'smooth'
+    return () => {
+      document.documentElement.style.scrollBehavior = ''
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-matte-950">
       <TopNav onTrial={() => setTrial(true)} />
@@ -374,6 +395,26 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Floor strip — gives the page a visual beat between hero and features */}
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ['rack', 'red', 'Strength floor', '4 racks · 2 platforms'],
+            ['cardio', 'slate', 'Cardio zone', '12 treadmills · 8 cycles'],
+            ['dumbbells', 'ember', 'Studio', 'Functional · classes'],
+          ].map(([variant, palette, title, sub]) => (
+            <div key={title} className="glass overflow-hidden p-0">
+              <Scene variant={variant} palette={palette} alt={title} ratio="aspect-[16/9]">
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                  <p className="text-sm font-semibold text-white">{title}</p>
+                  <p className="num text-xs text-zinc-400">{sub}</p>
+                </div>
+              </Scene>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Features */}
       <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-16 sm:px-6 lg:py-24">
         <div className="max-w-2xl">
@@ -387,29 +428,36 @@ export default function Landing() {
         </div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ icon: Icon, title, body, points, hero }) => (
+          {features.map(({ icon: Icon, title, body, points, hero, scene, palette }) => (
             <Card
               key={title}
-              className={`group p-6 transition-all hover:-translate-y-0.5 hover:border-white/15 ${
+              className={`group overflow-hidden p-0 transition-all hover:-translate-y-0.5 hover:border-white/15 ${
                 hero ? 'ring-1 ring-brand/25 md:col-span-2 lg:col-span-1' : ''
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className="grid h-11 w-11 place-items-center rounded-xl border border-brand/25 bg-brand/[0.12] text-brand">
+              <Scene variant={scene} palette={palette} alt={title} ratio="aspect-[16/7]">
+                <span className="absolute left-4 top-4 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-black/45 text-white backdrop-blur">
                   <Icon className="h-5 w-5" />
                 </span>
-                {hero && <Badge tone="critical">Hero feature</Badge>}
+                {hero && (
+                  <span className="absolute right-4 top-4">
+                    <Badge tone="critical">Hero feature</Badge>
+                  </span>
+                )}
+              </Scene>
+
+              <div className="p-6">
+                <h3 className="text-lg font-semibold tracking-tight text-white">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{body}</p>
+                <ul className="mt-4 space-y-2">
+                  {points.map((p) => (
+                    <li key={p} className="flex items-start gap-2 text-sm text-zinc-300">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <h3 className="mt-5 text-lg font-semibold tracking-tight text-white">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-400">{body}</p>
-              <ul className="mt-4 space-y-2">
-                {points.map((p) => (
-                  <li key={p} className="flex items-start gap-2 text-sm text-zinc-300">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-                    {p}
-                  </li>
-                ))}
-              </ul>
             </Card>
           ))}
         </div>
@@ -469,12 +517,13 @@ export default function Landing() {
       <section id="pricing" className="scroll-mt-20 border-t border-white/[0.08] bg-white/[0.015]">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
           <div className="max-w-2xl">
-            <p className="eyebrow">Pricing</p>
+            <p className="eyebrow">Plans</p>
             <h2 className="mt-3 text-3xl font-bold tracking-tightest text-white sm:text-[2.5rem]">
-              Priced per gym, not per member
+              Built around the size of your floor
             </h2>
             <p className="mt-4 text-zinc-400">
-              No per-seat maths, no surprise overages. 14-day trial, cancel any time.
+              Priced per gym, not per member — no per-seat maths and no surprise overages. We'll walk
+              you through what fits once you've seen it running.
             </p>
           </div>
 
@@ -493,20 +542,7 @@ export default function Landing() {
                 <h3 className="text-lg font-semibold text-white">{p.name}</h3>
                 <p className="mt-1 text-xs text-zinc-500">{p.tagline}</p>
 
-                <div className="mt-5 flex items-end gap-1.5">
-                  {p.price ? (
-                    <>
-                      <span className="num text-4xl font-bold tracking-tightest text-white">
-                        ₹{p.price.toLocaleString('en-IN')}
-                      </span>
-                      <span className="mb-1 text-sm text-zinc-500">/month</span>
-                    </>
-                  ) : (
-                    <span className="text-3xl font-bold tracking-tightest text-white">Custom</span>
-                  )}
-                </div>
-
-                <ul className="mt-6 flex-1 space-y-2.5">
+                <ul className="mt-5 flex-1 space-y-2.5">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
@@ -516,10 +552,10 @@ export default function Landing() {
                 </ul>
 
                 <button
-                  onClick={() => (p.price ? setTrial(true) : setToast('Sales team will reach out on WhatsApp within the hour.'))}
+                  onClick={() => setTrial(true)}
                   className={`mt-7 w-full ${p.featured ? 'btn-primary' : 'btn btn-ghost'}`}
                 >
-                  {p.price ? 'Start free trial' : 'Talk to sales'}
+                  Book a walkthrough
                 </button>
               </Card>
             ))}

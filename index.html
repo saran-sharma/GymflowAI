@@ -31,5 +31,40 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!--
+      Self-heal a stale cached index.html. Asset filenames are content-hashed,
+      so an index.html cached from an earlier deploy asks for a bundle that no
+      longer exists: the script 404s and the page renders blank until a manual
+      reload. If the app hasn't mounted shortly after load, force one cache-
+      busting reload. sessionStorage guards against a reload loop.
+    -->
+    <script>
+      (function () {
+        var KEY = 'gymflow-recovered'
+        function recover(why) {
+          if (sessionStorage.getItem(KEY)) return // already tried once
+          sessionStorage.setItem(KEY, why)
+          location.replace(
+            location.pathname + '?v=' + Date.now() + location.hash
+          )
+        }
+        // A script that fails to load fires an error event on the element.
+        window.addEventListener(
+          'error',
+          function (e) {
+            if (e.target && e.target.tagName === 'SCRIPT') recover('script')
+          },
+          true
+        )
+        window.addEventListener('load', function () {
+          setTimeout(function () {
+            var root = document.getElementById('root')
+            if (!root || root.childElementCount === 0) recover('empty')
+            else sessionStorage.removeItem(KEY)
+          }, 3500)
+        })
+      })()
+    </script>
   </body>
 </html>

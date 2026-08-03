@@ -201,20 +201,26 @@ export default function GuidedDemo() {
           return (
             <Card
               key={st.title}
-              className={`p-5 transition-all ${
+              className={`group p-5 transition-all hover:opacity-100 ${
                 isNext ? 'ring-1 ring-brand/40' : isDone ? 'opacity-80' : 'opacity-55'
               }`}
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl border ${
-                  isDone
-                    ? 'border-brand/30 bg-brand/15 text-brand'
-                    : isNext
-                      ? 'border-brand/50 bg-brand text-white'
-                      : 'border-white/10 bg-white/[0.04] text-zinc-500'
-                }`}>
+                {/* Any step is reachable directly — run them in order for the
+                    full story, or jump straight to the one you want to show. */}
+                <button
+                  onClick={() => setDone(i + 1)}
+                  title={`Jump to step ${i + 1}`}
+                  className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl border transition-transform hover:scale-105 ${
+                    isDone
+                      ? 'border-brand/30 bg-brand/15 text-brand'
+                      : isNext
+                        ? 'border-brand/50 bg-brand text-white'
+                        : 'border-white/10 bg-white/[0.04] text-zinc-500'
+                  }`}
+                >
                   {isDone ? <CheckCircle2 className="h-6 w-6" /> : <Icon className="h-6 w-6" />}
-                </span>
+                </button>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -238,10 +244,17 @@ export default function GuidedDemo() {
                   </div>
                 </div>
 
-                {isNext && (
+                {isNext ? (
                   <button onClick={advance} className="btn-primary shrink-0 self-start">
                     Run this step
                     <ArrowRight className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setDone(i + 1)}
+                    className="btn btn-ghost btn-sm shrink-0 self-start opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    Jump here
                   </button>
                 )}
               </div>

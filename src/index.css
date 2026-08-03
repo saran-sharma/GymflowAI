@@ -22,9 +22,11 @@
     --cat-5: #9085e9;
   }
 
+  /* No global smooth scrolling: it makes route changes animate the scroll
+     position, which can leave a phone viewport in empty space. The landing
+     page turns it on for its own anchor links and turns it back off. */
   html {
     -webkit-text-size-adjust: 100%;
-    scroll-behavior: smooth;
   }
 
   body {

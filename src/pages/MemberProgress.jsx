@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Activity, Camera, Cable, Sparkles, TrendingDown, TrendingUp, UserCheck } from 'lucide-react'
+import Scene from '../components/Scene.jsx'
 import { Badge, Card, Meter, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
 import { CATEGORICAL, ChartCard, CompositionLines, Legend } from '../components/charts.jsx'
 import { inbody, progressPhotos, transformation, vitals } from '../data/gym.js'
@@ -165,18 +166,19 @@ export default function MemberProgress() {
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {progressPhotos.map((p) => (
               <figure key={p.date} className="overflow-hidden rounded-xl border border-white/[0.08]">
-                {/* Placeholder frame — no stock photography in this demo. */}
-                <div
-                  className="relative aspect-[3/4] w-full"
-                  style={{ background: `linear-gradient(160deg, ${p.tone[0]}, ${p.tone[1]})` }}
+                {/* Generated stand-in — the silhouette leans as body fat drops.
+                    Pass `src` to swap in a real photo. */}
+                <Scene
+                  variant="figure"
+                  palette={p.palette}
+                  build={p.build}
+                  ratio="aspect-[3/4]"
+                  alt={`Progress photo, ${p.date}`}
                 >
-                  <div className="absolute inset-0 grid place-items-center">
-                    <Camera className="h-6 w-6 text-white/25" />
-                  </div>
                   <span className="absolute left-2 top-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[10px] text-white/70 backdrop-blur">
                     Photo
                   </span>
-                </div>
+                </Scene>
                 <figcaption className="bg-white/[0.03] px-2.5 py-2">
                   <p className="text-[11px] font-medium text-white">{p.date}</p>
                   <p className="num text-[10px] text-zinc-500">{p.weight} kg · {p.fat}%</p>

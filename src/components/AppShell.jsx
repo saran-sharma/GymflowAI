@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   ArrowLeft,
   Bell,
   Blocks,
   CalendarClock,
+  Check,
+  ChevronDown,
   CreditCard,
   Dumbbell,
   FileBarChart,
@@ -112,6 +114,80 @@ function NavList({ onNavigate }) {
   )
 }
 
+/** Who the demo is currently being shown as. */
+const personas = [
+  { id: 'member', label: 'Member', name: member.name, sub: member.plan, initials: member.initials, home: '/member', group: 'Member' },
+  { id: 'trainer', label: 'Trainer', name: 'Vikas Menon', sub: 'Head Trainer', initials: 'VM', home: '/trainer', group: 'Staff' },
+  { id: 'owner', label: 'Owner', name: 'Karan Shetty', sub: 'Owner', initials: 'KS', home: '/owner', group: 'Business' },
+]
+
+function PersonaSwitcher() {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+
+  // Infer the active persona from the route, so the header always matches
+  // whatever screen you're actually on.
+  const active =
+    personas.find((p) => groups.find((g) => g.label === p.group)?.items.some((i) => pathname.startsWith(i.to))) ??
+    personas[0]
+
+  useEffect(() => setOpen(false), [pathname])
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-1.5 pr-2.5 transition-colors hover:border-white/20"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span className="grid h-8 w-8 place-items-center rounded-full border border-brand/30 bg-brand/15 text-xs font-bold text-white">
+          {active.initials}
+        </span>
+        <span className="hidden text-left sm:block">
+          <span className="block text-sm font-medium leading-tight text-zinc-100">{active.name}</span>
+          <span className="block text-[11px] leading-tight text-zinc-500">Viewing as {active.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 z-50 mt-2 w-60 animate-fade-up overflow-hidden rounded-xl border border-white/10 bg-matte-900 shadow-lift"
+          >
+            <p className="border-b border-white/[0.08] px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
+              Switch demo view
+            </p>
+            {personas.map((p) => (
+              <button
+                key={p.id}
+                role="menuitem"
+                onClick={() => { setOpen(false); navigate(p.home) }}
+                className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors ${
+                  p.id === active.id ? 'bg-brand/[0.10]' : 'hover:bg-white/[0.05]'
+                }`}
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-xs font-bold text-white">
+                  {p.initials}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-white">{p.name}</span>
+                  <span className="block truncate text-xs text-zinc-500">{p.sub}</span>
+                </span>
+                {p.id === active.id && <Check className="h-4 w-4 shrink-0 text-brand" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function AppShell() {
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
@@ -189,15 +265,9 @@ export default function AppShell() {
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand ring-2 ring-matte-950" />
           </button>
 
-          <div className="flex items-center gap-2.5 pl-1">
-            <span className="grid h-9 w-9 place-items-center rounded-full border border-brand/30 bg-brand/15 text-xs font-bold text-white">
-              {member.initials}
-            </span>
-            <div className="hidden sm:block">
-              <p className="text-sm font-medium leading-tight text-zinc-100">{member.name}</p>
-              <p className="text-xs leading-tight text-zinc-500">{member.plan}</p>
-            </div>
-          </div>
+          {/* Persona switcher — flip the demo between the three people who use
+              it, and land on that person's home screen. */}
+          <PersonaSwitcher />
         </header>
 
         <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">

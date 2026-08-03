@@ -21,7 +21,7 @@ npm run build    # static bundle in dist/
 
 | Route | Screen | Highlights |
 |---|---|---|
-| `/` | **Landing** | Hero, features, playable product tour, testimonials, pricing, CTA, Book Free Trial flow |
+| `/` | **Landing** | Hero, features, playable product tour, testimonials, plans, CTA, Book Free Trial flow |
 | `/#/demo` | **Guided demo** | The 10-step member journey, with live counters that move as you run each step |
 | `/#/live` | **Live Gym Experience** *(hero feature)* | Occupancy, crowd level, best time to visit, wait time, per-machine availability with waitlists, lockers, showers, parking |
 | `/#/member` | **Member dashboard** | Membership status, attendance grid and streak, today's workout, calories, water, weight/fat/muscle, next PT, QR check-in, renew, freeze, guest pass, referrals |
@@ -61,12 +61,41 @@ Chart colour is computed, not eyeballed:
   table, so numbers are never colour-only. Status badges always pair colour with an icon and label.
 - No dual-axis charts anywhere: body fat and muscle share one scale, everything else is its own chart.
 
-### Assets
+### Artwork
 
 The SLAM Fitness Studio logo is a **deliberate placeholder** (`StudioLogoSlot`) — a dashed slot in
-the sidebar, hero and footer, waiting for real artwork. There is no stock photography in the build:
-imagery is generated (gradients, the abstract floor-plan motif, progress-photo frames), so the demo
-stays fully self-contained and offline-capable.
+the sidebar, hero and footer, waiting for real artwork.
+
+There is no stock photography in the build. Imagery comes from `<Scene>` — duotone SVG scenes drawn
+from geometric gym equipment (rack, dumbbells, cardio row, kettlebells, athlete silhouette) over a
+brand-tinted ground. They scale perfectly, cost nothing to load and stay on-palette.
+
+**To use real photos**, drop files into `public/img/` and pass `src`:
+
+```jsx
+<Scene src="/img/strength-floor.jpg" alt="Strength floor" ratio="aspect-[16/9]" />
+```
+
+The photo replaces the drawing and keeps the same framing and brand tint. Scenes are used on the
+landing floor strip and feature cards, the trainer profiles in PT booking, and the progress photos.
+
+### Demo controls
+
+- **Persona switcher** in the top bar flips the demo between Member, Trainer and Owner, and lands on
+  that person's home screen. The header follows whatever route you're on.
+- **Guided demo steps are jumpable** — run them in order for the full story, or click any step's icon
+  to jump straight to the one you want to show.
+
+### Robustness
+
+- Route changes scroll to the top *instantly*. Smooth scrolling is scoped to the landing page (where
+  the anchor links live) — enabling it globally makes route changes animate the scroll and can leave
+  a phone viewport parked in empty space until you reload.
+- An **error boundary** turns any render failure into a recovery card with a Reload button, never a
+  blank screen.
+- `index.html` **self-heals a stale cache**: asset filenames are content-hashed, so an `index.html`
+  cached from an earlier deploy would request a bundle that no longer exists and render blank. If the
+  app hasn't mounted shortly after load, it forces one cache-busting reload (guarded against loops).
 
 ## Deploying
 
