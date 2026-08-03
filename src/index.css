@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    /* Chart roles — the chart body is written against these, never raw hex. */
+    --surface-chart: #111a15;
+    --text-primary: #f2f6f3;
+    --text-secondary: #9db0a5;
+    --text-muted: #6b8175;
+    --grid: #1e2b24;
+    --series-1: #16a34a; /* validated: L band, chroma, >=3:1 on --surface-chart */
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-200 font-sans antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent/30 text-white;
+  }
+
+  /* Slim scrollbars so dense tables don't look like a browser default. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a3a31 transparent;
+  }
+  *::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2a3a31;
+    border-radius: 999px;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-ink-950 hover:bg-accent-soft;
+  }
+  .btn-ghost {
+    @apply btn border border-ink-700 bg-ink-800/60 text-slate-200 hover:border-ink-600 hover:bg-ink-800;
+  }
+  .btn-sm {
+    @apply rounded-lg px-3 py-1.5 text-xs;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-700 bg-ink-850 py-2.5 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent/60;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
+  }
+
+  .th {
+    @apply whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400;
+  }
+  .td {
+    @apply whitespace-nowrap px-4 py-3.5 text-sm;
+  }
+}

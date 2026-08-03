@@ -1,0 +1,26 @@
+{
+  "name": "gymflow-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "GymFlow AI — MVP demo of an AI lead-conversion assistant for gyms",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.2.0"
+  }
+}
