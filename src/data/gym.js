@@ -140,11 +140,13 @@ export const medical = {
   bloodGroup: 'B+',
 }
 
+// `build` narrows and `palette` warms as the transformation progresses, so the
+// four frames read as a sequence rather than four identical placeholders.
 export const progressPhotos = [
-  { date: 'Mar 2024', weight: 92.1, fat: 28.4, tone: ['#3a2b2e', '#241c1e'] },
-  { date: 'Sep 2024', weight: 86.7, fat: 24.0, tone: ['#43302f', '#241c1e'] },
-  { date: 'Mar 2025', weight: 82.3, fat: 20.6, tone: ['#4d3733', '#241c1e'] },
-  { date: 'Aug 2026', weight: 78.4, fat: 17.2, tone: ['#5c3f38', '#241c1e'] },
+  { date: 'Mar 2024', weight: 92.1, fat: 28.4, build: 1.9, palette: 'slate' },
+  { date: 'Sep 2024', weight: 86.7, fat: 24.0, build: 1.5, palette: 'slate' },
+  { date: 'Mar 2025', weight: 82.3, fat: 20.6, build: 1.15, palette: 'ember' },
+  { date: 'Aug 2026', weight: 78.4, fat: 17.2, build: 0.85, palette: 'red' },
 ]
 
 export const transformation = [
@@ -226,6 +228,8 @@ export const trainers = [
     certs: ['NSCA-CSCS', 'Precision Nutrition L1'],
     slots: ['6:00 AM', '7:00 AM', '5:00 PM', '7:00 PM', '8:30 PM'],
     accent: '#ef2b3c',
+    palette: 'red',
+    build: 1.35,
   },
   {
     id: 2,
@@ -239,6 +243,8 @@ export const trainers = [
     certs: ['ACE-CPT', 'Kettlebell L2'],
     slots: ['6:30 AM', '8:00 AM', '4:00 PM', '6:00 PM'],
     accent: '#3987e5',
+    palette: 'slate',
+    build: 0.7,
   },
   {
     id: 3,
@@ -252,6 +258,8 @@ export const trainers = [
     certs: ['IPF Coach', 'FRC Mobility'],
     slots: ['7:30 AM', '5:30 PM', '7:30 PM'],
     accent: '#c98500',
+    palette: 'ember',
+    build: 1.7,
   },
 ]
 
@@ -666,10 +674,10 @@ export const testimonials = [
   },
 ]
 
+// Commercial terms are handled in conversation, not on the page — no figures here.
 export const pricingPlans = [
   {
     name: 'Studio',
-    price: 7999,
     tagline: 'Single location, up to 300 members',
     features: [
       'Member app + QR check-in',
@@ -681,7 +689,6 @@ export const pricingPlans = [
   },
   {
     name: 'Growth',
-    price: 14999,
     tagline: 'Everything a busy premium gym needs',
     featured: true,
     features: [
@@ -696,7 +703,6 @@ export const pricingPlans = [
   },
   {
     name: 'Chain',
-    price: null,
     tagline: 'Multi-branch operators',
     features: [
       'Everything in Growth',

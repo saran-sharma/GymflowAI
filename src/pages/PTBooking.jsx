@@ -8,6 +8,7 @@ import {
   Star,
   Wallet,
 } from 'lucide-react'
+import Scene from '../components/Scene.jsx'
 import { Avatar, Badge, Card, KeyValue, Meter, Modal, PageHeader, SectionTitle, Toast } from '../components/ui.jsx'
 import { inr, member, ptHistory, trainers } from '../data/gym.js'
 
@@ -139,9 +140,24 @@ export default function PTBooking() {
           return (
             <Card
               key={t.id}
-              className={`cursor-pointer p-5 transition-all hover:-translate-y-0.5 ${active ? 'ring-1 ring-brand/40' : ''}`}
+              className={`cursor-pointer overflow-hidden p-0 transition-all hover:-translate-y-0.5 ${active ? 'ring-1 ring-brand/40' : ''}`}
               onClick={() => { setTrainerId(t.id); setSlot(null) }}
             >
+              <Scene
+                variant="figure"
+                palette={t.palette}
+                build={t.build}
+                alt={`${t.name}, ${t.specialty}`}
+                ratio="aspect-[16/8]"
+              >
+                {active && (
+                  <span className="absolute right-3 top-3">
+                    <Badge tone="critical">Selected</Badge>
+                  </span>
+                )}
+              </Scene>
+
+              <div className="p-5">
               <div className="flex items-start gap-3.5">
                 <Avatar initials={t.initials} size="lg" tone={t.accent} />
                 <div className="min-w-0 flex-1">
@@ -169,7 +185,8 @@ export default function PTBooking() {
 
               <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3.5">
                 <span className="num text-sm font-semibold text-white">{inr(t.rate)}<span className="text-xs font-normal text-zinc-500"> / session</span></span>
-                {active ? <Badge tone="critical">Selected</Badge> : <span className="text-xs text-zinc-500">Tap to select</span>}
+                {!active && <span className="text-xs text-zinc-500">Tap to select</span>}
+              </div>
               </div>
             </Card>
           )
