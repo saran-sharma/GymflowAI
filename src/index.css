@@ -6,13 +6,20 @@
   :root {
     color-scheme: dark;
 
-    /* Chart roles — the chart body is written against these, never raw hex. */
-    --surface-chart: #111a15;
-    --text-primary: #f2f6f3;
-    --text-secondary: #9db0a5;
-    --text-muted: #6b8175;
-    --grid: #1e2b24;
-    --series-1: #16a34a; /* validated: L band, chroma, >=3:1 on --surface-chart */
+    /* Chart roles. Marks reference these, never raw hex. */
+    --surface-chart: #141417;
+    --text-primary: #f5f5f7;
+    --text-secondary: #a1a1ad;
+    --text-muted: #6f6f7d;
+    --grid: #2c2c33;
+    --series-1: #ef2b3c; /* validated: L band, chroma, >=3:1 on --surface-chart */
+    /* Categorical set — validated on the ADJACENT pairlist only (bars, stacks).
+       Not for pies or scatter: violet/blue fail all-pairs CVD. */
+    --cat-1: #ef2b3c;
+    --cat-2: #3987e5;
+    --cat-3: #c98500;
+    --cat-4: #199e70;
+    --cat-5: #9085e9;
   }
 
   html {
@@ -21,62 +28,97 @@
   }
 
   body {
-    @apply bg-ink-950 text-slate-200 font-sans antialiased;
+    @apply bg-matte-950 font-sans text-zinc-200 antialiased;
   }
 
   ::selection {
-    @apply bg-accent/30 text-white;
+    @apply bg-brand/30 text-white;
   }
 
-  /* Slim scrollbars so dense tables don't look like a browser default. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #2a3a31 transparent;
+    scrollbar-color: #3a3a42 transparent;
   }
   *::-webkit-scrollbar {
     height: 8px;
     width: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background: #2a3a31;
+    background: #3a3a42;
     border-radius: 999px;
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-ink-950;
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-matte-950;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
-  .card {
-    @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
+  /* Glassmorphism: a translucent pane over the matte ground, with a bright
+     top edge so the card reads as lit rather than merely transparent. */
+  .glass {
+    @apply rounded-2xl border border-white/[0.07] bg-white/[0.035] shadow-glass backdrop-blur-xl;
+  }
+  .glass-strong {
+    @apply rounded-2xl border border-white/10 bg-matte-850/80 shadow-lift backdrop-blur-xl;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150 disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 active:scale-[.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .btn-primary {
-    @apply btn bg-accent text-ink-950 hover:bg-accent-soft;
+    @apply btn bg-brand text-white hover:bg-brand-soft;
   }
   .btn-ghost {
-    @apply btn border border-ink-700 bg-ink-800/60 text-slate-200 hover:border-ink-600 hover:bg-ink-800;
+    @apply btn border border-white/10 bg-white/[0.04] text-zinc-200 hover:border-white/20 hover:bg-white/[0.08];
   }
   .btn-sm {
     @apply rounded-lg px-3 py-1.5 text-xs;
   }
+  .btn-lg {
+    @apply rounded-xl px-6 py-3 text-base;
+  }
 
   .input {
-    @apply w-full rounded-xl border border-ink-700 bg-ink-850 py-2.5 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-accent/60;
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-brand/60;
+  }
+  .input-icon {
+    @apply pl-10;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium;
+  }
+  .chip-neutral {
+    @apply chip border-white/10 bg-white/[0.05] text-zinc-300;
+  }
+  .chip-brand {
+    @apply chip border-brand/35 bg-brand/[0.12] text-brand-soft;
   }
 
   .th {
-    @apply whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400;
+    @apply whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
   }
   .td {
     @apply whitespace-nowrap px-4 py-3.5 text-sm;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-brand;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
   }
 }
