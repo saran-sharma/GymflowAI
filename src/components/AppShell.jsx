@@ -23,7 +23,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
-import Logo, { StudioLogoSlot } from './Logo.jsx'
+import Logo, { StudioLogo } from './Logo.jsx'
 import { live, member, studio } from '../data/gym.js'
 
 const groups = [
@@ -220,8 +220,9 @@ export default function AppShell() {
           </button>
         </div>
 
-        <div className="px-4">
-          <StudioLogoSlot className="w-full" />
+        {/* The studio this workspace belongs to. */}
+        <div className="mx-4 flex items-center rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3">
+          <StudioLogo size="md" className="h-8" />
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5">

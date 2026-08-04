@@ -17,7 +17,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import Logo, { StudioLogoSlot } from '../components/Logo.jsx'
+import Logo, { StudioLogo } from '../components/Logo.jsx'
 import Scene from '../components/Scene.jsx'
 import { Badge, Card, Modal, Toast } from '../components/ui.jsx'
 import { live, pricingPlans, studio, testimonials } from '../data/gym.js'
@@ -354,7 +354,10 @@ export default function Landing() {
                 <Sparkles className="h-3.5 w-3.5" />
                 Built for premium studios
               </span>
-              <StudioLogoSlot compact />
+              <span className="inline-flex items-center gap-2.5 rounded-full border border-white/[0.08] bg-white/[0.03] py-1.5 pl-3.5 pr-4">
+                <span className="text-[11px] text-zinc-500">Configured for</span>
+                <StudioLogo size="xs" wordmark />
+              </span>
             </div>
 
             <h1 className="mt-6 text-[2.6rem] font-bold leading-[1.03] tracking-tightest text-white sm:text-6xl">
@@ -597,7 +600,8 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-4 py-9 sm:flex-row sm:px-6">
           <div className="flex flex-col items-center gap-4 sm:flex-row">
             <Logo size="sm" />
-            <StudioLogoSlot compact />
+            <span className="hidden h-6 w-px bg-white/10 sm:block" />
+            <StudioLogo size="sm" wordmark />
           </div>
           <p className="text-center text-xs text-zinc-600">
             Demo build · fictional data · © {new Date().getFullYear()} GymFlow AI

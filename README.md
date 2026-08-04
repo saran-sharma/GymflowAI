@@ -63,8 +63,23 @@ Chart colour is computed, not eyeballed:
 
 ### Artwork
 
-The SLAM Fitness Studio logo is a **deliberate placeholder** (`StudioLogoSlot`) — a dashed slot in
-the sidebar, hero and footer, waiting for real artwork.
+### The studio logo
+
+The real SLAM mark is in the build — sidebar, landing hero, footer and the WhatsApp preview card.
+
+The supplied artwork is a JPEG with the wordmark on an opaque white background, which would show as
+a white box on a matte-black UI. `.logo.mjs` derives three transparent PNGs from it into
+`public/img/`:
+
+| File | What it is | Used for |
+|---|---|---|
+| `slam-logo-dark.png` | white wordmark, brand-red "L", full lockup | dark surfaces at 28px+ |
+| `slam-wordmark-dark.png` | same, tagline cropped off | chips and small placements, where the tagline would be unreadable |
+| `slam-logo-light.png` | original ink, transparent background | light surfaces |
+
+Alpha comes from pixel luminance, so anti-aliased edges stay smooth, and each file is trimmed to the
+artwork's bounding box. The source JPEG lives in `brand/` and is not shipped. Re-run `node .logo.mjs`
+if the artwork changes.
 
 There is no stock photography in the build. Imagery comes from `<Scene>` — duotone SVG scenes drawn
 from geometric gym equipment (rack, dumbbells, cardio row, kettlebells, athlete silhouette) over a

@@ -20,24 +20,40 @@ export default function Logo({ size = 'md', className = '' }) {
 }
 
 /**
- * Placeholder frame for the client's own logo. Deliberately looks like a slot
- * waiting for artwork rather than a finished mark.
+ * The studio's own mark.
+ *
+ * The supplied artwork is a JPEG with the wordmark on an opaque white
+ * background, which would show as a white box on a matte-black UI. `.logo.mjs`
+ * derives two transparent PNGs from it — a knocked-out white version keeping
+ * the brand-red "L" for dark surfaces, and the original ink for light ones —
+ * both trimmed to the artwork's bounding box. Source stays in `brand/`,
+ * unshipped.
  */
-export function StudioLogoSlot({ name = 'SLAM Fitness Studio', className = '', compact = false }) {
+export function StudioLogo({ className = '', size = 'md', variant = 'dark', framed = false, wordmark = false }) {
+  const h = { xs: 'h-4', sm: 'h-5', md: 'h-9', lg: 'h-12', xl: 'h-16' }[size] ?? 'h-9'
+  // Below about 28px the tagline is unreadable, so small placements use the
+  // wordmark-only crop instead of the full lockup.
+  const src = wordmark
+    ? './img/slam-wordmark-dark.png'
+    : variant === 'light'
+      ? './img/slam-logo-light.png'
+      : './img/slam-logo-dark.png'
+  const img = (
+    <img
+      src={src}
+      alt={wordmark ? 'SLAM' : 'SLAM — Lifestyle and Fitness Studio'}
+      className={`${h} w-auto ${className}`}
+    />
+  )
+  if (!framed) return img
   return (
-    <span
-      className={`inline-flex items-center gap-2.5 rounded-xl border border-dashed border-white/20 bg-white/[0.03] px-3 py-2 ${className}`}
-      title="Placeholder — drop the studio logo here"
-    >
-      <span className="grid h-7 w-7 place-items-center rounded-lg border border-white/15 bg-white/[0.05] text-[9px] font-bold text-zinc-400">
-        LOGO
-      </span>
-      {!compact && (
-        <span className="leading-tight">
-          <span className="block text-xs font-semibold text-zinc-200">{name}</span>
-          <span className="block text-[10px] text-zinc-500">Logo placeholder</span>
-        </span>
-      )}
+    <span className="inline-flex items-center rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+      {img}
     </span>
   )
 }
+
+/** Kept so older call sites keep working; renders the real mark now. */
+export const StudioLogoSlot = ({ className = '', compact = false }) => (
+  <StudioLogo className={className} size={compact ? 'xs' : 'sm'} framed />
+)
