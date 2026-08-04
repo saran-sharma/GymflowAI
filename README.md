@@ -61,8 +61,6 @@ Chart colour is computed, not eyeballed:
   table, so numbers are never colour-only. Status badges always pair colour with an icon and label.
 - No dual-axis charts anywhere: body fat and muscle share one scale, everything else is its own chart.
 
-### Artwork
-
 ### The studio logo
 
 The real SLAM mark is in the build — sidebar, landing hero, footer and the WhatsApp preview card.
@@ -80,6 +78,8 @@ a white box on a matte-black UI. `.logo.mjs` derives three transparent PNGs from
 Alpha comes from pixel luminance, so anti-aliased edges stay smooth, and each file is trimmed to the
 artwork's bounding box. The source JPEG lives in `brand/` and is not shipped. Re-run `node .logo.mjs`
 if the artwork changes.
+
+### Other artwork
 
 There is no stock photography in the build. Imagery comes from `<Scene>` — duotone SVG scenes drawn
 from geometric gym equipment (rack, dumbbells, cardio row, kettlebells, athlete silhouette) over a
