@@ -26,6 +26,7 @@ const features = [
   {
     icon: Radio,
     title: 'Live Gym Experience',
+    photo: 'featureLiveGym',
     body: 'Members see the crowd, equipment and wait times before they leave home. Evening congestion drops without adding a square foot.',
     points: ['Live occupancy and best-time-to-visit', 'Per-machine availability and waitlists'],
     hero: true,
@@ -34,6 +35,7 @@ const features = [
   {
     icon: Sparkles,
     title: 'AI Member Assistant',
+    photo: 'featureAssistant',
     body: 'Books PT, generates workouts and diets, renews memberships and answers the crowd question — in chat, day or night.',
     points: ['Handles the top 9 member requests', 'Escalates cleanly to a trainer'],
     scene: 'kettlebells',
@@ -42,6 +44,7 @@ const features = [
   {
     icon: Activity,
     title: 'InBody, Synced',
+    photo: 'featureInbody',
     body: 'Scans land in the member app and the trainer desk the moment the member steps off the machine. No clipboards, no re-typing.',
     points: ['15 metrics with monthly comparison', 'AI reads the trend, trainer confirms it'],
     scene: 'figure',
@@ -50,6 +53,7 @@ const features = [
   {
     icon: Fingerprint,
     title: 'Frictionless Entry',
+    photo: 'featureEntry',
     body: 'Fingerprint, face, QR or RFID — every entry and exit updates attendance and occupancy in the same second.',
     points: ['Members, guests, trainers and staff', 'Real-time headcount for the owner'],
     scene: 'dumbbells',
@@ -57,6 +61,7 @@ const features = [
   {
     icon: CreditCard,
     title: 'Billing That Files Itself',
+    photo: 'featureBilling',
     body: 'GST invoices generated on payment and delivered on WhatsApp. EMI, promo codes, refunds and outstanding tracking included.',
     points: ['UPI, cards, net banking, cash, Razorpay', 'GSTR-1 ready reports'],
     scene: 'cardio',
@@ -65,6 +70,7 @@ const features = [
   {
     icon: MessagesSquare,
     title: 'WhatsApp & Instagram AI',
+    photo: 'featureChannels',
     body: 'Every enquiry answered in seconds, with pricing, timings and offers — and the lead captured with a phone number.',
     points: ['Instagram DM and story-reply automation', 'Free trials booked straight into the calendar'],
     scene: 'rack',
@@ -402,12 +408,12 @@ export default function Landing() {
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            ['rack', 'red', 'Strength floor', '4 racks · 2 platforms'],
-            ['cardio', 'slate', 'Cardio zone', '12 treadmills · 8 cycles'],
-            ['dumbbells', 'ember', 'Studio', 'Functional · classes'],
-          ].map(([variant, palette, title, sub]) => (
+            ['rack', 'red', 'Strength floor', '4 racks · 2 platforms', 'strengthFloor'],
+            ['cardio', 'slate', 'Cardio zone', '12 treadmills · 8 cycles', 'cardioZone'],
+            ['dumbbells', 'ember', 'Studio', 'Functional · classes', 'studio'],
+          ].map(([variant, palette, title, sub, photo]) => (
             <div key={title} className="glass overflow-hidden p-0">
-              <Scene variant={variant} palette={palette} alt={title} ratio="aspect-[16/9]">
+              <Scene variant={variant} palette={palette} photo={photo} alt={title} ratio="aspect-[16/9]">
                 <div className="absolute inset-x-0 bottom-0 p-4">
                   <p className="text-sm font-semibold text-white">{title}</p>
                   <p className="num text-xs text-zinc-400">{sub}</p>
@@ -431,14 +437,14 @@ export default function Landing() {
         </div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ icon: Icon, title, body, points, hero, scene, palette }) => (
+          {features.map(({ icon: Icon, title, body, points, hero, scene, palette, photo }) => (
             <Card
               key={title}
               className={`group overflow-hidden p-0 transition-all hover:-translate-y-0.5 hover:border-white/15 ${
                 hero ? 'ring-1 ring-brand/25 md:col-span-2 lg:col-span-1' : ''
               }`}
             >
-              <Scene variant={scene} palette={palette} alt={title} ratio="aspect-[16/7]">
+              <Scene variant={scene} palette={palette} photo={photo} alt={title} ratio="aspect-[16/7]">
                 <span className="absolute left-4 top-4 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-black/45 text-white backdrop-blur">
                   <Icon className="h-5 w-5" />
                 </span>

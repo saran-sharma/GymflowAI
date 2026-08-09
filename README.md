@@ -85,14 +85,34 @@ There is no stock photography in the build. Imagery comes from `<Scene>` — duo
 from geometric gym equipment (rack, dumbbells, cardio row, kettlebells, athlete silhouette) over a
 brand-tinted ground. They scale perfectly, cost nothing to load and stay on-palette.
 
-**To use real photos**, drop files into `public/img/` and pass `src`:
+### Adding real photos
 
-```jsx
-<Scene src="/img/strength-floor.jpg" alt="Strength floor" ratio="aspect-[16/9]" />
+Every image slot is listed in **`src/data/photos.js`** — 16 of them, across the landing floor strip
+and feature cards, the trainer profiles in PT booking, and the member progress photos. Point a key
+at an image and it appears; no other file needs touching.
+
+```js
+export const photos = {
+  strengthFloor: './img/floor.jpg',                  // a file in public/img/
+  cardioZone:    'https://example.com/cardio.jpg',   // or any hosted URL
+  studio:        null,                               // null = use the drawing
+}
 ```
 
-The photo replaces the drawing and keeps the same framing and brand tint. Scenes are used on the
-landing floor strip and feature cards, the trainer profiles in PT booking, and the progress photos.
+Photos keep the same framing and brand tint as the artwork they replace.
+
+**Failed images fall back to the drawing.** Wrong path, host down, offline — the slot renders the
+duotone scene instead of a broken image, so there is never a hole in the page mid-pitch. Verified by
+pointing slots at a missing file and an unreachable URL: zero broken images, artwork rendered.
+
+Where to get them, best first:
+
+1. **SLAM's own photos.** A gym owner seeing their own floor in the product beats any stock library.
+2. **Free commercial-use stock** — [unsplash.com](https://unsplash.com/s/photos/gym),
+   [pexels.com](https://www.pexels.com/search/gym/). Download and put the files in `public/img/`.
+
+Avoid lifting images straight from an image-search results page: those are other people's
+copyrighted photos, and this demo is published publicly.
 
 ### Demo controls
 

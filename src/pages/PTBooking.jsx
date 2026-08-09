@@ -147,6 +147,7 @@ export default function PTBooking() {
                 variant="figure"
                 palette={t.palette}
                 build={t.build}
+                photo={t.photo}
                 alt={`${t.name}, ${t.specialty}`}
                 ratio="aspect-[16/8]"
               >
