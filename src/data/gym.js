@@ -143,10 +143,10 @@ export const medical = {
 // `build` narrows and `palette` warms as the transformation progresses, so the
 // four frames read as a sequence rather than four identical placeholders.
 export const progressPhotos = [
-  { date: 'Mar 2024', weight: 92.1, fat: 28.4, build: 1.9, palette: 'slate' },
-  { date: 'Sep 2024', weight: 86.7, fat: 24.0, build: 1.5, palette: 'slate' },
-  { date: 'Mar 2025', weight: 82.3, fat: 20.6, build: 1.15, palette: 'ember' },
-  { date: 'Aug 2026', weight: 78.4, fat: 17.2, build: 0.85, palette: 'red' },
+  { date: 'Mar 2024', weight: 92.1, fat: 28.4, build: 1.9, palette: 'slate', photo: 'progress1' },
+  { date: 'Sep 2024', weight: 86.7, fat: 24.0, build: 1.5, palette: 'slate', photo: 'progress2' },
+  { date: 'Mar 2025', weight: 82.3, fat: 20.6, build: 1.15, palette: 'ember', photo: 'progress3' },
+  { date: 'Aug 2026', weight: 78.4, fat: 17.2, build: 0.85, palette: 'red', photo: 'progress4' },
 ]
 
 export const transformation = [
@@ -230,6 +230,7 @@ export const trainers = [
     accent: '#ef2b3c',
     palette: 'red',
     build: 1.35,
+    photo: 'trainer1',
   },
   {
     id: 2,
@@ -245,6 +246,7 @@ export const trainers = [
     accent: '#3987e5',
     palette: 'slate',
     build: 0.7,
+    photo: 'trainer2',
   },
   {
     id: 3,
@@ -260,6 +262,7 @@ export const trainers = [
     accent: '#c98500',
     palette: 'ember',
     build: 1.7,
+    photo: 'trainer3',
   },
 ]
 

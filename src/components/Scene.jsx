@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { photos } from '../data/photos.js'
+
 /**
  * Generated artwork, drawn as SVG rather than shipped as photos.
  *
@@ -127,6 +130,7 @@ export default function Scene({
   variant = 'rack',
   palette = 'red',
   src,
+  photo,
   alt = '',
   className = '',
   ratio = 'aspect-[16/10]',
@@ -137,12 +141,26 @@ export default function Scene({
   const Shapes = SCENES[variant] ?? Rack
   const gid = `sg-${variant}-${palette}`
 
-  // A real photo, when one is supplied, keeps the same frame and brand tint.
-  if (src) {
+  // A photo can come from a `photo` key in src/data/photos.js, or directly
+  // as `src`. If it fails to load we fall back to the drawing rather than
+  // showing a broken image — a demo should never have a hole in it.
+  const configured = src ?? (photo ? photos[photo] : null)
+  const [failed, setFailed] = useState(false)
+  const showPhoto = configured && !failed
+
+  if (showPhoto) {
     return (
       <div className={`relative overflow-hidden ${ratio} ${className}`}>
-        <img src={src} alt={alt} loading="lazy" className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-matte-950 via-matte-950/25 to-transparent" />
+        <img
+          src={configured}
+          alt={alt}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+        {/* Same tint the drawings carry, so photos and art sit together. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-matte-950 via-matte-950/30 to-transparent" />
+        <div className="absolute inset-0 bg-brand/[0.06] mix-blend-overlay" />
         {children}
       </div>
     )

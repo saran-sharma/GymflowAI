@@ -172,6 +172,7 @@ export default function MemberProgress() {
                   variant="figure"
                   palette={p.palette}
                   build={p.build}
+                  photo={p.photo}
                   ratio="aspect-[3/4]"
                   alt={`Progress photo, ${p.date}`}
                 >
