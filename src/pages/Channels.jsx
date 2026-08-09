@@ -132,7 +132,7 @@ function WhatsAppPanel({ onNote }) {
       </div>
 
       <div className="border-t border-white/[0.08] bg-white/[0.03] p-3">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {waQuickReplies.map((label) => (
             <button
               key={label}
@@ -248,7 +248,7 @@ export default function Channels() {
                 <SectionTitle icon={Sparkles} title="What the bot just did" sub="Actions pushed into the system" />
                 {notes.length === 0 ? (
                   <p className="mt-4 rounded-xl border border-dashed border-white/[0.12] px-4 py-8 text-center text-sm text-zinc-500">
-                    Tap a quick reply in the chat — Book PT, Renew Membership, Pay Fees — and the
+                    Tap a quick reply in the chat — Book PT, Pay, Invoice, Workout — and the
                     actions land here.
                   </p>
                 ) : (

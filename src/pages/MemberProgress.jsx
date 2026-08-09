@@ -1,12 +1,24 @@
 import { useState } from 'react'
-import { Activity, Camera, Cable, Sparkles, TrendingDown, TrendingUp, UserCheck } from 'lucide-react'
+import {
+  Activity,
+  ArrowLeftRight,
+  ArrowRight,
+  Cable,
+  Camera,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  UserCheck,
+} from 'lucide-react'
 import Scene from '../components/Scene.jsx'
-import { Badge, Card, Meter, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
+import { Badge, Card, DemoBadge, Meter, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
 import { CATEGORICAL, ChartCard, CompositionLines, Legend } from '../components/charts.jsx'
 import { inbody, progressPhotos, transformation, vitals } from '../data/gym.js'
 
 export default function MemberProgress() {
   const [toast, setToast] = useState('')
+  // Keep the spec order rather than the sheet order.
+  const headlineMetrics = inbody.headline.map((label) => inbody.metrics.find((m) => m.label === label))
   const [syncing, setSyncing] = useState(false)
   const [synced, setSynced] = useState(true)
 
@@ -60,6 +72,45 @@ export default function MemberProgress() {
         <StatCard label="Skeletal muscle" value={`${vitals.muscle.value} kg`} delta={`+${vitals.muscle.delta} kg`} trend="up" hint="since Feb" icon={TrendingUp} />
         <StatCard label="BMI" value={vitals.bmi.value} delta={`${vitals.bmi.delta}`} trend="up" hint="normal range" icon={Activity} />
       </div>
+
+      {/* Previous scan vs this one, side by side */}
+      <Card strong className="p-5">
+        <SectionTitle
+          icon={ArrowLeftRight}
+          title="Previous scan vs current"
+          sub={`${inbody.prevScan} → ${inbody.lastScan} · the six numbers your trainer reads first`}
+          right={<DemoBadge>InBody 770 · Demo / Integration Ready</DemoBadge>}
+        />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {headlineMetrics.map((m) => {
+            const prev = Math.round((m.value - m.delta) * 100) / 100
+            const better = inbody.lowerIsBetter.includes(m.label) ? m.delta < 0 : m.delta > 0
+            return (
+              <div key={m.label} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+                <p className="text-xs text-zinc-400">{m.label}</p>
+                <div className="mt-3 flex items-end gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-600">Previous</p>
+                    <p className="num text-lg font-semibold text-zinc-500">{prev}</p>
+                  </div>
+                  <ArrowRight className="mb-1.5 h-4 w-4 shrink-0 text-zinc-600" />
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-brand">Current</p>
+                    <p className="num text-2xl font-bold tracking-tightest text-white">
+                      {m.value}
+                      <span className="ml-1 text-xs font-medium text-zinc-500">{m.unit}</span>
+                    </p>
+                  </div>
+                </div>
+                <p className={`num mt-2.5 flex items-center gap-1.5 text-xs font-medium ${better ? 'text-emerald-300' : 'text-amber-300'}`}>
+                  {better ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                  {m.delta > 0 ? '+' : ''}{m.delta} {m.unit} · {better ? 'improving' : 'watch'}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
 
       {/* Transformation graph */}
       <ChartCard

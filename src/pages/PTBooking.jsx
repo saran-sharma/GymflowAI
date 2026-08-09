@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import Scene from '../components/Scene.jsx'
 import { Avatar, Badge, Card, KeyValue, Meter, Modal, PageHeader, SectionTitle, Toast } from '../components/ui.jsx'
-import { inr, member, ptHistory, trainers } from '../data/gym.js'
+import { inr, member, ptHistory, ptToday, trainers } from '../data/gym.js'
 
 const days = ['Today', 'Tomorrow', 'Sat 08', 'Sun 09', 'Mon 10']
 
@@ -121,6 +121,7 @@ export default function PTBooking() {
   const [pay, setPay] = useState(false)
   const [toast, setToast] = useState('')
   const [booked, setBooked] = useState([])
+  const [completed, setCompleted] = useState(false)
 
   const trainer = trainers.find((t) => t.id === trainerId)
 
@@ -267,6 +268,43 @@ export default function PTBooking() {
         </div>
       </Card>
 
+      {/* Today's session — only closed by the trainer at the device */}
+      <Card strong className="p-5">
+        <SectionTitle
+          icon={CheckCircle2}
+          title="Session completion"
+          sub="A session is only deducted once the trainer closes it at the device — that same record scores their completion rate."
+          right={<Badge tone={completed ? 'good' : 'warn'}>{completed ? 'Completed' : 'In progress'}</Badge>}
+        />
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <Avatar initials="VM" tone="#ef2b3c" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{ptToday.focus}</p>
+              <p className="num truncate text-xs text-zinc-500">
+                {ptToday.trainer} · {ptToday.date} at {ptToday.at}
+              </p>
+            </div>
+          </div>
+          <button
+            disabled={completed}
+            onClick={() => {
+              setCompleted(true)
+              setToast('Session closed by Coach Vikas at the device. 6 sessions left in your package.')
+            }}
+            className={completed ? 'btn btn-ghost btn-sm' : 'btn-primary btn-sm'}
+          >
+            {completed ? 'Closed 7:58 PM' : 'Trainer marks complete'}
+          </button>
+        </div>
+        {completed && (
+          <p className="mt-3 animate-fade-up rounded-xl border border-brand/25 bg-brand/[0.07] px-4 py-3 text-sm text-zinc-300">
+            <span className="font-semibold text-white">Trainer note · </span>
+            “{ptToday.note}”
+          </p>
+        )}
+      </Card>
+
       {/* Package + history */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-5">
@@ -297,9 +335,12 @@ export default function PTBooking() {
             {ptHistory.map((h) => (
               <div key={h.date + h.focus} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="num text-xs font-semibold text-brand">{h.date}</span>
                     <p className="text-sm font-medium text-white">{h.focus}</p>
+                    {h.completed && (
+                      <Badge tone="good" icon={CheckCircle2}>Closed {h.signedAt}</Badge>
+                    )}
                   </div>
                   <span className="flex items-center gap-1 text-xs text-zinc-400">
                     {Array.from({ length: h.rating }, (_, i) => (

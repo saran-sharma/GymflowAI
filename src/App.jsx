@@ -12,6 +12,8 @@ import Assistant from './pages/Assistant.jsx'
 import PTBooking from './pages/PTBooking.jsx'
 import SmartFeatures from './pages/SmartFeatures.jsx'
 import TrainerDesk from './pages/TrainerDesk.jsx'
+import TrainerAccountability from './pages/TrainerAccountability.jsx'
+import Yoactiv from './pages/Yoactiv.jsx'
 import EntryExit from './pages/EntryExit.jsx'
 import OwnerDashboard from './pages/OwnerDashboard.jsx'
 import Billing from './pages/Billing.jsx'
@@ -53,6 +55,8 @@ export default function App() {
           <Route path="/pt" element={<PTBooking />} />
           <Route path="/smart" element={<SmartFeatures />} />
           <Route path="/trainer" element={<TrainerDesk />} />
+          <Route path="/accountability" element={<TrainerAccountability />} />
+          <Route path="/yoactiv" element={<Yoactiv />} />
           <Route path="/entry" element={<EntryExit />} />
           <Route path="/owner" element={<OwnerDashboard />} />
           <Route path="/billing" element={<Billing />} />

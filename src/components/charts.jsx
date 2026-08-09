@@ -169,6 +169,30 @@ export function SourceBars({ data }) {
   )
 }
 
+/**
+ * Trainer punctuality — one measure, so one hue. Trainers under the 90% target
+ * are drawn at reduced opacity and every bar carries its number, so the split
+ * is never colour-alone.
+ */
+export function PunctualityBars({ data, target = 90 }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 4 }} barCategoryGap="26%">
+        <CartesianGrid stroke={GRID} horizontal={false} />
+        <XAxis type="number" domain={[0, 100]} {...axis} hide />
+        <YAxis type="category" dataKey="name" {...axis} width={104} />
+        <Tooltip content={makeTip(null, '% on time')} cursor={{ fill: 'rgba(255,255,255,.04)' }} />
+        <Bar dataKey="punctuality" radius={[0, 4, 4, 0]} maxBarSize={22} animationDuration={700}>
+          {data.map((d) => (
+            <Cell key={d.name} fill={SERIES} fillOpacity={d.punctuality >= target ? 1 : 0.42} />
+          ))}
+          <LabelList dataKey="punctuality" position="right" formatter={(v) => `${v}%`} fill="#a1a1ad" fontSize={11} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 /* ----------------------------------------------------------------- lines */
 
 export function AreaSeries({ data, xKey, yKey, unit, format, domainPad = 20 }) {
