@@ -6,12 +6,14 @@ import {
   BellRing,
   CheckCircle2,
   CreditCard,
+  Database,
   Dumbbell,
   Fingerprint,
   Gauge,
   MessageCircle,
   Radio,
   RotateCcw,
+  Timer,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -19,11 +21,40 @@ import { Badge, Card, LivePulse, Meter, PageHeader, SectionTitle, Toast } from '
 import { inr, live, member, trainers } from '../data/gym.js'
 
 /**
- * The ten steps of the showcase journey. Each one names the system it touches
- * and the state it changes, so the demo shows cause and effect rather than
- * a slideshow of screens.
+ * The showcase journey, in the order the systems actually fire: Yoactiv hands
+ * over the records, the turnstile raises an event, GymFlow AI scores it, and it
+ * lands on the trainer, the member and the owner. Each step names the system it
+ * touches and the state it changes, so the demo shows cause and effect rather
+ * than a slideshow of screens.
  */
 const steps = [
+  {
+    icon: Database,
+    title: 'Yoactiv hands over the records',
+    who: 'Yoactiv',
+    detail: 'Members, memberships, trainers, payments and raw attendance sync across. Yoactiv keeps owning them — GymFlow AI only reads.',
+    effect: '642 members · 6 trainers · 38 payments synced',
+    link: '/yoactiv',
+    linkLabel: 'Open Yoactiv Integration',
+  },
+  {
+    icon: Fingerprint,
+    title: 'A trainer clocks in late',
+    who: 'Trainer',
+    detail: 'Rahul Deshpande scans at 5:26 PM against a 5:00 PM shift — 26 minutes past the 10-minute grace. Photo and timestamp captured at the device.',
+    effect: 'Late mark 7 this month · punctuality 71%',
+    link: '/accountability',
+    linkLabel: 'Open Trainer Accountability',
+  },
+  {
+    icon: BellRing,
+    title: 'The owner is told, not asked',
+    who: 'Owner',
+    detail: 'A WhatsApp alert goes out immediately. Rahul drops out of incentive eligibility for the cycle, and the floor punctuality average falls to 86%.',
+    effect: 'Owner alerted · incentive eligibility revoked',
+    link: '/owner',
+    linkLabel: 'Open Owner Dashboard',
+  },
   {
     icon: Radio,
     title: 'Checks the live gym crowd',
@@ -103,7 +134,7 @@ const steps = [
     detail: 'Volume logged at 11,480 kg — a best for this block. The streak goes to 15 days and the leaderboard reshuffles.',
     effect: 'Volume, streak and points updated',
     link: '/smart',
-    linkLabel: 'Open Smart Features',
+    linkLabel: 'Open Smart Experience',
   },
   {
     icon: Gauge,
@@ -119,10 +150,10 @@ const steps = [
 /** Live counters that move as the journey progresses. */
 function stateAt(step) {
   return {
-    occupancy: live.inside + (step >= 5 ? 1 : 0),
-    revenue: 1842000 + (step >= 3 ? 1200 : 0),
-    ptToday: 5 + (step >= 2 ? 1 : 0),
-    streak: member.streak + (step >= 9 ? 1 : 0),
+    punctuality: step >= 2 ? 86 : 90,
+    occupancy: live.inside + (step >= 8 ? 1 : 0),
+    revenue: 1842000 + (step >= 6 ? 1200 : 0),
+    ptToday: 5 + (step >= 5 ? 1 : 0),
   }
 }
 
@@ -143,8 +174,8 @@ export default function GuidedDemo() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Special demo experience"
-        title="One member's visit, end to end"
-        sub="Ten steps across six systems. Run them in order and watch the numbers at the top move as you go."
+        title="One day at SLAM, end to end"
+        sub="Yoactiv → Access Control → GymFlow AI → Trainer → Member → Owner. Run the steps in order and watch the numbers at the top move as you go."
         actions={
           <>
             <LivePulse label={complete ? 'Journey complete' : `Step ${done + 1} of ${steps.length}`} />
@@ -162,10 +193,10 @@ export default function GuidedDemo() {
       <Card strong className="p-5">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ['Occupancy', `${s.occupancy}/${live.capacity}`, Users, done >= 5],
-            ['Revenue today', inr(s.revenue - 1842000 + 124800), CreditCard, done >= 3],
-            ['PT sessions today', s.ptToday, Dumbbell, done >= 2],
-            ['Member streak', `${s.streak} days`, TrendingUp, done >= 9],
+            ['Trainer punctuality', `${s.punctuality}%`, Timer, done >= 2],
+            ['Occupancy', `${s.occupancy}/${live.capacity}`, Users, done >= 8],
+            ['Revenue today', inr(s.revenue - 1842000 + 124800), CreditCard, done >= 6],
+            ['PT sessions today', s.ptToday, Dumbbell, done >= 5],
           ].map(([label, value, Icon, moved]) => (
             <div
               key={label}

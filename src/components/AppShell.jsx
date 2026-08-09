@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   CreditCard,
+  Database,
   Dumbbell,
   FileBarChart,
   Fingerprint,
@@ -18,6 +19,7 @@ import {
   MessagesSquare,
   Radio,
   Settings2,
+  ShieldCheck,
   Sparkles,
   Trophy,
   UserRound,
@@ -42,7 +44,7 @@ const groups = [
       { to: '/member/progress', label: 'Progress & InBody', icon: Activity },
       { to: '/assistant', label: 'AI Assistant', icon: Sparkles },
       { to: '/pt', label: 'PT Booking', icon: CalendarClock },
-      { to: '/smart', label: 'Smart Features', icon: Trophy },
+      { to: '/smart', label: 'Smart Experience', icon: Trophy },
     ],
   },
   {
@@ -56,6 +58,8 @@ const groups = [
     label: 'Business',
     items: [
       { to: '/owner', label: 'Owner Dashboard', icon: Gauge },
+      { to: '/accountability', label: 'Trainer Accountability', icon: ShieldCheck, tag: 'New' },
+      { to: '/yoactiv', label: 'Yoactiv Integration', icon: Database, tag: 'New' },
       { to: '/billing', label: 'Billing & GST', icon: CreditCard },
       { to: '/channels', label: 'WhatsApp & Instagram', icon: MessagesSquare },
       { to: '/reports', label: 'Reports', icon: FileBarChart },

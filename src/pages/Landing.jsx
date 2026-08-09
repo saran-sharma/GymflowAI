@@ -4,8 +4,9 @@ import {
   Activity,
   ArrowRight,
   Blocks,
+  Building2,
   Check,
-  CreditCard,
+  Database,
   Fingerprint,
   Menu,
   MessagesSquare,
@@ -14,66 +15,82 @@ import {
   Radio,
   Sparkles,
   Star,
+  UserCheck,
   Users,
   X,
 } from 'lucide-react'
 import Logo, { StudioLogo } from '../components/Logo.jsx'
 import Scene from '../components/Scene.jsx'
 import { Badge, Card, Modal, Toast } from '../components/ui.jsx'
-import { live, pricingPlans, studio, testimonials } from '../data/gym.js'
+import { live, pricingPlans, studio, systemFlow, testimonials } from '../data/gym.js'
+
+const flowIcon = {
+  yoactiv: Database,
+  access: Fingerprint,
+  gymflow: Sparkles,
+  trainer: UserCheck,
+  member: Users,
+  owner: Building2,
+}
 
 const features = [
+  {
+    icon: Fingerprint,
+    title: 'Trainer Accountability',
+    photo: 'featureEntry',
+    to: '/accountability',
+    body: 'Every trainer clocks in at the turnstile — fingerprint, Face ID or QR — with a photo and a timestamp. Late marks, early exits and session completion score themselves.',
+    points: ['Grace period, punctuality score, incentive eligibility', 'Owner alerted the moment a shift slips'],
+    hero: true,
+    scene: 'dumbbells',
+  },
   {
     icon: Radio,
     title: 'Live Gym Experience',
     photo: 'featureLiveGym',
-    body: 'Members see the crowd, equipment and wait times before they leave home. Evening congestion drops without adding a square foot.',
+    to: '/live',
+    body: 'Members see the crowd, the machines and the wait before they leave home. Evening congestion drops without adding a square foot.',
     points: ['Live occupancy and best-time-to-visit', 'Per-machine availability and waitlists'],
-    hero: true,
     scene: 'rack',
   },
   {
-    icon: Sparkles,
-    title: 'AI Member Assistant',
-    photo: 'featureAssistant',
-    body: 'Books PT, generates workouts and diets, renews memberships and answers the crowd question — in chat, day or night.',
-    points: ['Handles the top 9 member requests', 'Escalates cleanly to a trainer'],
-    scene: 'kettlebells',
-    palette: 'ember',
+    icon: Blocks,
+    title: 'Integrated with Yoactiv',
+    photo: 'featureBilling',
+    to: '/yoactiv',
+    body: 'Yoactiv stays your system of record. GymFlow AI reads members, memberships, payments and attendance from it and adds the intelligence on top.',
+    points: ['Nothing replaced, nothing migrated', 'Every integration point labelled and ready'],
+    scene: 'cardio',
+    palette: 'slate',
   },
   {
     icon: Activity,
     title: 'InBody, Synced',
     photo: 'featureInbody',
-    body: 'Scans land in the member app and the trainer desk the moment the member steps off the machine. No clipboards, no re-typing.',
-    points: ['15 metrics with monthly comparison', 'AI reads the trend, trainer confirms it'],
+    to: '/member/progress',
+    body: 'Scans land in the member app and on the trainer desk the moment the member steps off the machine. Previous scan sits next to the current one.',
+    points: ['Weight, body fat, muscle, BMI, visceral fat, BMR', 'Transformation graph and a trainer recommendation'],
     scene: 'figure',
     palette: 'slate',
   },
   {
-    icon: Fingerprint,
-    title: 'Frictionless Entry',
-    photo: 'featureEntry',
-    body: 'Fingerprint, face, QR or RFID — every entry and exit updates attendance and occupancy in the same second.',
-    points: ['Members, guests, trainers and staff', 'Real-time headcount for the owner'],
-    scene: 'dumbbells',
-  },
-  {
-    icon: CreditCard,
-    title: 'Billing That Files Itself',
-    photo: 'featureBilling',
-    body: 'GST invoices generated on payment and delivered on WhatsApp. EMI, promo codes, refunds and outstanding tracking included.',
-    points: ['UPI, cards, net banking, cash, Razorpay', 'GSTR-1 ready reports'],
-    scene: 'cardio',
-    palette: 'slate',
-  },
-  {
     icon: MessagesSquare,
-    title: 'WhatsApp & Instagram AI',
+    title: 'WhatsApp AI',
     photo: 'featureChannels',
-    body: 'Every enquiry answered in seconds, with pricing, timings and offers — and the lead captured with a phone number.',
-    points: ['Instagram DM and story-reply automation', 'Free trials booked straight into the calendar'],
+    to: '/channels',
+    body: '“How crowded is the gym?” gets a real answer from the live floor, not a canned script — then Book PT, Pay, Invoice and Workout in the same thread.',
+    points: ['Answers from the live occupancy feed', 'Payments and GST invoices without leaving chat'],
     scene: 'rack',
+    palette: 'ember',
+  },
+  {
+    icon: Users,
+    title: 'Member Smart Experience',
+    photo: 'featureAssistant',
+    to: '/smart',
+    body: 'PT booking, online payment, GST invoice, workout and diet plan, renewal and QR or fingerprint check-in — all from the phone in their pocket.',
+    points: ['Nine things a member does, in one place', 'Everything reads from the same live data'],
+    scene: 'kettlebells',
     palette: 'ember',
   },
 ]
@@ -81,8 +98,8 @@ const features = [
 const stats = [
   ['642', 'active members'],
   ['+18%', 'revenue in 4 months'],
+  ['86%', 'trainer punctuality'],
   ['3 min', 'avg equipment wait'],
-  ['34%', 'lead conversion'],
 ]
 
 function TopNav({ onTrial }) {
@@ -194,12 +211,12 @@ function HeroPanel() {
 function DemoVideo() {
   const [playing, setPlaying] = useState(false)
   const frames = [
-    { t: '0:04', title: 'Member checks the crowd', body: '38 inside, medium crowd, best after 8:30 PM.' },
-    { t: '0:21', title: 'Books PT and pays', body: 'Coach Vikas, 7 PM tomorrow. UPI in two taps.' },
-    { t: '0:38', title: 'GST invoice on WhatsApp', body: '₹1,200 incl. ₹183 GST. PDF delivered instantly.' },
-    { t: '0:52', title: 'Fingerprint check-in', body: 'Occupancy and attendance update in the same second.' },
-    { t: '1:14', title: 'InBody syncs itself', body: '15 metrics land in the app and on the trainer desk.' },
-    { t: '1:36', title: 'Owner dashboard moves', body: 'Occupancy, revenue and PT bookings, live.' },
+    { t: '0:04', title: 'Trainer clocks in', body: 'Fingerprint at 05:26 — 26 minutes late. Photo and timestamp captured.' },
+    { t: '0:18', title: 'Owner gets the alert', body: 'Seventh late mark this month. No incentive this cycle.' },
+    { t: '0:33', title: 'Member checks the crowd', body: '“How crowded is the gym?” — 38 inside, Medium, best after 8:30 PM.' },
+    { t: '0:49', title: 'Books PT and pays', body: 'Coach Vikas, 7 PM tomorrow. UPI in two taps, GST invoice on WhatsApp.' },
+    { t: '1:08', title: 'InBody syncs itself', body: 'Previous scan next to the current one, straight to the trainer desk.' },
+    { t: '1:31', title: 'Owner dashboard moves', body: 'Trainers present, punctuality, occupancy and revenue — live.' },
   ]
   return (
     <Card strong className="overflow-hidden p-0">
@@ -367,14 +384,14 @@ export default function Landing() {
             </div>
 
             <h1 className="mt-6 text-[2.6rem] font-bold leading-[1.03] tracking-tightest text-white sm:text-6xl">
-              The Smart Operating System for{' '}
-              <span className="text-brand">Modern Gyms</span>
+              Not another gym app.
+              <span className="mt-2 block text-brand">The smart operating layer for SLAM.</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-relaxed text-zinc-400 sm:text-lg">
-              GymFlow AI runs the floor, the front desk and the back office — live occupancy,
-              AI-booked PT, biometric entry, InBody sync and GST billing, in one system your members
-              actually enjoy using.
+              Yoactiv keeps your members, memberships and payments. GymFlow AI sits on top of it and
+              runs the part nobody else covers — trainer accountability, live occupancy, the member's
+              own experience, and the insight that falls out of all three.
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -429,46 +446,103 @@ export default function Landing() {
         <div className="max-w-2xl">
           <p className="eyebrow">Platform</p>
           <h2 className="mt-3 text-3xl font-bold tracking-tightest text-white sm:text-[2.5rem]">
-            One system instead of six spreadsheets
+            The layer your CRM was never going to add
           </h2>
           <p className="mt-4 text-zinc-400">
-            Every part of the gym — floor, trainers, billing, marketing — reading from the same live data.
+            Six things that run on top of Yoactiv, all reading from the same live floor.
           </p>
         </div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ icon: Icon, title, body, points, hero, scene, palette, photo }) => (
+          {features.map(({ icon: Icon, title, body, points, hero, scene, palette, photo, to }) => (
             <Card
               key={title}
               className={`group overflow-hidden p-0 transition-all hover:-translate-y-0.5 hover:border-white/15 ${
                 hero ? 'ring-1 ring-brand/25 md:col-span-2 lg:col-span-1' : ''
               }`}
             >
-              <Scene variant={scene} palette={palette} photo={photo} alt={title} ratio="aspect-[16/7]">
-                <span className="absolute left-4 top-4 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-black/45 text-white backdrop-blur">
-                  <Icon className="h-5 w-5" />
-                </span>
-                {hero && (
-                  <span className="absolute right-4 top-4">
-                    <Badge tone="critical">Hero feature</Badge>
+              <Link to={to} className="block">
+                <Scene variant={scene} palette={palette} photo={photo} alt={title} ratio="aspect-[16/7]">
+                  <span className="absolute left-4 top-4 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-black/45 text-white backdrop-blur">
+                    <Icon className="h-5 w-5" />
                   </span>
-                )}
-              </Scene>
+                  {hero && (
+                    <span className="absolute right-4 top-4">
+                      <Badge tone="critical">Hero feature</Badge>
+                    </span>
+                  )}
+                </Scene>
 
-              <div className="p-6">
-                <h3 className="text-lg font-semibold tracking-tight text-white">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{body}</p>
-                <ul className="mt-4 space-y-2">
-                  {points.map((p) => (
-                    <li key={p} className="flex items-start gap-2 text-sm text-zinc-300">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                <div className="p-6">
+                  <h3 className="text-lg font-semibold tracking-tight text-white">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{body}</p>
+                  <ul className="mt-4 space-y-2">
+                    {points.map((p) => (
+                      <li key={p} className="flex items-start gap-2 text-sm text-zinc-300">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                  <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-brand-soft transition-colors group-hover:text-brand">
+                    Open it
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </div>
+              </Link>
             </Card>
           ))}
+        </div>
+      </section>
+
+      {/* How the pieces sit together */}
+      <section className="border-y border-white/[0.08] bg-white/[0.015]">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
+          <div className="max-w-2xl">
+            <p className="eyebrow">The flow</p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tightest text-white sm:text-[2.5rem]">
+              One scan, six systems, no re-typing
+            </h2>
+            <p className="mt-4 text-zinc-400">
+              A single check-in travels the whole way through. Nothing is entered twice, and nothing is
+              taken away from Yoactiv.
+            </p>
+          </div>
+
+          <ol className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {systemFlow.map((s, i) => {
+              const Icon = flowIcon[s.key]
+              return (
+                <li key={s.key} className="relative">
+                  <Card className={`h-full p-5 ${s.key === 'gymflow' ? 'ring-1 ring-brand/30' : ''}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`grid h-10 w-10 place-items-center rounded-xl border ${
+                        s.key === 'gymflow'
+                          ? 'border-brand/30 bg-brand/[0.12] text-brand'
+                          : 'border-white/10 bg-white/[0.05] text-zinc-300'
+                      }`}>
+                        <Icon className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="num text-xs font-semibold text-zinc-600">0{i + 1}</span>
+                    </div>
+                    <p className="mt-3.5 text-sm font-semibold text-white">{s.label}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-500">{s.detail}</p>
+                  </Card>
+                  {i < systemFlow.length - 1 && (
+                    <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-4 w-4 -translate-y-1/2 text-zinc-700 xl:block" />
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link to="/yoactiv" className="btn-primary btn-sm">
+              See the Yoactiv integration
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link to="/accountability" className="btn btn-ghost btn-sm">Trainer accountability</Link>
+          </div>
         </div>
       </section>
 
@@ -579,12 +653,22 @@ export default function Landing() {
             className="pointer-events-none absolute inset-0 -z-10"
             style={{ background: 'radial-gradient(55% 80% at 50% 0%, rgba(239,43,60,.22) 0%, transparent 70%)' }}
           />
-          <h2 className="text-3xl font-bold tracking-tightest text-white sm:text-[2.75rem]">
-            Run your gym like it's 2026
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <StudioLogo size="lg" wordmark />
+            <span className="text-2xl font-light text-zinc-600">×</span>
+            <span className="text-2xl font-bold tracking-tightest text-white sm:text-3xl">
+              GymFlow<span className="text-brand"> AI</span>
+            </span>
+          </div>
+
+          <h2 className="mt-7 text-2xl font-bold leading-tight tracking-tightest text-white sm:text-[2.25rem]">
+            Trainer Accountability.
+            <span className="text-brand"> Member Experience.</span> Smarter Operations.
           </h2>
+
           <p className="mx-auto mt-5 max-w-xl text-zinc-400">
-            We migrate your members, connect your WhatsApp number and biometric devices, and train
-            your front desk. Most studios are live in a week.
+            We connect to Yoactiv, wire up your biometric devices and your WhatsApp number, and leave
+            your records exactly where they are. Most studios are live in a week.
           </p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
             <button onClick={() => setTrial(true)} className="btn-primary btn-lg">
@@ -597,7 +681,7 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-7 text-xs text-zinc-500">
-            No card required · Free migration · Cancel any time
+            Demo build · mock Yoactiv, biometric and InBody integrations · nothing leaves the browser
           </p>
         </Card>
       </section>

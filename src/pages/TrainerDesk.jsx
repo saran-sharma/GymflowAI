@@ -1,16 +1,28 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Apple,
+  ArrowRight,
+  Award,
   CalendarDays,
   ClipboardCheck,
   Dumbbell,
   IndianRupee,
   NotebookPen,
+  Timer,
   TrendingUp,
   Users,
 } from 'lucide-react'
 import { Avatar, Badge, Card, Meter, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
-import { inr, trainerClients, trainerToday, trainers } from '../data/gym.js'
+import {
+  graceMinutes,
+  incentiveRules,
+  inr,
+  trainerAttendance,
+  trainerClients,
+  trainerToday,
+  trainers,
+} from '../data/gym.js'
 
 const hours = ['6 AM', '7 AM', '8 AM', '9 AM', '10 AM', '4 PM', '5 PM', '6 PM', '7 PM', '8 PM', '9 PM']
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -23,6 +35,11 @@ const statusTone = { Done: 'good', Now: 'critical', Upcoming: 'neutral' }
 export default function TrainerDesk() {
   const [toast, setToast] = useState('')
   const me = trainers[0]
+
+  // The desk shows the trainer their own row from the accountability record.
+  const myAttendance = trainerAttendance.find((t) => t.name === me.name) ?? trainerAttendance[0]
+  const passed = incentiveRules.filter((r) => r.test(myAttendance)).length
+  const eligible = passed === incentiveRules.length
 
   const pendingPayments = trainerClients.filter((c) => !c.paid)
   const monthRevenue = 186000
@@ -48,6 +65,44 @@ export default function TrainerDesk() {
         <StatCard label="Revenue (Aug)" value={inr(monthRevenue)} delta="+14%" trend="up" hint="your share" icon={IndianRupee} />
         <StatCard label="Pending payments" value={inr(pendingAmount)} delta={`${pendingPayments.length} clients`} trend="down" hint="follow up" icon={ClipboardCheck} />
       </div>
+
+      {/* Your own record, as the owner sees it */}
+      <Card strong className="p-5">
+        <SectionTitle
+          icon={Timer}
+          title="Your accountability"
+          sub={`Shift ${myAttendance.shiftStart}–${myAttendance.shiftEnd} · ${myAttendance.method} check-in · ${graceMinutes} min grace`}
+          right={
+            <Link to="/accountability" className="btn btn-ghost btn-sm">
+              Full record
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          }
+        />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Checked in', myAttendance.inAt, myAttendance.lateBy === 0 ? 'On time' : `${myAttendance.lateBy} min late`, myAttendance.lateBy === 0],
+            ['Checked out', myAttendance.outAt ?? '—', myAttendance.earlyExitBy === 0 ? 'Full shift' : `${myAttendance.earlyExitBy} min early`, myAttendance.earlyExitBy === 0],
+            ['Punctuality', `${myAttendance.punctuality}%`, `${myAttendance.monthLate} late marks this month`, myAttendance.punctuality >= 90],
+            ['Sessions closed', `${myAttendance.sessionsCompleted}/${myAttendance.sessionsBooked}`, 'today', myAttendance.sessionsCompleted === myAttendance.sessionsBooked],
+          ].map(([label, value, note, ok]) => (
+            <div key={label} className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3.5">
+              <p className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</p>
+              <p className="num mt-1 text-xl font-bold tracking-tightest text-white">{value}</p>
+              <p className={`mt-1 text-[11px] ${ok ? 'text-emerald-300' : 'text-amber-300'}`}>{note}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-brand/25 bg-brand/[0.07] px-4 py-3">
+          <Award className="h-4 w-4 shrink-0 text-brand" />
+          <p className="min-w-0 flex-1 text-sm text-zinc-300">
+            {eligible
+              ? 'You meet all four incentive rules this cycle.'
+              : `${passed}/${incentiveRules.length} incentive rules met this cycle.`}
+          </p>
+          <Badge tone={eligible ? 'good' : 'warn'}>{eligible ? 'Incentive eligible' : 'Not yet eligible'}</Badge>
+        </div>
+      </Card>
 
       {/* Today + calendar */}
       <div className="grid gap-4 lg:grid-cols-2">

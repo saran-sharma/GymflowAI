@@ -49,7 +49,16 @@ export const vitals = {
 
 export const inbody = {
   lastScan: '28 Jul 2026',
+  prevScan: '26 Apr 2026',
   device: 'InBody 770 · Floor 1',
+  /**
+   * The six the member and trainer actually read off the sheet. Everything else
+   * is in the full metric list below. Previous values are derived from `delta`,
+   * so the two can never drift apart.
+   */
+  headline: ['Weight', 'Body Fat', 'Skeletal Muscle Mass', 'BMI', 'Visceral Fat', 'Basal Metabolic Rate'],
+  /** Metrics where going down is the win. */
+  lowerIsBetter: ['Weight', 'Body Fat', 'BMI', 'Visceral Fat'],
   metrics: [
     { label: 'Weight', value: 78.4, unit: 'kg', delta: -2.1, range: 'Normal' },
     { label: 'BMI', value: 24.1, unit: '', delta: -0.7, range: 'Normal' },
@@ -267,11 +276,24 @@ export const trainers = [
 ]
 
 export const ptHistory = [
-  { date: '01 Aug', trainer: 'Vikas Menon', focus: 'Lower body strength', rating: 5, note: 'Squat depth much better. Add pause reps.' },
-  { date: '28 Jul', trainer: 'Vikas Menon', focus: 'Push day technique', rating: 5, note: 'Bench arch fixed. Elbow tuck at 45°.' },
-  { date: '24 Jul', trainer: 'Sneha Iyer', focus: 'Conditioning', rating: 4, note: 'Held 165 bpm for 18 min. Improving.' },
-  { date: '21 Jul', trainer: 'Vikas Menon', focus: 'Pull day', rating: 5, note: 'Chin-ups unassisted × 8. Big milestone.' },
+  { date: '01 Aug', trainer: 'Vikas Menon', focus: 'Lower body strength', rating: 5, note: 'Squat depth much better. Add pause reps.', completed: true, signedAt: '7:58 PM' },
+  { date: '28 Jul', trainer: 'Vikas Menon', focus: 'Push day technique', rating: 5, note: 'Bench arch fixed. Elbow tuck at 45°.', completed: true, signedAt: '8:02 PM' },
+  { date: '24 Jul', trainer: 'Sneha Iyer', focus: 'Conditioning', rating: 4, note: 'Held 165 bpm for 18 min. Improving.', completed: true, signedAt: '7:44 PM' },
+  { date: '21 Jul', trainer: 'Vikas Menon', focus: 'Pull day', rating: 5, note: 'Chin-ups unassisted × 8. Big milestone.', completed: true, signedAt: '8:11 PM' },
 ]
+
+/**
+ * Today's session, still open. A session only counts against the package once
+ * the trainer closes it at the device — which is what feeds their completion
+ * rate on the accountability screen.
+ */
+export const ptToday = {
+  date: 'Today',
+  trainer: 'Vikas Menon',
+  at: '7:00 PM',
+  focus: 'Pull · Back & Biceps',
+  note: 'Working up to 3 sets of 6 on the row. Keep the brace tight.',
+}
 
 export const trainerToday = [
   { time: '6:00 AM', client: 'Aditya Rao', focus: 'Push · Chest', status: 'Done' },
@@ -291,17 +313,51 @@ export const trainerClients = [
 
 /* --------------------------------------------------------------- owner */
 
+/**
+ * The eight cards on the owner's home screen. Each one is a door: `to` is where
+ * tapping it lands, `drill` is the detail the card expands to in place.
+ */
 export const ownerStats = [
-  { key: 'members', label: 'Active Members', value: 642, delta: '+38', trend: 'up', hint: 'this month' },
-  { key: 'occupancy', label: 'Current Occupancy', value: '38/90', delta: '42%', trend: 'flat', hint: 'live' },
-  { key: 'entries', label: "Today's Entries", value: 214, delta: '+12%', trend: 'up', hint: 'vs yesterday' },
-  { key: 'exits', label: "Today's Exits", value: 176, delta: '38 inside', trend: 'flat', hint: 'right now' },
-  { key: 'revenue', label: 'Revenue (Aug)', value: 1842000, money: true, delta: '+18%', trend: 'up', hint: 'vs Jul' },
-  { key: 'ptrev', label: 'PT Revenue (Aug)', value: 486000, money: true, delta: '+24%', trend: 'up', hint: 'vs Jul' },
-  { key: 'renewals', label: 'Renewals Due', value: 47, delta: '30 days', trend: 'flat', hint: 'next 30 days' },
-  { key: 'inactive', label: 'Inactive Members', value: 63, delta: '+9', trend: 'down', hint: 'no visit 21d' },
-  { key: 'trial', label: 'Trial Members', value: 24, delta: '+6', trend: 'up', hint: 'this week' },
-  { key: 'conversion', label: 'Lead Conversion', value: '34%', delta: '+5pp', trend: 'up', hint: 'vs Jul' },
+  {
+    key: 'present', label: 'Trainers Present', value: '5/6', delta: '1 off', trend: 'flat',
+    hint: 'checked in today', to: '/accountability',
+    drill: ['Vikas Menon · in 04:56', 'Sneha Iyer · in 06:07', 'Rahul Deshpande · in 16:26', 'Farhan Ali · in 05:58', 'Divya Rao · in 06:59'],
+  },
+  {
+    key: 'late', label: 'Late Trainers', value: 2, delta: '+1', trend: 'down',
+    hint: 'past the 10 min grace', to: '/accountability',
+    drill: ['Rahul Deshpande · 26 min late', 'Sneha Iyer · 7 min late (within grace)', 'Farhan Ali · left 38 min early'],
+  },
+  {
+    key: 'live', label: 'Live Members', value: '38/90', delta: '42%', trend: 'flat',
+    hint: 'inside right now', to: '/live',
+    drill: ['Weights floor · 21', 'Cardio · 9', 'Studio · 5', 'Recovery · 3'],
+  },
+  {
+    key: 'revenue', label: 'Revenue', value: 1842000, money: true, delta: '+18%', trend: 'up',
+    hint: 'August, vs July', to: '/reports',
+    drill: ['Memberships · ₹11.9L', 'PT · ₹4.86L', 'Store & cafe · ₹1.4L', 'Other · ₹0.26L'],
+  },
+  {
+    key: 'ptrev', label: 'PT Revenue', value: 486000, money: true, delta: '+24%', trend: 'up',
+    hint: 'August, vs July', to: '/pt',
+    drill: ['374 sessions delivered', 'Avg ₹1,300 per session', 'Evening slots 94% booked', 'Afternoon slots 38% booked'],
+  },
+  {
+    key: 'renewals', label: 'Renewals Due', value: 14, delta: '₹6.8L', trend: 'flat',
+    hint: 'next 30 days', to: '/reports',
+    drill: ['4 due this week', '6 due next week', '4 later this month', '9 already reminded on WhatsApp'],
+  },
+  {
+    key: 'punctuality', label: 'Trainer Punctuality', value: '86%', delta: '-4pp', trend: 'down',
+    hint: 'floor average, 30 days', to: '/accountability',
+    drill: ['Vikas Menon · 96%', 'Divya Rao · 94%', 'Sneha Iyer · 88%', 'Farhan Ali · 79%', 'Rahul Deshpande · 71%'],
+  },
+  {
+    key: 'inbody', label: 'InBody Scans', value: 62, delta: '+11', trend: 'up',
+    hint: 'this month', to: '/member/progress',
+    drill: ['48 members scanned', '14 repeat scans', 'Avg body fat -1.8 pp', 'Avg muscle +0.9 kg'],
+  },
 ]
 
 export const revenueByMonth = [
@@ -353,55 +409,42 @@ export const leadSources = [
   { source: 'Referral', leads: 39, color: 'var(--cat-5)' },
 ]
 
+/**
+ * Four insights, each one traceable to data on this screen: the late marks in
+ * `trainerAttendance`, the renewals card, `occupancyByHour` and the PT slot fill.
+ */
 export const businessInsights = [
   {
     severity: 'critical',
-    title: '18 members may not renew',
-    detail: 'Their visits dropped below 4/month for two consecutive months. Renewal falls due in the next 21 days.',
-    action: 'Launch win-back campaign',
-    impact: '₹2.4L at risk',
+    title: '3 trainers repeatedly late',
+    detail: 'Rahul Deshpande (7 late marks), Farhan Ali (5) and Sneha Iyer (3) crossed the 10-minute grace more than twice this month. 14 member sessions started behind schedule.',
+    action: 'Review with trainers',
+    impact: '86% floor punctuality',
+    to: '/accountability',
   },
   {
     severity: 'warning',
-    title: 'Tuesday evenings are overcrowded',
-    detail: '7–8 PM hits 71 of 90 capacity. Equipment wait times cross 9 minutes on the squat racks.',
+    title: '14 renewals due',
+    detail: 'Fourteen memberships expire in the next 30 days, worth ₹6.8L. Nine members have already had a WhatsApp reminder; five have not been contacted.',
+    action: 'Send renewal reminders',
+    impact: '₹6.8L in the pipeline',
+    to: '/reports',
+  },
+  {
+    severity: 'warning',
+    title: 'Tuesday 6–8 PM overcrowded',
+    detail: 'Tuesday is the busiest day at 312 visits, and 6–8 PM peaks at 71 of 90 capacity. Squat rack waits cross 9 minutes in that window.',
     action: 'Open 2 extra racks',
     impact: '9 min avg wait',
+    to: '/live',
   },
   {
     severity: 'info',
-    title: 'Promote afternoon PT sessions',
-    detail: 'Trainers are 62% idle between 11 AM and 4 PM while evening slots are fully booked out 6 days ahead.',
+    title: 'Afternoon PT slots underused',
+    detail: 'Trainers are 62% idle between 11 AM and 4 PM while evening slots are booked out six days ahead. Shifting 20% of demand fills the gap without new hires.',
     action: 'Create afternoon offer',
     impact: '+₹84K/month',
-  },
-  {
-    severity: 'info',
-    title: 'Offer a discount to inactive members',
-    detail: '63 members have not checked in for 21+ days. Historically 31% return on a 20% renewal discount.',
-    action: 'Send WhatsApp offer',
-    impact: '~19 recovered',
-  },
-  {
-    severity: 'good',
-    title: 'Transformation packages drive the most revenue',
-    detail: '12-week transformation is 14% of sales volume but 31% of revenue, at the highest retention of any plan.',
-    action: 'Expand capacity',
-    impact: '31% of revenue',
-  },
-  {
-    severity: 'info',
-    title: "Predicted September revenue: ₹19.6L",
-    detail: 'Based on renewal pipeline, trial conversion at 34% and the current PT booking run-rate.',
-    action: 'View forecast model',
-    impact: '+6.4% MoM',
-  },
-  {
-    severity: 'warning',
-    title: 'One trainer is trending below the floor average',
-    detail: 'Client retention at 61% against a 84% floor average, with rebooking rate falling for 3 months.',
-    action: 'Schedule 1:1 review',
-    impact: '61% retention',
+    to: '/pt',
   },
 ]
 
@@ -435,52 +478,34 @@ export const promoCodes = [
 /* -------------------------------------------------------------- channels */
 
 export const waConversation = [
-  { from: 'member', text: 'How many people are in the gym?', at: '7:41 PM' },
+  { from: 'member', text: 'How crowded is the gym?', at: '7:41 PM' },
   {
     from: 'bot',
     at: '7:41 PM',
-    text: 'Currently there are 38 members inside.',
-    cards: [
-      { label: 'Crowd level', value: 'Medium' },
-      { label: 'Best time today', value: 'After 8:30 PM' },
-      { label: 'Squat rack wait', value: '~9 min' },
-    ],
+    text: '38 members are currently inside. Crowd is Medium. Best time today: after 8:30 PM.',
+    cards: [{ label: 'Squat rack wait', value: '~9 min' }],
   },
 ]
 
-export const waQuickReplies = [
-  'Book PT',
-  'Renew Membership',
-  'Pay Fees',
-  'Download Invoice',
-  'View Workout',
-  'Talk to Trainer',
-]
+/** The four things a member actually asks for, in the order they ask. */
+export const waQuickReplies = ['Book PT', 'Pay', 'Invoice', 'Workout']
 
 export const waReplies = {
   'Book PT': {
     text: 'Coach Vikas has 7:00 PM and 8:30 PM free tomorrow. Which suits you?\n\nYour package has 7 sessions remaining, so there is nothing to pay.',
     note: 'PT slot held for 10 minutes',
   },
-  'Renew Membership': {
-    text: 'Your Elite Annual runs out on 19 Nov 2026. Renewing now locks this year’s rate at ₹50,000 (incl. GST) and adds 2 free PT sessions.',
-    note: 'Renewal link sent',
-  },
-  'Pay Fees': {
+  Pay: {
     text: 'You have one open item: PT session on 03 Aug — ₹1,200 incl. GST. Pay by UPI, card or net banking.',
     note: 'Payment link sent',
   },
-  'Download Invoice': {
-    text: 'Here is your latest GST invoice — SLAM/26-27/1184, ₹50,000 incl. ₹7,628 GST. Sending the PDF now.',
-    note: 'Invoice PDF delivered',
+  Invoice: {
+    text: 'Here is your latest GST invoice — SLAM/26-27/1184, with the CGST and SGST split shown separately. Sending the PDF now.',
+    note: 'GST invoice PDF delivered',
   },
-  'View Workout': {
-    text: 'Today is Push · Chest & Shoulders, Week 6 of your hypertrophy block. 6 exercises, about 58 minutes.',
-    note: "Today's workout opened",
-  },
-  'Talk to Trainer': {
-    text: 'Coach Vikas is on the floor until 9 PM. I have pinged him — he usually replies within 10 minutes.',
-    note: 'Trainer notified',
+  Workout: {
+    text: 'Today is Push · Chest & Shoulders, Week 6 of your hypertrophy block. 6 exercises, about 58 minutes. Your diet plan for today is attached below it.',
+    note: "Today's workout and diet plan opened",
   },
 }
 
@@ -634,6 +659,7 @@ export const reports = [
 ]
 
 export const integrations = [
+  { name: 'Yoactiv', cat: 'Core', status: 'Connected', detail: 'System of record · members, plans, payments' },
   { name: 'WhatsApp Business API', cat: 'Messaging', status: 'Connected', detail: '2 numbers · 4,120 msgs/mo' },
   { name: 'Instagram', cat: 'Messaging', status: 'Connected', detail: 'DMs + story replies' },
   { name: 'Google Reviews', cat: 'Growth', status: 'Connected', detail: '4.8 ★ · 612 reviews' },
@@ -716,4 +742,161 @@ export const pricingPlans = [
       'Custom integrations',
     ],
   },
+]
+
+/* ------------------------------------------------- trainer accountability */
+
+/** Minutes after shift start before a check-in counts as late. */
+export const graceMinutes = 10
+
+/**
+ * Today's trainer attendance, captured at the biometric turnstile.
+ * `photoAt` is when the device grabbed the identity frame.
+ */
+export const trainerAttendance = [
+  {
+    id: 1,
+    name: 'Vikas Menon',
+    initials: 'VM',
+    role: 'Head Trainer',
+    palette: 'red',
+    build: 1.35,
+    shiftStart: '05:00',
+    shiftEnd: '13:00',
+    inAt: '04:56',
+    outAt: '13:04',
+    method: 'Fingerprint',
+    photoAt: '04:56:12',
+    lateBy: 0,
+    earlyExitBy: 0,
+    punctuality: 96,
+    sessionsBooked: 6,
+    sessionsCompleted: 6,
+    monthLate: 1,
+  },
+  {
+    id: 2,
+    name: 'Sneha Iyer',
+    initials: 'SI',
+    role: 'Trainer',
+    palette: 'slate',
+    build: 0.7,
+    shiftStart: '16:00',
+    shiftEnd: '23:00',
+    inAt: '16:07',
+    outAt: null,
+    method: 'Face ID',
+    photoAt: '16:07:40',
+    lateBy: 7,
+    earlyExitBy: 0,
+    punctuality: 88,
+    sessionsBooked: 5,
+    sessionsCompleted: 3,
+    monthLate: 3,
+  },
+  {
+    id: 3,
+    name: 'Rahul Deshpande',
+    initials: 'RD',
+    role: 'Strength Coach',
+    palette: 'ember',
+    build: 1.7,
+    shiftStart: '17:00',
+    shiftEnd: '23:00',
+    inAt: '17:26',
+    outAt: null,
+    method: 'QR',
+    photoAt: '17:26:03',
+    lateBy: 26,
+    earlyExitBy: 0,
+    punctuality: 71,
+    sessionsBooked: 4,
+    sessionsCompleted: 2,
+    monthLate: 7,
+  },
+  {
+    id: 4,
+    name: 'Farhan Ali',
+    initials: 'FA',
+    role: 'Floor Trainer',
+    palette: 'slate',
+    build: 1.1,
+    shiftStart: '06:00',
+    shiftEnd: '14:00',
+    inAt: '05:58',
+    outAt: '13:22',
+    method: 'Face ID',
+    photoAt: '05:58:31',
+    lateBy: 0,
+    earlyExitBy: 38,
+    punctuality: 79,
+    sessionsBooked: 5,
+    sessionsCompleted: 4,
+    monthLate: 5,
+  },
+  {
+    id: 5,
+    name: 'Divya Rao',
+    initials: 'DR',
+    role: 'Trainer',
+    palette: 'red',
+    build: 0.9,
+    shiftStart: '16:00',
+    shiftEnd: '22:00',
+    inAt: '15:52',
+    outAt: null,
+    method: 'Fingerprint',
+    photoAt: '15:52:18',
+    lateBy: 0,
+    earlyExitBy: 0,
+    punctuality: 94,
+    sessionsBooked: 4,
+    sessionsCompleted: 3,
+    monthLate: 1,
+  },
+]
+
+/** Incentive rules the demo evaluates each trainer against. */
+export const incentiveRules = [
+  { key: 'punctuality', label: 'Punctuality ≥ 90%', test: (t) => t.punctuality >= 90 },
+  { key: 'completion', label: 'Sessions completed ≥ 80%', test: (t) => t.sessionsCompleted / t.sessionsBooked >= 0.8 },
+  { key: 'late', label: '2 or fewer late marks this month', test: (t) => t.monthLate <= 2 },
+  { key: 'earlyexit', label: 'No early exits today', test: (t) => t.earlyExitBy === 0 },
+]
+
+export const ownerAlerts = [
+  { severity: 'critical', at: '5:26 PM', text: 'Rahul Deshpande checked in 26 min late — 7th late mark this month.' },
+  { severity: 'warning', at: '1:22 PM', text: 'Farhan Ali left 38 min before shift end. Two sessions unaccounted for.' },
+  { severity: 'warning', at: '4:07 PM', text: 'Sneha Iyer checked in 7 min late, outside the 10 min grace period on 3 days this month.' },
+  { severity: 'good', at: '4:56 AM', text: 'Vikas Menon completed all 6 sessions and closed his shift on time.' },
+]
+
+/* ------------------------------------------------------------- Yoactiv */
+
+/** What each system owns. Yoactiv stays the record; GymFlow adds the layer. */
+export const yoactivFlow = {
+  yoactiv: [
+    { label: 'Members', detail: 'Master member records, plans and status' },
+    { label: 'Trainers', detail: 'Staff roster, roles and shift definitions' },
+    { label: 'Memberships', detail: 'Plan catalogue, validity and freezes' },
+    { label: 'Payments', detail: 'Invoices, receipts and collections' },
+    { label: 'Attendance', detail: 'Raw check-in and check-out events' },
+  ],
+  gymflow: [
+    { label: 'Insights', detail: 'Churn risk, revenue forecast, peak analysis' },
+    { label: 'Trainer accountability', detail: 'Punctuality, completion, incentive eligibility' },
+    { label: 'Occupancy', detail: 'Live crowd, equipment and best-time-to-visit' },
+    { label: 'PT optimisation', detail: 'Fills idle slots, balances trainer load' },
+    { label: 'Alerts', detail: 'Owner notifications the moment something slips' },
+  ],
+}
+
+/** The end-to-end path a single event travels. */
+export const systemFlow = [
+  { key: 'yoactiv', label: 'Yoactiv', detail: 'Member, trainer and payment records' },
+  { key: 'access', label: 'Access Control', detail: 'Fingerprint · Face ID · QR' },
+  { key: 'gymflow', label: 'GymFlow AI', detail: 'Reads the events, adds the intelligence' },
+  { key: 'trainer', label: 'Trainer', detail: 'Accountability and session tracking' },
+  { key: 'member', label: 'Member', detail: 'Crowd, PT, payments and plans' },
+  { key: 'owner', label: 'Owner', detail: 'One dashboard, with alerts' },
 ]

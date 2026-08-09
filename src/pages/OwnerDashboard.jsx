@@ -1,47 +1,44 @@
 import { useState } from 'react'
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
+  CalendarClock,
   CheckCircle2,
-  DoorClosed,
-  DoorOpen,
-  Gauge,
+  Dumbbell,
   IndianRupee,
   Info,
   Sparkles,
-  TrendingUp,
-  UserMinus,
-  UserPlus,
+  Timer,
+  UserCheck,
   Users,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, Card, LivePulse, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
-import { AreaSeries, BarSeries, ChartCard, OccupancyBars, SourceBars } from '../components/charts.jsx'
+import { Badge, Card, DemoBadge, LivePulse, PageHeader, SectionTitle, StatCard, Toast } from '../components/ui.jsx'
+import { AreaSeries, BarSeries, ChartCard, OccupancyBars, PunctualityBars } from '../components/charts.jsx'
 import {
   attendanceByDay,
   businessInsights,
   inr,
   inrShort,
-  leadSources,
   live,
   membershipGrowth,
   occupancyByHour,
   ownerStats,
   ptBookings,
   revenueByMonth,
+  trainerAttendance,
 } from '../data/gym.js'
 
 const icons = {
-  members: Users,
-  occupancy: Gauge,
-  entries: DoorOpen,
-  exits: DoorClosed,
+  present: UserCheck,
+  late: AlertTriangle,
+  live: Users,
   revenue: IndianRupee,
-  ptrev: IndianRupee,
-  renewals: TrendingUp,
-  inactive: UserMinus,
-  trial: UserPlus,
-  conversion: TrendingUp,
+  ptrev: Dumbbell,
+  renewals: CalendarClock,
+  punctuality: Timer,
+  inbody: Activity,
 }
 
 const severityMeta = {
@@ -59,12 +56,12 @@ export default function OwnerDashboard() {
       <PageHeader
         eyebrow="Business"
         title="Owner Dashboard"
-        sub="The whole studio on one screen — live floor, money, members and what the AI thinks you should do about it."
+        sub="Trainers, floor and money on one screen — sitting on top of Yoactiv, not replacing it. Tap any card to open the breakdown."
         actions={
           <>
             <LivePulse />
-            <Link to="/reports" className="btn btn-ghost btn-sm">
-              Reports
+            <Link to="/accountability" className="btn btn-ghost btn-sm">
+              Trainer accountability
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </>
@@ -72,7 +69,7 @@ export default function OwnerDashboard() {
       />
 
       {/* Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {ownerStats.map((s) => (
           <StatCard
             key={s.key}
@@ -82,6 +79,9 @@ export default function OwnerDashboard() {
             trend={s.trend}
             hint={s.hint}
             icon={icons[s.key]}
+            drill={s.drill}
+            to={s.to}
+            tone={s.key === 'late' ? 'alert' : undefined}
             featured={s.key === 'revenue'}
           />
         ))}
@@ -160,17 +160,18 @@ export default function OwnerDashboard() {
         </ChartCard>
 
         <ChartCard
-          title="Lead sources"
-          sub="Where this month's 388 enquiries came from"
-          data={leadSources}
+          title="Trainer punctuality"
+          sub="On-time check-ins over the last 30 days · target 90%"
+          data={trainerAttendance}
           columns={[
-            { key: 'source', label: 'Source' },
-            { key: 'leads', label: 'Leads' },
+            { key: 'name', label: 'Trainer' },
+            { key: 'punctuality', label: 'On time %' },
+            { key: 'monthLate', label: 'Late marks' },
           ]}
           height={250}
-          right={<Badge tone="neutral">34% convert</Badge>}
+          right={<Badge tone="warn">2 below target</Badge>}
         >
-          <SourceBars data={leadSources} />
+          <PunctualityBars data={trainerAttendance} />
         </ChartCard>
       </div>
 
@@ -178,8 +179,8 @@ export default function OwnerDashboard() {
       <Card strong className="p-5">
         <SectionTitle
           icon={Sparkles}
-          title="AI business insights"
-          sub="Generated nightly from attendance, payments, bookings and churn signals"
+          title="AI insights"
+          sub="Generated nightly from trainer check-ins, occupancy, payments and the PT calendar"
           right={<Badge tone="critical">{businessInsights.filter((i) => i.severity === 'critical').length} need action</Badge>}
         />
 
@@ -212,18 +213,43 @@ export default function OwnerDashboard() {
 
                 <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
                   <span className="num text-xs font-semibold text-zinc-300">{ins.impact}</span>
-                  <button
-                    onClick={() => setToast(`${ins.action} — queued. You'll get a summary on WhatsApp.`)}
-                    className="btn btn-ghost btn-sm"
-                  >
-                    {ins.action}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    {ins.to && (
+                      <Link to={ins.to} className="btn btn-ghost btn-sm">
+                        See the data
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => setToast(`${ins.action} — queued. You'll get a summary on WhatsApp.`)}
+                      className="btn-primary btn-sm"
+                    >
+                      {ins.action}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )
           })}
         </div>
+      </Card>
+
+      {/* Where the numbers come from */}
+      <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-white">Powered by Yoactiv</p>
+            <DemoBadge />
+          </div>
+          <p className="mt-1.5 max-w-2xl text-sm text-zinc-400">
+            Members, memberships, payments and raw attendance stay in Yoactiv. GymFlow AI reads them and
+            adds the layer on top — trainer accountability, occupancy, PT optimisation and these insights.
+          </p>
+        </div>
+        <Link to="/yoactiv" className="btn btn-ghost btn-sm">
+          See the integration
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </Card>
 
       <Toast message={toast} onClose={() => setToast('')} />

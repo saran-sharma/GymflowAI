@@ -28,7 +28,7 @@ const iconFor = (name) => {
   return CreditCard
 }
 
-const cats = ['All', 'Messaging', 'Hardware', 'Payments', 'Growth', 'Scheduling']
+const cats = ['All', 'Core', 'Messaging', 'Hardware', 'Payments', 'Growth', 'Scheduling']
 
 export default function Integrations() {
   const [cat, setCat] = useState('All')

@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
-import { ArrowDownRight, ArrowUpRight, CheckCircle2, Minus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowDownRight, ArrowUpRight, ArrowUpRight as GoIcon, CheckCircle2, Minus, Plug, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 /* ------------------------------------------------------------------ text */
 
@@ -55,22 +56,30 @@ const trendMeta = {
   flat: { icon: Minus, cls: 'border-white/10 bg-white/[0.05] text-zinc-400' },
 }
 
-export function StatCard({ label, value, delta, trend = 'flat', hint, icon: Icon, featured }) {
+/**
+ * A single number.
+ *
+ * Pass `drill` (a list of strings) to make the card interactive: tapping it
+ * expands the breakdown in place rather than navigating away, so the owner can
+ * open a card mid-conversation and close it again. `to` adds a link out to the
+ * screen the number lives on.
+ */
+export function StatCard({ label, value, delta, trend = 'flat', hint, icon: Icon, featured, drill, to, tone }) {
   const t = trendMeta[trend] ?? trendMeta.flat
   const TrendIcon = t.icon
-  return (
-    <Card
-      className={`relative overflow-hidden p-5 transition-colors hover:border-white/15 ${
-        featured ? 'ring-1 ring-brand/25' : ''
-      }`}
-    >
-      {featured && (
-        <span className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-brand/20 blur-3xl" />
-      )}
+  const [open, setOpen] = useState(false)
+  const interactive = Boolean(drill?.length)
+
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-zinc-400">{label}</p>
         {Icon && (
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-brand-soft">
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border transition-colors ${
+            tone === 'alert'
+              ? 'border-brand/30 bg-brand/[0.12] text-brand'
+              : 'border-white/10 bg-white/[0.05] text-brand-soft'
+          }`}>
             <Icon className="h-[18px] w-[18px]" />
           </span>
         )}
@@ -87,6 +96,54 @@ export function StatCard({ label, value, delta, trend = 'flat', hint, icon: Icon
             </span>
           )}
           {hint && <span className="text-zinc-500">{hint}</span>}
+        </div>
+      )}
+    </>
+  )
+
+  if (!interactive) {
+    return (
+      <Card className={`relative overflow-hidden p-5 transition-colors hover:border-white/15 ${featured ? 'ring-1 ring-brand/25' : ''}`}>
+        {featured && <span className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-brand/20 blur-3xl" />}
+        {body}
+      </Card>
+    )
+  }
+
+  return (
+    <Card
+      className={`relative overflow-hidden transition-all hover:border-white/15 ${
+        featured ? 'ring-1 ring-brand/25' : ''
+      } ${open ? 'ring-1 ring-brand/35' : ''}`}
+    >
+      {featured && <span className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-brand/20 blur-3xl" />}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full p-5 text-left"
+      >
+        {body}
+        <span className="mt-3 flex items-center gap-1 text-[11px] font-medium text-zinc-500">
+          {open ? 'Hide breakdown' : 'Tap for breakdown'}
+        </span>
+      </button>
+
+      {open && (
+        <div className="animate-fade-up border-t border-white/[0.08] bg-white/[0.02] px-5 py-4">
+          <ul className="space-y-1.5">
+            {drill.map((d) => (
+              <li key={d} className="num flex gap-2 text-xs text-zinc-300">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-brand" />
+                {d}
+              </li>
+            ))}
+          </ul>
+          {to && (
+            <Link to={to} className="btn btn-ghost btn-sm mt-3.5 w-full">
+              Open
+              <GoIcon className="h-3.5 w-3.5" />
+            </Link>
+          )}
         </div>
       )}
     </Card>
@@ -287,6 +344,24 @@ export function KeyValue({ rows }) {
         </div>
       ))}
     </dl>
+  )
+}
+
+/**
+ * Marks a point where the demo stands in for a real integration — Yoactiv, the
+ * fingerprint / Face ID controller, the InBody machine. Everything behind one
+ * of these is mock data, and the badge says so on the screen rather than in a
+ * footnote.
+ */
+export function DemoBadge({ children = 'Demo / Integration Ready', className = '' }) {
+  return (
+    <span
+      title="Demo data. The integration point is built and ready to be wired to the live system."
+      className={`chip border-dashed border-sky-400/35 bg-sky-400/[0.08] text-sky-300 ${className}`}
+    >
+      <Plug className="h-3.5 w-3.5" />
+      {children}
+    </span>
   )
 }
 
