@@ -1,0 +1,35 @@
+[project]
+name = "gymflow-api"
+version = "1.0.0"
+description = "GymFlow AI — trainer accountability API for SLAM Fitness Studio"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["../tests/backend"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning:passlib.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "__pycache__", "../database/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "B008",   # FastAPI's Depends() in defaults is the framework's idiom
+    "E501",   # long lines are caught by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/schemas/common.py" = ["F821"]  # __all__ is built from dir()
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+disable_error_code = ["misc", "assignment", "arg-type", "var-annotated"]
+exclude = "(migrations|tests)"

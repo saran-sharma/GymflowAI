@@ -25,12 +25,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/web-demo/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+        working-directory: apps/web-demo
 
       - name: Build
         run: npm run build
+        working-directory: apps/web-demo
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -39,7 +42,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: apps/web-demo/dist
 
   deploy:
     needs: build
