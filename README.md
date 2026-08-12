@@ -1,166 +1,148 @@
 # GymFlow AI
 
-**Not another gym app — the smart operating layer for SLAM.**
+**Trainer accountability for SLAM Fitness Studio — Nagalkeni, Boganhalli, Alandur.**
 
-Yoactiv stays the system of record: members, trainers, memberships, payments and raw attendance
-live there. GymFlow AI is the operations and intelligence layer on top of it — trainer
-accountability, live occupancy, the member's own experience, and the insight that falls out of all
-three. Nothing is replaced and nothing is migrated.
+The owner needs one thing answered honestly, every day, across three branches:
+*is the trainer who was supposed to be on the floor actually on the floor?*
+
+V1 answers exactly that. Who is working, who checked in, who is late, who is
+absent, who left early, who never checked out — and what that adds up to over a
+month in punctuality and incentive eligibility. It is not a gym CRM, and it was
+deliberately not built as one.
 
 ```
-Yoactiv → Access Control → GymFlow AI → Trainer → Member → Owner
+GymFlow Mobile  ──►  GymFlow API  ──►  PostgreSQL
+React Native         FastAPI            Alembic migrations
+Android + iOS        Roles enforced     Branch-scoped
 ```
 
-Frontend only. No backend, no authentication, no API calls, no storage. Every figure is realistic
-dummy data and every button does something — navigates, opens a flow, or simulates the real action
-with a clearly-labelled confirmation. Yoactiv, the fingerprint / Face ID controller and the InBody
-machine are all mocked, and every one of those points carries a **Demo / Integration Ready** badge
-on the screen itself.
+**Every attendance time comes from the server clock.** The mobile app tells the
+API *what* happened — which branch, which method, which credential — and never
+*when*. There is no field for a phone to lie in.
 
-Live: **https://saran-sharma.github.io/GymflowAI/**
+## What's here
 
-## Run it
+| Path | What it is |
+| --- | --- |
+| [`apps/mobile/`](apps/mobile) | The V1 product. React Native · Expo · TypeScript. Owner, Trainer and Member apps in one binary. |
+| [`backend/`](backend) | FastAPI. Authentication, roles, branch isolation, the shift/punctuality/incentive engines, occupancy, audit. |
+| [`database/migrations/`](database/migrations) | Alembic migrations for the 15-table schema. |
+| [`tests/backend/`](tests/backend) | 126 tests: rules, permissions, branch isolation, end-to-end journeys. |
+| [`apps/web-demo/`](apps/web-demo) | The original browser demo, kept intact. Still published to GitHub Pages. |
+| [`docs/`](docs) | Architecture, integrations, development, deployment. |
+
+## Getting it running
+
+Full instructions in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The short version:
 
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # static bundle in dist/
+# API
+cd backend
+python3 -m venv ../.venv && ../.venv/bin/pip install -r requirements-dev.txt
+cp .env.example .env
+../.venv/bin/alembic upgrade head
+../.venv/bin/python -m app.seed
+../.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# App
+cd apps/mobile
+npm install && cp .env.example .env
+npm start          # 'a' for Android, 'i' for iOS
 ```
 
-## What's in it
+Demo logins (all fictional, all flagged `DEMO` in the database):
 
-| Route | Screen | Highlights |
-|---|---|---|
-| `/` | **Landing** | "Not another gym app" hero, the six modules, the six-stage flow diagram, product tour, testimonials, plans, Book Free Trial |
-| `/#/demo` | **Guided demo** | 13 steps in the order the systems fire — Yoactiv sync, a late trainer, the owner alert, then the member's visit — with live counters that move as you go |
-| `/#/accountability` | **Trainer accountability** *(hero feature)* | Fingerprint / Face ID / QR check-in simulator, trainer photo + timestamp, in/out, late and early-exit against a 10-minute grace, punctuality score, session completion, incentive eligibility, owner alerts |
-| `/#/yoactiv` | **Yoactiv integration** | What Yoactiv owns vs what GymFlow AI adds, the six-stage event trace, and every integration point labelled Demo / Integration Ready |
-| `/#/live` | **Live Gym Experience** | Occupancy, crowd level, best time to visit, wait time, per-machine availability with waitlists, lockers, showers, parking |
-| `/#/member` | **Member dashboard** | Membership status, attendance grid and streak, today's workout, calories, water, weight/fat/muscle, next PT, QR check-in, renew, freeze, guest pass, referrals |
-| `/#/member/training` | **Training & Diet** | Weekly split, today's session, macros and meals, workout and diet history, medical and injury notes |
-| `/#/member/progress` | **Progress & InBody** | Previous scan vs current across the six headline metrics, the full 15-metric sheet, transformation graph, segmental analysis, AI suggestions, trainer recommendation, progress photos |
-| `/#/assistant` | **AI member assistant** | All nine scripted requests — crowd, PT booking, workout, diet, attendance, renewal, freeze, trainer availability, quiet hours |
-| `/#/pt` | **PT booking** | Trainer availability, live slots, package vs paid booking, online payment with GST split, session completion closed by the trainer, session history with trainer notes |
-| `/#/smart` | **Member Smart Experience** | The nine things a member does: live occupancy, equipment availability, best time to visit, PT booking, online payment, GST invoice, workout & diet plan, renewal, QR / fingerprint check-in — plus secondary engagement features |
-| `/#/trainer` | **Trainer desk** | Their own accountability record, today's sessions, week calendar, client roster, progress reports, earnings |
-| `/#/entry` | **Live entry & exit** | Fingerprint, face, QR and RFID — tap any device to simulate a check-in and watch occupancy move |
-| `/#/owner` | **Owner dashboard** | Eight tappable stat cards (Trainers Present, Late Trainers, Live Members, Revenue, PT Revenue, Renewals Due, Trainer Punctuality, InBody Scans), six charts, four AI insights |
-| `/#/billing` | **Billing & GST** | Invoice ledger, full tax-invoice view with CGST/SGST split, payment methods, promo codes |
-| `/#/channels` | **WhatsApp & Instagram AI** | "How crowded is the gym?" answered from the live floor, then Book PT / Pay / Invoice / Workout; Instagram DM automation and lead capture |
-| `/#/reports` | **Reports** | All 13 reports plus scheduled delivery |
-| `/#/admin` | **Admin** | Employees and role-based access, multi-branch, audit log, inventory, expenses, vendors, tickets, campaigns |
-| `/#/integrations` | **Integrations** | All 15 integrations by category, and how one member action updates four systems |
+| Role | Email | Password |
+| --- | --- | --- |
+| Owner | `owner@slam.demo` | `SlamDemo2026!` |
+| Trainer | `vikas.menon@slam.demo` | `SlamDemo2026!` |
+| Member | `aditya.rao@member.slam.demo` | `SlamDemo2026!` |
+
+Trainer check-in PIN: `246813`
+
+## The three apps
+
+**Trainer.** Open, see your name, branch and shift, press one thing. Scan the
+branch QR or type your PIN. The confirmation shows the *server's* time, the
+branch, the shift and the status it produced. Then your month: punctuality,
+late count, early exits, and where you stand against the incentive thresholds.
+
+**Owner.** Total trainers, present, late, absent, early exit, chain punctuality
+— above the fold. Then one card per branch with its own numbers and live
+occupancy, each a door into the branch, then the trainer, then their attendance
+and incentive standing.
+
+**Member.** Deliberately small: membership status, days remaining, own visits,
+how busy their branch is right now, and who their trainer is. No CRM, no diet
+platform, no PT booking — those are later phases.
+
+## How the rules work
+
+An 18:00–21:00 shift with a 10-minute grace:
+
+| | |
+| --- | --- |
+| 18:00 – 18:10 | **ON TIME** |
+| 18:11 onward | **LATE** |
+| Check-out before 21:00 | **EARLY EXIT** |
+| No check-in once the shift closed | **ABSENT** |
+| Check-in, no check-out | **MISSING CHECKOUT** |
+
+Nothing above is hardcoded. Grace periods, check-in windows, punctuality
+weights and incentive thresholds are rows in `settings` and `incentive_rules`,
+resolvable per shift, per branch, or chain-wide. The rules in force are
+snapshotted onto each attendance record, so re-tuning tomorrow cannot rewrite
+yesterday's verdicts.
+
+Incentive output is **eligibility only** — never a payout figure — and always
+carries *"Final payroll/incentive calculation is subject to SLAM policy."*
+
+## Check-in security
+
+QR proves *location*: the code on the branch's desk screen is an HMAC of that
+branch's server-side secret and the current 60-second window, so it rotates
+continuously and a photographed code stops working almost immediately. Only
+management can display it.
+
+PIN proves *identity*: bcrypt-hashed, rate limited, and never usable for login.
+
+Duplicate check-in, duplicate check-out, check-out without check-in, checking in
+at a branch you are not assigned to, and check-ins far outside the shift window
+are all refused with a message the trainer can act on. Login, check-in,
+check-out, corrections, roster changes, rule changes and admin actions are all
+written to `audit_logs`, scrubbed of anything credential-shaped.
+
+Fingerprint, RFID and face are **not** in V1. The `IAccessControlProvider`
+interface is ready for them, and GymFlow never receives or stores a biometric
+template.
+
+## Integrations
+
+Yoactiv, InBody, access-control hardware, WhatsApp and member intelligence all
+have contracts in [`backend/app/integrations/`](backend/app/integrations) and
+are **all disabled**. The core product is required to work that way, and the
+test suite asserts it.
+
+Nothing invents a vendor API. Where documentation is missing — Yoactiv above
+all — the provider raises with what is actually needed rather than returning
+empty results that would read as "there is no data". See
+[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for the exact list of what to
+obtain.
+
+## Checks
+
+```bash
+cd backend && ../.venv/bin/ruff check app ../tests && ../.venv/bin/python -m pytest ../tests/backend
+cd apps/mobile && npm run typecheck && npm test
+```
 
 ## Design
 
-- **Matte black, premium red.** Surfaces run `#08080a` → `#141417`; the accent is `#ef2b3c`.
-  Neutrals carry a faint red bias so ground and accent read as one family.
-- **Glassmorphism** — translucent panes with a lit top edge, over an ambient red pool.
-- Dark-theme only, by design.
-- Mobile responsive throughout: the sidebar becomes a drawer, tables scroll or become cards.
-- `HashRouter`, so the built `dist/` works on any static host without rewrite rules.
-
-### Charts
-
-Chart colour is computed, not eyeballed:
-
-- The single-series red (`#ef2b3c`) clears the lightness band, chroma floor and 3:1 contrast against
-  the chart surface (`#141417`).
-- The five-hue categorical set passes adjacent-pair CVD separation (worst ΔE 8.4) and the
-  normal-vision floor (worst ΔE 19.8). It is used **only** for bars with direct labels — never a pie
-  or scatter, where the violet/blue pair would fail all-pairs.
-- Trainer punctuality is one measure, so it gets one hue: trainers under the 90% target are drawn at
-  reduced opacity and every bar carries its number, so the split is never colour-alone.
-- Every chart has a hover tooltip and a **Data** toggle that swaps the plot for the underlying
-  table, so numbers are never colour-only. Status badges always pair colour with an icon and label.
-- No dual-axis charts anywhere: body fat and muscle share one scale, everything else is its own chart.
-
-### The studio logo
-
-The real SLAM mark is in the build — sidebar, landing hero, footer and the WhatsApp preview card.
-
-The supplied artwork is a JPEG with the wordmark on an opaque white background, which would show as
-a white box on a matte-black UI. `.logo.mjs` derives three transparent PNGs from it into
-`public/img/`:
-
-| File | What it is | Used for |
-|---|---|---|
-| `slam-logo-dark.png` | white wordmark, brand-red "L", full lockup | dark surfaces at 28px+ |
-| `slam-wordmark-dark.png` | same, tagline cropped off | chips and small placements, where the tagline would be unreadable |
-| `slam-logo-light.png` | original ink, transparent background | light surfaces |
-
-Alpha comes from pixel luminance, so anti-aliased edges stay smooth, and each file is trimmed to the
-artwork's bounding box. The source JPEG lives in `brand/` and is not shipped. Re-run `node .logo.mjs`
-if the artwork changes.
-
-### Other artwork
-
-There is no stock photography in the build. Imagery comes from `<Scene>` — duotone SVG scenes drawn
-from geometric gym equipment (rack, dumbbells, cardio row, kettlebells, athlete silhouette) over a
-brand-tinted ground. They scale perfectly, cost nothing to load and stay on-palette.
-
-### Adding real photos
-
-Every image slot is listed in **`src/data/photos.js`** — 16 of them, across the landing floor strip
-and feature cards, the trainer profiles in PT booking, and the member progress photos. Point a key
-at an image and it appears; no other file needs touching.
-
-```js
-export const photos = {
-  strengthFloor: './img/floor.jpg',                  // a file in public/img/
-  cardioZone:    'https://example.com/cardio.jpg',   // or any hosted URL
-  studio:        null,                               // null = use the drawing
-}
-```
-
-Photos keep the same framing and brand tint as the artwork they replace.
-
-**Failed images fall back to the drawing.** Wrong path, host down, offline — the slot renders the
-duotone scene instead of a broken image, so there is never a hole in the page mid-pitch. Verified by
-pointing slots at a missing file and an unreachable URL: zero broken images, artwork rendered.
-
-Where to get them, best first:
-
-1. **SLAM's own photos.** A gym owner seeing their own floor in the product beats any stock library.
-2. **Free commercial-use stock** — [unsplash.com](https://unsplash.com/s/photos/gym),
-   [pexels.com](https://www.pexels.com/search/gym/). Download and put the files in `public/img/`.
-
-Avoid lifting images straight from an image-search results page: those are other people's
-copyrighted photos, and this demo is published publicly.
-
-### Demo controls
-
-- **Persona switcher** in the top bar flips the demo between Member, Trainer and Owner, and lands on
-  that person's home screen. The header follows whatever route you're on.
-- **Guided demo steps are jumpable** — run them in order for the full story, or click any step's icon
-  to jump straight to the one you want to show.
-
-### Robustness
-
-- Route changes scroll to the top *instantly*. Smooth scrolling is scoped to the landing page (where
-  the anchor links live) — enabling it globally makes route changes animate the scroll and can leave
-  a phone viewport parked in empty space until you reload.
-- An **error boundary** turns any render failure into a recovery card with a Reload button, never a
-  blank screen.
-- `index.html` **self-heals a stale cache**: asset filenames are content-hashed, so an `index.html`
-  cached from an earlier deploy would request a bundle that no longer exists and render blank. If the
-  app hasn't mounted shortly after load, it forces one cache-busting reload (guarded against loops).
-
-## Deploying
-
-`.github/workflows/deploy-pages.yml` builds and publishes to GitHub Pages on every push to `main`.
-The shared link carries an Open Graph card (`public/og.png`) so it previews properly on WhatsApp.
-
-## Demo notes
-
-This is a demo, not production software. Nothing leaves the browser — payments, invoices, WhatsApp
-messages, biometric check-ins, the Yoactiv sync and the InBody scan are all simulated, and every
-confirmation toast says so explicitly.
-
-Integration points are labelled where they appear, with a dashed **Demo / Integration Ready** badge:
-Yoactiv, the biometric controller, the QR turnstile, InBody 770, WhatsApp Business API and the
-payment gateway. `/#/yoactiv` lists all six in one place.
+Matte black surfaces (`#08080A` → `#141417`), one premium red (`#EF2B3C`),
+white and dark grey. High contrast, large touch targets, bottom navigation,
+loading/empty/error states everywhere. Carried over from the web demo so the
+two read as one product.
 
 ---
 
-**SLAM × GymFlow AI** — Trainer Accountability. Member Experience. Smarter Operations.
+**SLAM × GymFlow AI** — Trainer accountability, first.

@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — lint, format, tests
+    runs-on: ubuntu-latest
+
+    # The suite runs against a real PostgreSQL so enum types, JSONB and
+    # timezone-aware columns behave as they will in production. On SQLite the
+    # attendance assertions fail in ways that look like product bugs.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: gymflow
+          POSTGRES_PASSWORD: gymflow
+          POSTGRES_DB: gymflow_test
+        ports: ['5432:5432']
+        # pg_isready with no -U connects as the invoking OS user, which is root
+        # inside the health-check exec — a role Postgres does not have. Name the
+        # user and the database so the check reports the truth.
+        options: >-
+          --health-cmd "pg_isready -U gymflow -d gymflow_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+        working-directory: backend
+
+      - name: Lint
+        run: ruff check app ../tests
+        working-directory: backend
+
+      - name: Format check
+        run: ruff format --check app ../tests
+        working-directory: backend
+
+      # A separate, empty database: proves the migrations build the schema on
+      # their own, rather than the tests' create_all having done it.
+      - name: Create a scratch database for the migration check
+        run: PGPASSWORD=gymflow createdb -h localhost -U gymflow gymflow_migrations
+
+      - name: Migrations apply cleanly from scratch
+        run: alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://gymflow:gymflow@localhost:5432/gymflow_migrations
+          SECRET_KEY: ci-only-secret-not-used-for-anything-real-0123456789
+
+      - name: Tests
+        run: pytest ../tests/backend
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://gymflow:gymflow@localhost:5432/gymflow_test
+          SECRET_KEY: ci-only-secret-not-used-for-anything-real-0123456789
+          ENVIRONMENT: test
+          RATE_LIMIT_ENABLED: 'false'
+          BCRYPT_ROUNDS: '4'
+
+  mobile:
+    name: Mobile — typecheck, tests, bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: apps/mobile
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: apps/mobile
+
+      - name: Tests
+        run: npm run test:ci
+        working-directory: apps/mobile
+
+      # The fastest way to catch a broken import or a bad route: if Metro can
+      # bundle it, the app starts.
+      - name: Android bundle
+        run: npx expo export --platform android --output-dir /tmp/export-android
+        working-directory: apps/mobile
+
+      - name: iOS bundle
+        run: npx expo export --platform ios --output-dir /tmp/export-ios
+        working-directory: apps/mobile
+
+  web-demo:
+    name: Web demo — build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web-demo/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: apps/web-demo
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/web-demo

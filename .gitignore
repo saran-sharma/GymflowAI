@@ -1,5 +1,26 @@
+# dependencies
 node_modules
+.venv
+__pycache__/
+*.py[cod]
+
+# builds
 dist
+.expo
+android/
+ios/
+*.apk
+*.aab
+
+# local
 .DS_Store
 *.local
 .vite
+.env
+.env.*
+!.env.example
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
