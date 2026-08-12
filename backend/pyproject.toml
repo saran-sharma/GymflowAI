@@ -6,7 +6,8 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["../tests/backend"]
-pythonpath = ["."]
+# The application is put on sys.path by tests/backend/conftest.py, which
+# locates it from its own file rather than from pytest's rootdir.
 addopts = "-q --strict-markers"
 filterwarnings = [
     "ignore::DeprecationWarning:passlib.*",

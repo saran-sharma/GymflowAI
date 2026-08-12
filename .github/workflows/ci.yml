@@ -30,11 +30,14 @@ jobs:
           POSTGRES_PASSWORD: gymflow
           POSTGRES_DB: gymflow_test
         ports: ['5432:5432']
+        # pg_isready with no -U connects as the invoking OS user, which is root
+        # inside the health-check exec — a role Postgres does not have. Name the
+        # user and the database so the check reports the truth.
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U gymflow -d gymflow_test"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4

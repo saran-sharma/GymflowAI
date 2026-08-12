@@ -9,10 +9,21 @@ permission tests runnable anywhere.
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from datetime import date, time, timedelta
+from pathlib import Path
 
 import pytest
+
+# Locate the application from this file rather than from the working directory.
+# pytest's `pythonpath` setting resolves against its rootdir, which moves
+# depending on where the suite is invoked from — and `python -m pytest` happens
+# to add the cwd while a bare `pytest` does not, so a cwd-relative path passes
+# locally and fails in CI.
+BACKEND = Path(__file__).resolve().parents[2] / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
 
 # Environment must be set before any app module reads settings.
 DEFAULT_TEST_DB = "postgresql+psycopg://gymflow:gymflow@localhost:5432/gymflow_test"
