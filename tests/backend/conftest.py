@@ -39,9 +39,24 @@ def _reachable(url: str) -> bool:
         return False
 
 
+USING_SQLITE_FALLBACK = False
+
 if not os.environ["DATABASE_URL"].startswith("sqlite") and not _reachable(
     os.environ["DATABASE_URL"]
 ):
+    # Say so loudly. SQLite returns naive datetimes from timezone-aware columns,
+    # so a handful of attendance assertions fail in ways that look like product
+    # bugs rather than "Postgres is not running".
+    USING_SQLITE_FALLBACK = True
+    print(
+        "\n"
+        "  ┌─────────────────────────────────────────────────────────────────┐\n"
+        "  │  Postgres is unreachable — falling back to in-memory SQLite.    │\n"
+        "  │  Timezone-dependent attendance tests WILL fail on SQLite.       │\n"
+        "  │  Start Postgres and re-run for a meaningful result.             │\n"
+        "  └─────────────────────────────────────────────────────────────────┘\n",
+        flush=True,
+    )
     os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from fastapi.testclient import TestClient  # noqa: E402
