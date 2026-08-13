@@ -35,12 +35,20 @@ export class ApiError extends Error {
 
 export const OFFLINE_CODE = 'offline';
 
+export const UNCONFIGURED_CODE = 'api_not_configured';
+
 /**
  * Where the API lives.
  *
- * `EXPO_PUBLIC_API_URL` wins. Otherwise an Android emulator needs 10.0.2.2 to
- * reach the host machine's localhost, which is the single most common reason a
- * fresh checkout appears to have a broken backend.
+ * `EXPO_PUBLIC_API_URL` wins everywhere. The guesses below only apply while
+ * developing: an Android emulator needs 10.0.2.2 to reach the host machine's
+ * localhost, which is the single most common reason a fresh checkout looks
+ * like a broken backend.
+ *
+ * A *release* build gets no guesses. An installed APK that quietly points at
+ * an emulator loopback address would look like a server outage to whoever is
+ * holding the phone, so an unconfigured release build reports that plainly
+ * instead — see the `UNCONFIGURED_CODE` branch in `request`.
  */
 export function resolveBaseUrl(): string {
   const configured =
@@ -48,10 +56,17 @@ export function resolveBaseUrl(): string {
     (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl;
   if (configured) return configured.replace(/\/+$/, '');
 
+  if (!__DEV__) return '';
+
   const host = Constants.expoConfig?.hostUri?.split(':')[0];
   if (host) return `http://${host}:8000`;
   if (Platform.OS === 'android') return 'http://10.0.2.2:8000';
   return 'http://localhost:8000';
+}
+
+/** True when this build knows which server to talk to. */
+export function isApiConfigured(): boolean {
+  return resolveBaseUrl().length > 0;
 }
 
 export const API_PREFIX = '/api/v1';
@@ -90,6 +105,17 @@ function toApiError(status: number, body: unknown): ApiError {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, token, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
 
+  const baseUrl = resolveBaseUrl();
+  if (!baseUrl) {
+    // A build that was never told where the API is. Saying that plainly beats
+    // a connection error the person holding the phone cannot act on.
+    throw new ApiError(
+      0,
+      UNCONFIGURED_CODE,
+      'This build has no GymFlow server configured. It was built without EXPO_PUBLIC_API_URL.',
+    );
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   if (signal) {
@@ -102,7 +128,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let response: Response;
   try {
-    response = await fetch(`${resolveBaseUrl()}${API_PREFIX}${path}`, {
+    response = await fetch(`${baseUrl}${API_PREFIX}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

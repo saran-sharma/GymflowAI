@@ -1,0 +1,58 @@
+{
+  "name": "GymFlow AI",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "forwardPorts": [8000, 8081],
+
+  "portsAttributes": {
+    "8000": {
+      "label": "GymFlow API",
+      "onAutoForward": "notify",
+      // A phone running Expo Go is outside the Codespace, so it can only reach
+      // the API if this port is public. Codespaces defaults forwarded ports to
+      // private, which would make every request fail with an auth redirect.
+      "visibility": "public"
+    },
+    "8081": {
+      "label": "Metro bundler",
+      "onAutoForward": "silent",
+      "visibility": "public"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postAttachCommand": "bash .devcontainer/welcome.sh",
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "expo.vscode-expo-tools"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "editor.formatOnSave": false,
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/.pytest_cache": true,
+          "**/.ruff_cache": true
+        }
+      }
+    }
+  }
+}

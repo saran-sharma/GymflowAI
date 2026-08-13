@@ -29,26 +29,28 @@ API *what* happened — which branch, which method, which credential — and nev
 | [`database/migrations/`](database/migrations) | Alembic migrations for the 15-table schema. |
 | [`tests/backend/`](tests/backend) | 126 tests: rules, permissions, branch isolation, end-to-end journeys. |
 | [`apps/web-demo/`](apps/web-demo) | The original browser demo, kept intact. Still published to GitHub Pages. |
-| [`docs/`](docs) | Architecture, integrations, development, deployment. |
+| [`docs/`](docs) | Architecture, integrations, development, deployment, Codespaces, Android builds. |
+| [`.devcontainer/`](.devcontainer) | Codespaces runtime — Node, Python and PostgreSQL, nothing installed locally. |
 
 ## Getting it running
 
-Full instructions in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The short version:
+**Zero install — GitHub Codespaces.** Code → Codespaces → Create codespace.
+Node, Python and PostgreSQL all run in the container; the setup script installs
+everything, migrates, seeds and writes both `.env` files.
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/saran-sharma/GymflowAI)
 
 ```bash
-# API
-cd backend
-python3 -m venv ../.venv && ../.venv/bin/pip install -r requirements-dev.txt
-cp .env.example .env
-../.venv/bin/alembic upgrade head
-../.venv/bin/python -m app.seed
-../.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# App
-cd apps/mobile
-npm install && cp .env.example .env
-npm start          # 'a' for Android, 'i' for iOS
+npm run api        # FastAPI on :8000
+npm run mobile     # Expo, tunnelled so a real phone can connect
+npm run verify     # lint, backend tests, typecheck, mobile tests
 ```
+
+Port 8000 must be **public** for a phone to reach the API — see
+[docs/CODESPACES.md](docs/CODESPACES.md).
+
+**On your own machine** — needs Node 22, Python 3.11 and PostgreSQL 16. Full
+instructions in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Demo logins (all fictional, all flagged `DEMO` in the database):
 
@@ -132,9 +134,20 @@ obtain.
 ## Checks
 
 ```bash
-cd backend && ../.venv/bin/ruff check app ../tests && ../.venv/bin/python -m pytest ../tests/backend
-cd apps/mobile && npm run typecheck && npm test
+npm run verify     # everything: lint, 126 backend tests, typecheck, 39 mobile tests
 ```
+
+CI runs the same three suites on every pull request, backed by a real
+PostgreSQL service.
+
+## Android builds
+
+On EAS Build — Expo's hosted service — so no Android Studio anywhere, including
+CI. **Actions → EAS Android build → Run workflow**, choosing a profile and the
+API URL the build should talk to.
+
+An Expo account, an EAS project id and an `EXPO_TOKEN` secret are needed first;
+[docs/ANDROID_BUILD.md](docs/ANDROID_BUILD.md) lists exactly what to obtain.
 
 ## Design
 
