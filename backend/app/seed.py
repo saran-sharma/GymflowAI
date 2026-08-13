@@ -20,30 +20,60 @@ from sqlalchemy.orm import Session
 from app.core.clock import branch_today, combine_branch, now_utc
 from app.core.security import hash_password, hash_pin, new_token_secret
 from app.db.models import (
+    Alert,
+    Assessment,
+    AttendanceCorrection,
     AttendanceEvent,
     AttendanceStatus,
     AuditLog,
+    BodyComposition,
     Branch,
+    Campaign,
     CaptureMethod,
+    CardioSession,
     EventType,
+    GroupClass,
+    GroupClassAttendance,
+    GroupClassRsvp,
     IncentiveResult,
     IncentiveRule,
+    ItemStatus,
+    Journey,
+    JourneyDay,
+    MarketingSource,
     Member,
     Membership,
     MembershipStatus,
     Notification,
     PersonType,
+    PTPackage,
+    PTSession,
+    Referral,
     RefreshToken,
     Role,
     RoleKey,
+    RsvpResponse,
+    SessionStatus,
     Setting,
     Shift,
+    Task,
     Trainer,
     TrainerAttendance,
     User,
+    WorkoutPlan,
+    WorkoutPlanItem,
+    WorkoutSession,
+    WorkoutSessionItem,
 )
 from app.db.session import SessionLocal
-from app.services import settings_service
+from app.services import (
+    automation_service,
+    class_service,
+    journey_service,
+    marketing_service,
+    pt_service,
+    settings_service,
+)
 from app.services.attendance_service import recompute
 
 # Demo credentials. These are throwaway values for a seeded demo database and
@@ -153,14 +183,40 @@ TRAINERS = [
     ),
 ]
 
+# Members, each placed at a deliberate point of the SLAM journey so every
+# state the app can render is visible in the demo: the first three days, mid
+# programme, the day before the finish, and past Day 45 with and without a PT
+# package. ``journey_day`` is the day the member is on today; None means they
+# are not on a journey at all.
+#
+# (branch, name, plan, legacy PT count, journey_day, source key, campaign, referred by)
 MEMBERS = [
-    ("SLAM-NGK", "Aditya Rao", "Elite Annual + PT", 12),
-    ("SLAM-NGK", "Kavya Nair", "Quarterly + PT", 6),
-    ("SLAM-NGK", "Sameer Khan", "Monthly", 0),
-    ("SLAM-BGH", "Arjun Mehta", "Annual + PT", 12),
-    ("SLAM-BGH", "Isha Patel", "Annual", 0),
-    ("SLAM-ALD", "Nikhil Verma", "Quarterly", 0),
-    ("SLAM-ALD", "Tara Suresh", "Elite Annual + PT", 12),
+    ("SLAM-NGK", "Aditya Rao", "Elite Annual + PT", 12, 48, "instagram", "AUG-TRANSFORM", None),
+    ("SLAM-NGK", "Kavya Nair", "Quarterly + PT", 20, 30, "referral", None, "Aditya Rao"),
+    ("SLAM-NGK", "Sameer Khan", "Monthly", 0, 2, "walk_in", None, None),
+    ("SLAM-NGK", "Ritu Balan", "Quarterly", 0, 44, "google", "AUG-TRANSFORM", None),
+    ("SLAM-BGH", "Arjun Mehta", "Annual + PT", 12, 51, "instagram", None, None),
+    ("SLAM-BGH", "Isha Patel", "Annual", 0, 12, "facebook", "WEEKEND-TRIAL", None),
+    ("SLAM-BGH", "Dev Anand", "Monthly", 0, 1, "banner", None, None),
+    ("SLAM-BGH", "Nisha Rao", "Quarterly", 0, None, "website", None, None),
+    ("SLAM-ALD", "Nikhil Verma", "Quarterly", 0, 22, "referral", None, "Tara Suresh"),
+    ("SLAM-ALD", "Tara Suresh", "Elite Annual + PT", 12, 47, "instagram", "AUG-TRANSFORM", None),
+    ("SLAM-ALD", "Vivek Nambiar", "Monthly", 0, 3, "whatsapp", None, None),
+]
+
+# Campaigns SLAM ran. Nothing here carries a price — pricing has not been
+# supplied, and inventing one would put a fake number in front of a member.
+CAMPAIGNS = [
+    ("AUG-TRANSFORM", "August Transformation", None, 60, 0),
+    ("WEEKEND-TRIAL", "Weekend Trial", "SLAM-BGH", 30, 10),
+]
+
+# (branch, class name, days from today, hour, minute, trainer name, capacity)
+CLASSES = [
+    ("SLAM-NGK", "Zumba", 1, 18, 30, "Divya Rao", 20),
+    ("SLAM-NGK", "Strength Circuit", -3, 7, 0, "Vikas Menon", 16),
+    ("SLAM-BGH", "HIIT Express", 2, 19, 0, "Anita Kulkarni", 24),
+    ("SLAM-ALD", "Yoga & Mobility", 3, 7, 30, "Meera Shetty", 18),
 ]
 
 MANAGERS = [
@@ -185,12 +241,33 @@ def wipe_demo(db: Session) -> None:
     db.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(demo_user_ids)))
     db.execute(delete(AttendanceEvent).where(AttendanceEvent.user_id.in_(demo_user_ids)))
     db.execute(delete(IncentiveResult))
+    db.execute(delete(AttendanceCorrection))
     db.execute(delete(TrainerAttendance))
     db.execute(delete(Shift).where(Shift.is_demo.is_(True)))
+    # Programme rows, deleted child-first so no foreign key is left dangling.
+    db.execute(delete(WorkoutSessionItem))
+    db.execute(delete(WorkoutSession))
+    db.execute(delete(WorkoutPlanItem))
+    db.execute(delete(WorkoutPlan))
+    db.execute(delete(CardioSession))
+    db.execute(delete(Assessment))
+    db.execute(delete(PTSession))
+    db.execute(delete(PTPackage))
+    db.execute(delete(JourneyDay))
+    db.execute(delete(Journey))
+    db.execute(delete(GroupClassAttendance))
+    db.execute(delete(GroupClassRsvp))
+    db.execute(delete(GroupClass))
+    db.execute(delete(BodyComposition))
+    db.execute(delete(Referral))
+    db.execute(delete(Alert))
+    db.execute(delete(Task))
     db.execute(delete(Membership).where(Membership.is_demo.is_(True)))
     db.execute(delete(Member).where(Member.is_demo.is_(True)))
     db.execute(delete(Trainer).where(Trainer.is_demo.is_(True)))
     db.execute(delete(IncentiveRule).where(IncentiveRule.is_demo.is_(True)))
+    db.execute(delete(Campaign).where(Campaign.is_demo.is_(True)))
+    db.execute(delete(MarketingSource))
     db.execute(delete(Setting))
     db.execute(delete(User).where(User.is_demo.is_(True)))
     db.execute(delete(Branch).where(Branch.is_demo.is_(True)))
@@ -240,6 +317,22 @@ def ensure_settings(db: Session) -> None:
         "attendance.allow_checkin_after_shift_minutes": "How long after shift end a check-in is accepted",
         "attendance.methods_enabled": "Capture methods live in this version",
         "occupancy.count_members_only": "Whether occupancy counts members only",
+        "occupancy.busy_period_min_days": "Days of history required before busy periods are shown",
+        "journey.duration_days": "Length of the SLAM General Training journey",
+        "journey.assessment_days": "Days at the start reserved for assessment and cardio",
+        "journey.cardio_sessions_required": "Cardio sessions expected in the assessment phase",
+        "journey.split_pattern": "Workout rotation after the assessment phase",
+        "pt.package_options": "PT package sizes offered",
+        "pt.low_balance_threshold": "Remaining sessions that trigger a renewal reminder",
+        "pt.default_validity_days": "How long a PT package stays valid",
+        "classes.default_capacity": "Default capacity for a new group class",
+        "classes.rsvp_reminder_hours": "How long before a class members are reminded",
+        "alerts.late_trainer": "Raise an alert when a trainer is late",
+        "alerts.missing_checkout": "Raise an alert when a shift has no check-out",
+        "alerts.journey_day45": "Raise an alert when a member completes Day 45",
+        "alerts.pt_low_balance": "Raise an alert when PT sessions run low",
+        "alerts.membership_expiry_days": "How far ahead a membership renewal is flagged",
+        "alerts.low_class_attendance_pct": "Turnout below this share of yes-RSVPs is flagged",
     }
     for key, value in settings_service.DEFAULTS.items():
         existing = db.scalar(select(Setting).where(Setting.key == key, Setting.branch_id.is_(None)))
@@ -445,6 +538,242 @@ def seed_member_visits(db: Session, member: Member, branch: Branch, rng: random.
             )
 
 
+def ensure_marketing(db: Session, branches: dict[str, Branch]) -> dict[str, Campaign]:
+    """The acquisition source list and SLAM's demo campaigns."""
+    marketing_service.ensure_sources(db)
+
+    out: dict[str, Campaign] = {}
+    today = branch_today(None)
+    for code, name, branch_code, starts_ago, ends_in in CAMPAIGNS:
+        campaign = db.scalar(select(Campaign).where(Campaign.code == code))
+        if campaign is None:
+            campaign = Campaign(
+                branch_id=branches[branch_code].id if branch_code else None,
+                name=name,
+                code=code,
+                description=f"DEMO campaign — {name}",
+                starts_on=today - timedelta(days=starts_ago),
+                ends_on=today + timedelta(days=ends_in),
+                is_active=ends_in >= 0,
+                is_demo=True,
+            )
+            db.add(campaign)
+            db.flush()
+        out[code] = campaign
+    return out
+
+
+def seed_journey(
+    db: Session,
+    member: Member,
+    branch: Branch,
+    day_number: int,
+    trainer: Trainer | None,
+    rng: random.Random,
+) -> Journey:
+    """Put a member at a given day of the journey, with the history to match.
+
+    The journey is *back-dated* rather than fast-forwarded: the start date is
+    ``day_number`` days ago, so every day-number the app computes comes out of
+    the same arithmetic production uses.
+    """
+    today = branch_today(branch.timezone)
+    start = today - timedelta(days=day_number - 1)
+    journey = journey_service.start_journey(
+        db, member=member, start_date=start, trainer_id=trainer.id if trainer else None
+    )
+
+    if day_number >= 1:
+        journey_service.record_assessment(
+            db,
+            journey=journey,
+            trainer_id=trainer.id if trainer else None,
+            goal=rng.choice(["Fat loss", "Strength", "General fitness", "Endurance"]),
+            notes="DEMO assessment recorded by the seeder.",
+            completed=day_number > 1,
+        )
+
+    # Cardio for each assessment day the member has already reached.
+    for cardio_day in range(2, min(day_number, journey.assessment_days) + 1):
+        journey_service.record_cardio(
+            db,
+            journey=journey,
+            day_number=cardio_day,
+            duration_minutes=rng.choice([20, 25, 30]),
+            machine=rng.choice(["Treadmill", "Cross trainer", "Rower"]),
+        )
+
+    # Workouts for the training phase. Not every day — a real member misses
+    # some, and a 100% record would make the consistency figure meaningless.
+    plan = journey_service.plan_for(db, journey)
+    for offset in range(journey.assessment_days + 1, min(day_number, journey.duration_days) + 1):
+        if rng.random() < 0.25:
+            continue
+        session_date = start + timedelta(days=offset - 1)
+        day_row = db.scalar(
+            select(JourneyDay).where(
+                JourneyDay.journey_id == journey.id, JourneyDay.day_number == offset
+            )
+        )
+        if day_row is None:
+            continue
+        session = WorkoutSession(
+            member_id=member.id,
+            branch_id=branch.id,
+            journey_id=journey.id,
+            journey_day_id=day_row.id,
+            day_number=offset,
+            split=day_row.split,
+            session_date=session_date,
+            status=SessionStatus.COMPLETED,
+            supervising_trainer_id=trainer.id if trainer and rng.random() < 0.2 else None,
+            started_at=combine_branch(session_date, time(18, 0), branch.timezone),
+            completed_at=combine_branch(session_date, time(19, 10), branch.timezone),
+            is_demo=True,
+        )
+        db.add(session)
+        db.flush()
+        for item in journey_service.plan_items(db, plan, day_row.split):
+            db.add(
+                WorkoutSessionItem(
+                    session_id=session.id,
+                    plan_item_id=item.id,
+                    order_index=item.order_index,
+                    exercise=item.exercise,
+                    sets=item.sets,
+                    reps=item.reps,
+                    rest_seconds=item.rest_seconds,
+                    status=ItemStatus.COMPLETED,
+                    completed_at=session.completed_at,
+                )
+            )
+        day_row.status = day_row.status.COMPLETED
+        day_row.completed_at = session.completed_at
+    db.flush()
+
+    # Day 45 is not staged: the same automation the API runs decides whether
+    # this member has finished, from the dates alone.
+    journey_service.settle_journey(db, journey)
+    return journey
+
+
+def seed_pt(
+    db: Session,
+    member: Member,
+    branch: Branch,
+    journey: Journey | None,
+    trainer: Trainer,
+    size: int,
+    used: int,
+    rng: random.Random,
+) -> PTPackage:
+    """A PT package with its sessions already delivered up to ``used``."""
+    today = branch_today(branch.timezone)
+    package = pt_service.create_package(
+        db,
+        member=member,
+        sessions_total=size,
+        trainer_id=trainer.id,
+        start_date=today - timedelta(days=used * 3 + 5),
+        journey_id=journey.id if journey else None,
+        origin="journey_conversion" if journey else "direct",
+    )
+
+    for number in range(1, used + 2):
+        session_date = package.start_date + timedelta(days=(number - 1) * 3)
+        if session_date > today + timedelta(days=3):
+            break
+        start_at = combine_branch(session_date, time(rng.choice([7, 8, 18]), 0), branch.timezone)
+        session = pt_service.schedule_session(
+            db,
+            package=package,
+            trainer_id=trainer.id,
+            scheduled_start=start_at,
+            session_date=session_date,
+        )
+        if number <= used:
+            pt_service.mark_arrival(db, session=session, who="member", at=start_at)
+            pt_service.mark_arrival(db, session=session, who="trainer", at=start_at)
+            pt_service.complete_session(
+                db, session=session, completed_by_user_id=trainer.user_id, notes=None
+            )
+    db.flush()
+    return package
+
+
+def seed_classes(
+    db: Session,
+    branches: dict[str, Branch],
+    trainers_by_name: dict[str, Trainer],
+    members_by_branch: dict[int, list[Member]],
+    rng: random.Random,
+) -> None:
+    """Group classes with RSVPs, and real attendance for the ones already run."""
+    today = branch_today(None)
+    for code, name, day_offset, hour, minute, trainer_name, capacity in CLASSES:
+        branch = branches[code]
+        class_date = today + timedelta(days=day_offset)
+        starts_at = combine_branch(class_date, time(hour, minute), branch.timezone)
+        trainer = trainers_by_name.get(trainer_name)
+
+        existing = db.scalar(
+            select(GroupClass).where(
+                GroupClass.branch_id == branch.id,
+                GroupClass.name == name,
+                GroupClass.class_date == class_date,
+            )
+        )
+        if existing is not None:
+            continue
+
+        group_class = class_service.create_class(
+            db,
+            branch=branch,
+            name=name,
+            starts_at=starts_at,
+            trainer_id=trainer.id if trainer else None,
+            capacity=capacity,
+            description=f"DEMO class — {name} at {branch.name}",
+            announcement=f"{name} at {branch.name}. Reply YES in the app to hold your spot.",
+        )
+        group_class.is_demo = True
+
+        roster = members_by_branch.get(branch.id, [])
+        said_yes: list[int] = []
+        for member in roster:
+            answer = rng.choices(
+                [RsvpResponse.YES, RsvpResponse.NO, RsvpResponse.PENDING], weights=[6, 2, 2]
+            )[0]
+            if answer is RsvpResponse.PENDING:
+                continue
+            class_service.set_rsvp(db, group_class=group_class, member=member, answer=answer)
+            if answer is RsvpResponse.YES:
+                said_yes.append(member.id)
+
+        # Only a class that has already happened has attendance to record.
+        if day_offset < 0 and said_yes:
+            turned_up = [m for m in said_yes if rng.random() < 0.75]
+            missed = [m for m in said_yes if m not in turned_up]
+            if turned_up:
+                class_service.record_attendance(
+                    db,
+                    group_class=group_class,
+                    member_ids=turned_up,
+                    attended=True,
+                    recorded_by_user_id=trainer.user_id if trainer else None,
+                )
+            if missed:
+                class_service.record_attendance(
+                    db,
+                    group_class=group_class,
+                    member_ids=missed,
+                    attended=False,
+                    recorded_by_user_id=trainer.user_id if trainer else None,
+                )
+            class_service.close_class(db, group_class)
+    db.flush()
+
+
 def seed(db: Session, *, reset: bool = False) -> None:
     if reset:
         wipe_demo(db)
@@ -535,7 +864,15 @@ def seed(db: Session, *, reset: bool = False) -> None:
     for trainer, branch, _shift, _profile in trainer_rows:
         trainers_by_branch.setdefault(branch.id, []).append(trainer)
 
-    for code, name, plan, pt_sessions in MEMBERS:
+    campaigns = ensure_marketing(db, branches)
+    sources = {row.key: row for row in db.scalars(select(MarketingSource)).all()}
+    trainers_by_name = {t.user.full_name: t for t, _b, _s, _p in trainer_rows if t.user is not None}
+
+    members_by_name: dict[str, Member] = {}
+    members_by_branch: dict[int, list[Member]] = {}
+    fresh_members: list[tuple[Member, Branch, int | None, int]] = []
+
+    for code, name, plan, pt_sessions, journey_day, source_key, campaign_code, _ref in MEMBERS:
         branch = branches[code]
         user = ensure_user(
             db,
@@ -545,35 +882,89 @@ def seed(db: Session, *, reset: bool = False) -> None:
             branch=branch,
         )
         member = db.scalar(select(Member).where(Member.user_id == user.id))
-        if member is None:
+        is_new = member is None
+        if is_new:
             roster = trainers_by_branch.get(branch.id, [])
+            today = branch_today(branch.timezone)
+            # Registration is dated from where they are in the journey, so the
+            # marketing report and the journey day agree with each other.
+            registered = today - timedelta(days=journey_day - 1 if journey_day else 30)
             member = Member(
                 user_id=user.id,
                 branch_id=branch.id,
                 member_code=f"{code}-M{user.id:04d}",
-                assigned_trainer_id=roster[0].id if roster and pt_sessions else None,
-                joined_on=date(2025, 6, 1),
+                assigned_trainer_id=roster[0].id if roster else None,
+                joined_on=registered,
+                registered_on=registered,
+                marketing_source_id=(sources[source_key].id if source_key in sources else None),
+                campaign_id=(campaigns[campaign_code].id if campaign_code in campaigns else None),
                 is_demo=True,
             )
             db.add(member)
             db.flush()
 
-            today = branch_today(branch.timezone)
             db.add(
                 Membership(
                     member_id=member.id,
                     branch_id=branch.id,
                     plan_name=plan,
                     status=MembershipStatus.ACTIVE,
-                    starts_on=today - timedelta(days=120),
-                    ends_on=today + timedelta(days=rng.choice([18, 96, 240])),
+                    starts_on=registered,
+                    ends_on=today + timedelta(days=rng.choice([9, 18, 96, 240])),
                     pt_sessions_total=pt_sessions,
-                    pt_sessions_used=rng.randint(0, pt_sessions) if pt_sessions else 0,
+                    pt_sessions_used=0,
                     is_demo=True,
                 )
             )
             seed_member_visits(db, member, branch, rng)
 
+        members_by_name[name] = member
+        members_by_branch.setdefault(branch.id, []).append(member)
+        if is_new:
+            fresh_members.append((member, branch, journey_day, pt_sessions))
+    db.flush()
+
+    # Referrals, second pass: the referring member has to exist first.
+    for _code, name, _plan, _pt, _day, source_key, _campaign, referred_by in MEMBERS:
+        if source_key != "referral" or not referred_by:
+            continue
+        referrer = members_by_name.get(referred_by)
+        referred = members_by_name.get(name)
+        if referrer is None or referred is None:
+            continue
+        marketing_service.link_referral(
+            db, referrer_member_id=referrer.id, referred_member=referred, note="DEMO referral"
+        )
+
+    for member, branch, journey_day, pt_sessions in fresh_members:
+        journey = None
+        trainer = (
+            db.get(Trainer, member.assigned_trainer_id) if member.assigned_trainer_id else None
+        )
+        if journey_day:
+            journey = seed_journey(db, member, branch, journey_day, trainer, rng)
+        if pt_sessions and trainer is not None:
+            completed_journey = (
+                journey if journey is not None and journey.completed_on is not None else None
+            )
+            seed_pt(
+                db,
+                member,
+                branch,
+                completed_journey,
+                trainer,
+                size=pt_sessions,
+                # A spread that always lands at least one member inside the
+                # low-balance threshold, so that alert is visible in the demo.
+                used=max(1, pt_sessions - rng.choice([2, 4, 9])),
+                rng=rng,
+            )
+
+    seed_classes(db, branches, trainers_by_name, members_by_branch, rng)
+
+    # Finish the way production does: run the real automations rather than
+    # writing alerts by hand, so the demo shows exactly what the rules produce.
+    automation_service.run_all(db)
     db.commit()
 
 

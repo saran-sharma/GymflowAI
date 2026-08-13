@@ -25,6 +25,28 @@ DEFAULTS: dict[str, Any] = {
     "attendance.allow_checkin_after_shift_minutes": 120,
     "attendance.methods_enabled": ["qr", "pin"],
     "occupancy.count_members_only": True,
+    # Busy-period estimates are withheld until this many days of history exist,
+    # so the app never presents a guess as a prediction.
+    "occupancy.busy_period_min_days": 14,
+    # ---------------------------------------------------------- 45-day journey
+    "journey.duration_days": 45,
+    "journey.assessment_days": 3,
+    "journey.cardio_sessions_required": 3,
+    "journey.split_pattern": ["push", "pull", "legs"],
+    # ------------------------------------------------------------------- PT
+    "pt.package_options": [12, 20, 30],
+    "pt.low_balance_threshold": 4,
+    "pt.default_validity_days": 120,
+    # -------------------------------------------------------- group classes
+    "classes.default_capacity": 20,
+    "classes.rsvp_reminder_hours": 24,
+    # ---------------------------------------------------------------- alerts
+    "alerts.late_trainer": True,
+    "alerts.missing_checkout": True,
+    "alerts.journey_day45": True,
+    "alerts.pt_low_balance": True,
+    "alerts.membership_expiry_days": 14,
+    "alerts.low_class_attendance_pct": 50,
 }
 
 
@@ -47,6 +69,21 @@ def get_int(db: Session, key: str, branch_id: int | None = None) -> int:
 
 def get_float(db: Session, key: str, branch_id: int | None = None) -> float:
     return float(get_setting(db, key, branch_id))
+
+
+def get_list(db: Session, key: str, branch_id: int | None = None) -> list:
+    """A list-valued setting, tolerating a scalar written by hand in the DB."""
+    value = get_setting(db, key, branch_id)
+    if value is None:
+        return []
+    return list(value) if isinstance(value, list | tuple) else [value]
+
+
+def get_bool(db: Session, key: str, branch_id: int | None = None) -> bool:
+    value = get_setting(db, key, branch_id)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def set_setting(
@@ -76,4 +113,12 @@ def set_setting(
     return row
 
 
-__all__ = ["DEFAULTS", "get_float", "get_int", "get_setting", "set_setting"]
+__all__ = [
+    "DEFAULTS",
+    "get_bool",
+    "get_float",
+    "get_int",
+    "get_list",
+    "get_setting",
+    "set_setting",
+]
