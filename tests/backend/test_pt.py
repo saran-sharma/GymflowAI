@@ -208,3 +208,30 @@ def test_converting_a_finished_journey_marks_it_converted(db, world):
 
     assert journey.pt_converted is True
     assert package.origin == "journey_conversion"
+
+
+def test_an_early_morning_session_belongs_to_the_branch_day_not_the_utc_day(db, world):
+    """IST is UTC+5:30, so anything before 05:30 local falls on the previous
+    UTC day. Filing by the UTC date would drop that session off the trainer's
+    schedule for the day it is actually happening.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.core.clock import UTC
+
+    ist = ZoneInfo("Asia/Kolkata")
+    local_day = date(2026, 8, 12)
+    five_am_ist = datetime(2026, 8, 12, 5, 0, tzinfo=ist).astimezone(UTC)
+    assert five_am_ist.date() == date(2026, 8, 11), "the fixture must straddle midnight UTC"
+
+    package = _package(db, world["member_ngk"])
+    session = pt_service.schedule_session(
+        db,
+        package=package,
+        trainer_id=world["trainer_ngk"].id,
+        scheduled_start=five_am_ist,
+    )
+
+    assert session.session_date == local_day
+    assert pt_service.sessions_for_trainer(db, world["trainer_ngk"].id, local_day) == [session]

@@ -15,7 +15,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.clock import branch_today, now_utc
+from app.core.clock import branch_today, now_utc, to_branch_time
 from app.db.models import (
     AlertSeverity,
     Branch,
@@ -285,14 +285,17 @@ def schedule_session(
         )
 
     branch = db.get(Branch, package.branch_id)
+    # The session belongs to the *branch's* day, not to UTC's. A 07:00 IST
+    # session is 01:30 UTC, so taking `scheduled_start.date()` would file an
+    # early-morning session under the previous day and hide it from the
+    # trainer's schedule.
     session = PTSession(
         package_id=package.id,
         member_id=package.member_id,
         trainer_id=trainer_id,
         branch_id=package.branch_id,
         session_date=session_date
-        or scheduled_start.date()
-        or branch_today(branch.timezone if branch else None),
+        or to_branch_time(scheduled_start, branch.timezone if branch else None).date(),
         scheduled_start=scheduled_start,
         scheduled_end=scheduled_end or (scheduled_start + timedelta(hours=1)),
         session_number=number,
