@@ -58,7 +58,39 @@ const sdkTypesVersion = JSON.parse(
   fs.readFileSync(path.join(typesPkg, 'package.json'), 'utf8'),
 ).version;
 
-const config = JSON.parse(fs.readFileSync(path.join(appDir, 'app.json'), 'utf8')).expo;
+const appJsonPath = path.join(appDir, 'app.json');
+const rawAppJson = fs.readFileSync(appJsonPath, 'utf8');
+
+// Conflict markers make app.json invalid JSON, and every Expo command then
+// fails with `Unexpected token '<'` — which points at nothing useful. Name the
+// real problem instead.
+const conflictMarkers = rawAppJson
+  .split('\n')
+  .map((line, index) => [index + 1, line])
+  .filter(([, line]) => /^(<{7}|={7}|>{7})(\s|$)/.test(line));
+
+if (conflictMarkers.length > 0) {
+  console.error('app.json contains unresolved merge conflict markers:\n');
+  for (const [lineNumber, line] of conflictMarkers) {
+    console.error(`  ✖ line ${lineNumber}: ${line.trim()}`);
+  }
+  console.error(
+    '\nResolve the conflict before anything else. Keep the side without' +
+      "\n`newArchEnabled`, a top-level `splash` block or `android.edgeToEdgeEnabled`:" +
+      '\nthis SDK rejects all three, and their behaviour is now the default or lives' +
+      '\nin the expo-splash-screen plugin. Keep whichever side has the real EAS' +
+      '\nprojectId.',
+  );
+  process.exit(1);
+}
+
+let config;
+try {
+  config = JSON.parse(rawAppJson).expo;
+} catch (error) {
+  console.error(`app.json is not valid JSON: ${error.message}`);
+  process.exit(1);
+}
 
 const sections = [
   ['(root)', config, 'ExpoConfig'],
