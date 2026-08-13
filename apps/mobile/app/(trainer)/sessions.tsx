@@ -54,18 +54,19 @@ export default function TrainerSessionsScreen() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const complete = useCallback(
+  /**
+   * Mark a supervised own-workout delivered.
+   *
+   * Only own-workout support closes from here. A PT session needs both people
+   * marked present, so it opens the split view; a class needs its roster, so
+   * it opens the class screen. Neither can be honestly closed from a list row.
+   */
+  const completeSupport = useCallback(
     async (item: ScheduleItem) => {
       setBusyId(item.reference_id);
       setError(null);
       try {
-        if (item.kind === 'own_workout_support') {
-          await withToken((token) => api.completeSupportSession(item.reference_id, token));
-        } else if (item.kind === 'group_class') {
-          await withToken((token) =>
-            api.recordClassAttendance(item.reference_id, [], true, token).catch(() => undefined),
-          );
-        }
+        await withToken((token) => api.completeSupportSession(item.reference_id, token));
         await schedule.refresh();
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : 'Could not update that session.');
@@ -149,10 +150,20 @@ export default function TrainerSessionsScreen() {
                     variant="label"
                     color={busyId === item.reference_id ? colors.textFaint : colors.brandSoft}
                     accessibilityRole="button"
-                    onPress={busyId ? undefined : () => void complete(item)}
+                    onPress={busyId ? undefined : () => void completeSupport(item)}
                     style={styles.action}
                   >
                     Mark completed
+                  </Txt>
+                ) : item.can_complete && item.kind === 'group_class' ? (
+                  <Txt
+                    variant="label"
+                    color={colors.brandSoft}
+                    accessibilityRole="button"
+                    onPress={() => router.push('/(trainer)/classes' as never)}
+                    style={styles.action}
+                  >
+                    Take attendance
                   </Txt>
                 ) : null}
               </>
@@ -163,9 +174,10 @@ export default function TrainerSessionsScreen() {
                 <Pressable
                   key={`${item.kind}-${item.reference_id}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${KIND_LABEL[item.kind]} with ${item.title}`}
+                  accessibilityLabel={`PT session with ${item.title}`}
                   onPress={() => router.push(`/(trainer)/pt/${item.reference_id}` as never)}
                   style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+                  testID={`session-${item.reference_id}`}
                 >
                   {body}
                 </Pressable>
