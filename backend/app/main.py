@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -27,8 +29,35 @@ All attendance times are recorded from the server clock.
 """
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Say once, at boot, whether this database has been migrated.
+
+    A database one migration behind serves most of the app perfectly well and
+    then throws opaque 500s from exactly the endpoints that touch the newer
+    tables — which reads as "those features are broken" rather than "this
+    database needs migrating". One log line turns that into an obvious action.
+
+    Best-effort by design: a diagnostic must never be why the API fails to
+    start, so a database that is unreachable here is left to `/health`.
+    """
+    try:
+        from app.db.schema_state import check
+        from app.db.session import engine
+
+        state = check(engine)
+        if state.is_current:
+            logger.info("Database schema: %s", state.detail)
+        else:
+            logger.warning("Database schema out of date — %s", state.detail)
+    except Exception:  # pragma: no cover - never block startup on a report
+        logger.debug("Could not determine the database schema state", exc_info=True)
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
+        lifespan=lifespan,
         title=settings.app_name,
         description=DESCRIPTION,
         version="1.0.0",
