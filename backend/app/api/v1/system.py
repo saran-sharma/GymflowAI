@@ -31,6 +31,26 @@ def health(db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/schema")
+def schema(user: User = Depends(require_management)) -> dict:
+    """Whether this database has the migrations this code expects.
+
+    Authenticated because the revision identifies the build. ``/health`` stays
+    deliberately free of version detail.
+    """
+    from app.db.schema_state import check
+    from app.db.session import engine
+
+    state = check(engine)
+    return {
+        "status": state.status,
+        "current_revision": state.current,
+        "head_revision": state.head,
+        "is_current": state.is_current,
+        "detail": state.detail,
+    }
+
+
 @router.get("/integrations")
 def integrations(user: User = Depends(require_management)) -> dict:
     """What is wired up and what is still contract-only.
