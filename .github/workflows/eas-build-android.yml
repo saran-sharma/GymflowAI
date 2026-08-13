@@ -1,0 +1,119 @@
+name: EAS Android build
+
+# Manual only. An Android build costs EAS build minutes, so it runs when you
+# ask for one rather than on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'eas.json build profile'
+        required: true
+        default: preview
+        type: choice
+        options: [preview, production, development]
+      api_url:
+        description: 'API the build talks to, e.g. https://gymflow-api.example or a public Codespaces URL'
+        required: true
+        type: string
+      wait:
+        description: 'Wait for the build to finish (adds ~15-25 min of Actions time)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android ${{ inputs.profile }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail here with a readable message rather than 20 minutes later inside
+      # EAS, or — worse — with an APK that cannot reach anything.
+      - name: Check prerequisites
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          API_URL: ${{ inputs.api_url }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          [ -n "${EXPO_TOKEN:-}" ] || fail \
+            "EXPO_TOKEN is not set. Create a token at https://expo.dev/settings/access-tokens and add it as a repository secret."
+
+          case "$API_URL" in
+            https://*|http://*) ;;
+            *) fail "api_url must start with http:// or https:// (got '$API_URL')." ;;
+          esac
+
+          case "$API_URL" in
+            *localhost*|*127.0.0.1*|*10.0.2.2*)
+              fail "api_url points at a loopback address. A phone running the APK cannot reach it — use a public URL." ;;
+          esac
+
+          PROJECT_ID=$(node -p "require('./apps/mobile/app.json').expo.extra.eas.projectId")
+          if [ "$PROJECT_ID" = "00000000-0000-0000-0000-000000000000" ]; then
+            fail "app.json still carries the placeholder EAS projectId. Run 'eas init' once and commit the real id."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: apps/mobile
+
+      # EAS reads build-time env from the profile, so the chosen API URL is
+      # written into the profile the build will use. This edit is never
+      # committed — it exists only in the runner's checkout.
+      - name: Point the build at the chosen API
+        env:
+          API_URL: ${{ inputs.api_url }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            const profile = eas.build[process.env.PROFILE];
+            profile.env = { ...profile.env, EXPO_PUBLIC_API_URL: process.env.API_URL };
+            fs.writeFileSync("eas.json", JSON.stringify(eas, null, 2) + "\n");
+            console.log(`${process.env.PROFILE} → ${profile.env.EXPO_PUBLIC_API_URL}`);
+          '
+        working-directory: apps/mobile
+
+      # The same check CI runs, repeated here: an APK that bundles a broken
+      # import fails at launch instead of at build time.
+      - name: Verify the bundle before spending build minutes
+        run: npx expo export --platform android --output-dir /tmp/preflight
+        working-directory: apps/mobile
+
+      - name: Build on EAS
+        run: |
+          eas build \
+            --platform android \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            ${{ inputs.wait && ' ' || '--no-wait' }}
+        working-directory: apps/mobile
+
+      - name: Where to find it
+        if: success()
+        run: |
+          echo "### Android ${{ inputs.profile }} build queued" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "API: \`${{ inputs.api_url }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Track it and download the APK at <https://expo.dev/accounts>." >> "$GITHUB_STEP_SUMMARY"
+          echo "Internal-distribution builds install straight from the QR code on the build page." >> "$GITHUB_STEP_SUMMARY"

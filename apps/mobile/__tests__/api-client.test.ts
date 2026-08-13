@@ -3,7 +3,14 @@
  * is what every screen's error state depends on.
  */
 
-import { ApiError, OFFLINE_CODE, request } from '../src/api/client';
+import {
+  ApiError,
+  OFFLINE_CODE,
+  UNCONFIGURED_CODE,
+  isApiConfigured,
+  request,
+  resolveBaseUrl,
+} from '../src/api/client';
 import * as api from '../src/api/endpoints';
 
 const mockFetch = global.fetch as jest.Mock;
@@ -81,6 +88,51 @@ describe('request', () => {
     expect(new ApiError(429, 'rate_limited', '').isRetryable).toBe(true);
     expect(new ApiError(409, 'already_checked_in', '').isRetryable).toBe(false);
     expect(new ApiError(401, 'x', '').isAuthError).toBe(true);
+  });
+
+  it('refuses to guess a server in a release build', async () => {
+    // A preview APK built without EXPO_PUBLIC_API_URL would otherwise point at
+    // an emulator loopback address and look like a server outage on a phone.
+    const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    const configured = process.env.EXPO_PUBLIC_API_URL;
+    delete process.env.EXPO_PUBLIC_API_URL;
+
+    try {
+      expect(resolveBaseUrl()).toBe('');
+      expect(isApiConfigured()).toBe(false);
+
+      await expect(request('/health')).rejects.toMatchObject({
+        code: UNCONFIGURED_CODE,
+      });
+      // And it never reached the network to find that out.
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+      if (configured !== undefined) process.env.EXPO_PUBLIC_API_URL = configured;
+    }
+  });
+
+  it('still guesses a development server while developing', () => {
+    const configured = process.env.EXPO_PUBLIC_API_URL;
+    delete process.env.EXPO_PUBLIC_API_URL;
+    try {
+      expect(resolveBaseUrl()).toMatch(/^http:\/\//);
+      expect(isApiConfigured()).toBe(true);
+    } finally {
+      if (configured !== undefined) process.env.EXPO_PUBLIC_API_URL = configured;
+    }
+  });
+
+  it('honours an explicitly configured server and trims trailing slashes', () => {
+    const configured = process.env.EXPO_PUBLIC_API_URL;
+    process.env.EXPO_PUBLIC_API_URL = 'https://gymflow-api.example//';
+    try {
+      expect(resolveBaseUrl()).toBe('https://gymflow-api.example');
+    } finally {
+      if (configured === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+      else process.env.EXPO_PUBLIC_API_URL = configured;
+    }
   });
 
   it('survives a body that is not JSON', async () => {

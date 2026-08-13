@@ -1,5 +1,9 @@
 # Running GymFlow AI locally
 
+> **The quickest path is GitHub Codespaces** — no Node, Python, PostgreSQL or
+> Android Studio on your machine. See [CODESPACES.md](CODESPACES.md). This page
+> covers running everything directly on your own machine instead.
+
 Two processes: the API and the mobile app. Start the API first — the app is
 useless without it, and says so clearly rather than failing silently.
 
@@ -88,21 +92,27 @@ npm test
 
 ## Android build
 
+Builds run on EAS, so no Android SDK is needed — see
+[ANDROID_BUILD.md](ANDROID_BUILD.md) for the full path including the GitHub
+Actions workflow.
+
 ```bash
 cd apps/mobile
 
 # Verify the bundle first — fastest way to catch a broken import.
 npx expo export --platform android
 
-# Native project (writes android/, which is gitignored and regenerable)
-npm run prebuild:android
+# Build on EAS (no local SDK)
+EXPO_PUBLIC_API_URL=https://your-api.example npx eas-cli build \
+  --platform android --profile preview
+```
 
-# Debug APK, needs a local Android SDK
+If you do have an Android SDK and want a local APK:
+
+```bash
+npm run prebuild:android            # writes android/, gitignored and regenerable
 cd android && ./gradlew assembleDebug
 # → android/app/build/outputs/apk/debug/app-debug.apk
-
-# Or via EAS, no local SDK required
-npx eas build --profile development --platform android
 ```
 
 iOS is configured (`bundleIdentifier`, camera usage string, encryption

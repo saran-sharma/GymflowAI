@@ -15,6 +15,62 @@ permissions:
   contents: read
 
 jobs:
+  config:
+    name: Config — devcontainer and workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A broken devcontainer.json only shows up when someone waits five
+      # minutes for a Codespace to fail to build.
+      - name: Shell scripts parse
+        run: |
+          for script in .devcontainer/*.sh; do
+            bash -n "$script" && echo "ok  $script"
+          done
+
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck --severity=warning .devcontainer/*.sh
+
+      - name: devcontainer.json and compose parse
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('.devcontainer/docker-compose.yml')); print('compose ok')"
+          node -e "
+            const fs = require('fs');
+            // devcontainer.json is jsonc; strip line comments before parsing.
+            const raw = fs.readFileSync('.devcontainer/devcontainer.json', 'utf8')
+              .replace(/^\s*\/\/.*$/gm, '');
+            const cfg = JSON.parse(raw);
+            if (!cfg.service || !cfg.dockerComposeFile) throw new Error('compose wiring missing');
+            console.log('devcontainer.json ok');
+          "
+
+      - name: Workflows parse
+        run: |
+          python3 - <<'PY'
+          import pathlib, yaml
+          for f in sorted(pathlib.Path('.github/workflows').glob('*.yml')):
+              yaml.safe_load(f.read_text())
+              print('ok ', f)
+          PY
+
+      - name: eas.json is valid and preview ships an APK
+        run: |
+          node -e "
+            const eas = require('./apps/mobile/eas.json');
+            const preview = eas.build.preview;
+            if (preview.android.buildType !== 'apk') throw new Error('preview must build an APK');
+            if (preview.distribution !== 'internal') throw new Error('preview must be internal');
+            // A committed API URL would ship a build pointing at a fake domain.
+            if (preview.env?.EXPO_PUBLIC_API_URL) {
+              throw new Error('preview must not hardcode an API URL — the build workflow supplies it');
+            }
+            console.log('eas.json ok');
+          "
+
   backend:
     name: Backend — lint, format, tests
     runs-on: ubuntu-latest
