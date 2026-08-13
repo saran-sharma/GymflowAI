@@ -76,6 +76,32 @@ request fails immediately with *"This build has no GymFlow server configured"*.
 That is deliberate: a preview APK quietly pointing at `10.0.2.2` looks like a
 server outage to whoever is holding the phone.
 
+## A note on `expo prebuild`
+
+`npm run prebuild:android` generates the native `android/` directory. It also
+**rewrites `package.json`**, swapping the `android` and `ios` scripts from
+`expo start --…` to `expo run:…`. Those variants compile locally and therefore
+need an Android SDK, which this project deliberately does not require.
+
+If you run prebuild, check `git diff package.json` afterwards and revert that
+part unless you actually intend to build locally. `android/` itself is
+gitignored and regenerable.
+
+## App config and the SDK schema
+
+`npm run validate:config` checks `app.json` against the app-config types of the
+*installed* SDK, and CI runs it on every pull request.
+
+This exists because an SDK periodically drops a config key once its behaviour
+becomes the default — SDK 57 no longer accepts `newArchEnabled`, a top-level
+`splash` block, or `android.edgeToEdgeEnabled`. `expo-doctor` reports these,
+but only by downloading the schema, so it is silent on a restricted network.
+
+When the check fails, read the SDK release notes before deleting the key: the
+behaviour it asked for usually still needs to exist somewhere, either as the
+new default or in a config plugin. Splash configuration, for instance, moved
+into the `expo-splash-screen` plugin.
+
 ## Profiles
 
 | Profile | Output | Distribution |

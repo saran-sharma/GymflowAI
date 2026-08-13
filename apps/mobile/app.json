@@ -8,12 +8,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#08080A",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#08080A"
-    },
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
@@ -27,7 +21,6 @@
     "android": {
       "package": "ai.gymflow.slam",
       "versionCode": 1,
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "backgroundColor": "#08080A",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -59,6 +52,7 @@
         {
           "image": "./assets/splash-icon.png",
           "backgroundColor": "#08080A",
+          "resizeMode": "contain",
           "imageWidth": 180
         }
       ]

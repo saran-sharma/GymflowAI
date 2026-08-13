@@ -50,7 +50,8 @@
     "test:ci": "jest --ci",
     "start:tunnel": "expo start --tunnel",
     "build:android": "eas build --platform android --profile preview",
-    "build:android:local": "expo prebuild --platform android --clean"
+    "build:android:local": "expo prebuild --platform android --clean",
+    "validate:config": "node scripts/validate-app-config.mjs"
   },
   "private": true,
   "jest": {
