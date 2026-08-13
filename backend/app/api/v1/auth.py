@@ -43,6 +43,36 @@ MAX_FAILED_LOGINS = 8
 LOCKOUT_MINUTES = 15
 
 
+def normalise_phone(value: str) -> str:
+    """Reduce a typed mobile number to comparable digits.
+
+    SLAM's records carry numbers in several shapes ("+91 90000 00000",
+    "09000000000"), so both sides are reduced to the last ten digits before
+    they are compared.
+    """
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def find_user_by_identifier(db: Session, identifier: str) -> User | None:
+    """Look a person up by email address or by mobile number."""
+    options = (joinedload(User.role), joinedload(User.branch))
+    if "@" in identifier:
+        return db.scalar(select(User).options(*options).where(User.email == identifier.lower()))
+
+    phone = normalise_phone(identifier)
+    if len(phone) < 10:
+        return None
+    # Phone numbers are stored as typed, so the normalisation happens in
+    # Python over the candidates rather than as a LIKE the index cannot use.
+    for candidate in db.scalars(
+        select(User).options(*options).where(User.phone.isnot(None), User.is_active.is_(True))
+    ).all():
+        if normalise_phone(candidate.phone or "") == phone:
+            return candidate
+    return None
+
+
 def _issue_tokens(db: Session, user: User, user_agent: str | None) -> TokenPair:
     access = create_access_token(user.id, user.role.key, user.branch_id)
     refresh, jti = create_refresh_token(user.id)
@@ -68,11 +98,7 @@ def login(
     payload: LoginRequest,
     db: Session = Depends(get_db),
 ) -> LoginResponse:
-    user = db.scalar(
-        select(User)
-        .options(joinedload(User.role), joinedload(User.branch))
-        .where(User.email == payload.email.lower())
-    )
+    user = find_user_by_identifier(db, payload.email)
 
     # One message for every failure mode, so the response cannot be used to
     # enumerate which addresses have accounts.
@@ -87,7 +113,7 @@ def login(
             db,
             action=audit.ACTION_LOGIN_FAILED,
             request=request,
-            details={"email": payload.email.lower(), "reason": "unknown_account"},
+            details={"identifier": payload.email.lower(), "reason": "unknown_account"},
         )
         raise invalid
 

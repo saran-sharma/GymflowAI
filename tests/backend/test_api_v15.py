@@ -529,3 +529,78 @@ def test_a_trainer_cannot_change_business_rules(client, world, auth):
         headers=auth(world["trainer_ngk_user"]),
     )
     assert response.status_code == 403
+
+
+def test_the_member_home_screen_arrives_in_one_request(client, db, world, auth):
+    member = world["member_ngk"]
+    _start_journey(db, member, days_ago=5)
+    pt_service.create_package(db, member=member, sessions_total=12)
+    db.commit()
+
+    headers = auth(world["member_ngk_user"])
+    home = client.get(f"{API}/members/me/home", headers=headers)
+    assert home.status_code == 200
+
+    body = home.json()
+    assert body["full_name"] == "Aditya Rao"
+    assert body["branch_name"] == "SLAM Nagalkeni"
+    assert body["journey"]["current_day"] == 6
+    assert body["pt_package"]["sessions_remaining"] == 12
+    assert body["occupancy"]["crowd_level"] in {"Low", "Medium", "High"}
+    assert body["membership_plan"] == "Annual"
+
+
+def test_the_activity_timeline_keeps_the_four_kinds_apart(client, db, world, auth):
+    from app.db.models import AttendanceEvent, EventType, PersonType
+    from app.services import class_service, journey_service
+
+    member = world["member_ngk"]
+    branch = world["branches"]["ngk"]
+    _start_journey(db, member, days_ago=5)
+
+    # A gym visit.
+    db.add(
+        AttendanceEvent(
+            branch_id=branch.id,
+            person_type=PersonType.MEMBER,
+            user_id=member.user_id,
+            event_type=EventType.CHECK_IN,
+            method="qr",
+            occurred_at=now_utc(),
+            work_date=date.today(),
+        )
+    )
+    # An own workout.
+    workout = journey_service.start_workout(db, member=member)
+    journey_service.complete_workout(db, workout)
+
+    # A PT session.
+    package = pt_service.create_package(db, member=member, sessions_total=12)
+    session = pt_service.schedule_session(
+        db,
+        package=package,
+        trainer_id=world["trainer_ngk"].id,
+        scheduled_start=now_utc(),
+    )
+    pt_service.mark_arrival(db, session=session, who="member")
+    pt_service.mark_arrival(db, session=session, who="trainer")
+    pt_service.complete_session(db, session=session, completed_by_user_id=None)
+
+    # A group class.
+    group_class = class_service.create_class(db, branch=branch, name="Zumba", starts_at=now_utc())
+    class_service.record_attendance(
+        db,
+        group_class=group_class,
+        member_ids=[member.id],
+        attended=True,
+        recorded_by_user_id=None,
+    )
+    db.commit()
+
+    timeline = client.get(f"{API}/members/me/activity", headers=auth(world["member_ngk_user"]))
+    assert timeline.status_code == 200
+    kinds = {entry["kind"] for entry in timeline.json()}
+    assert kinds == {"gym_visit", "own_workout", "pt_session", "group_class"}
+
+    own = next(e for e in timeline.json() if e["kind"] == "own_workout")
+    assert own["detail"] == "LEGS", "the timeline names the split, not just 'workout'"

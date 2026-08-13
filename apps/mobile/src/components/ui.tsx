@@ -351,9 +351,11 @@ export function OfflineNotice({ message }: { message: string }) {
 export function Banner({
   tone = 'info',
   children,
+  testID,
 }: {
   tone?: 'info' | 'warning' | 'danger' | 'success';
   children: React.ReactNode;
+  testID?: string;
 }) {
   const tint = {
     info: colors.info,
@@ -363,7 +365,11 @@ export function Banner({
   }[tone];
 
   return (
-    <View style={[styles.banner, { borderColor: `${tint}55`, backgroundColor: `${tint}14` }]}>
+    <View
+      testID={testID}
+      accessibilityRole={tone === 'danger' ? 'alert' : undefined}
+      style={[styles.banner, { borderColor: `${tint}55`, backgroundColor: `${tint}14` }]}
+    >
       {typeof children === 'string' ? (
         <Txt variant="label" color={tint}>
           {children}

@@ -202,6 +202,9 @@ MEMBERS = [
     ("SLAM-ALD", "Nikhil Verma", "Quarterly", 0, 22, "referral", None, "Tara Suresh"),
     ("SLAM-ALD", "Tara Suresh", "Elite Annual + PT", 12, 47, "instagram", "AUG-TRANSFORM", None),
     ("SLAM-ALD", "Vivek Nambiar", "Monthly", 0, 3, "whatsapp", None, None),
+    # Finished the journey and has not converted — this is the member the
+    # owner's PT opportunity list exists for.
+    ("SLAM-ALD", "Priyanka Das", "Annual", 0, 46, "google", None, None),
 ]
 
 # Campaigns SLAM ran. Nothing here carries a price — pricing has not been

@@ -14,6 +14,7 @@ from app.core.clock import branch_today
 from app.core.deps import get_current_user
 from app.core.rate_limit import checkin_rate_limit
 from app.db.models import (
+    AlertStatus,
     AttendanceEvent,
     Branch,
     CaptureMethod,
@@ -35,7 +36,16 @@ from app.schemas.common import (
     MessageOut,
     OccupancyOut,
 )
-from app.services import attendance_service, incentive_service
+from app.schemas.training import ActivityEntryOut, MemberHomeOut
+from app.services import (
+    activity_service,
+    alert_service,
+    attendance_service,
+    class_service,
+    incentive_service,
+    journey_service,
+    pt_service,
+)
 
 from .trainers import trainer_out
 
@@ -145,6 +155,90 @@ def my_visits(
             )
         )
     return out
+
+
+@router.get("/me/home", response_model=MemberHomeOut)
+def member_home(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MemberHomeOut:
+    """One request for the whole home screen.
+
+    Everything the member sees on opening the app — membership, today's
+    workout, their next PT session, the gym's crowd level and the next class —
+    comes back together rather than as six round trips over gym wifi.
+    """
+    from .classes import class_out
+    from .journeys import journey_out, workout_out
+    from .pt import package_out, session_out
+
+    member = _current_member(db, user)
+    today = branch_today(member.branch.timezone)
+
+    membership = db.scalar(
+        select(Membership)
+        .where(Membership.member_id == member.id)
+        .order_by(Membership.ends_on.desc())
+    )
+    days_remaining = (membership.ends_on - today).days if membership else None
+
+    journey = journey_service.latest_journey(db, member.id)
+    if journey is not None:
+        # Reading the home screen is enough to complete a finished journey.
+        journey_service.settle_journey(db, journey)
+
+    workout = journey_service.today_workout(db, member)
+    package = pt_service.latest_package(db, member.id)
+    if package is not None:
+        pt_service.settle_package(db, package)
+    next_pt = pt_service.next_session(db, member.id)
+
+    upcoming = class_service.upcoming(db, [member.branch_id], on_or_after=today, limit=1)
+    unread = len(
+        alert_service.visible_alerts(
+            db, user, branch_ids=[member.branch_id], status=AlertStatus.OPEN, limit=100
+        )
+    )
+
+    trainer = member.assigned_trainer
+    return MemberHomeOut(
+        member_id=member.id,
+        full_name=member.user.full_name,
+        branch_id=member.branch_id,
+        branch_name=member.branch.name,
+        membership_plan=membership.plan_name if membership else None,
+        membership_status=membership.status.value if membership else None,
+        days_remaining=days_remaining,
+        is_inside=attendance_service.is_inside(db, user.id, member.branch_id, today),
+        trainer_name=trainer.user.full_name if trainer and trainer.user else None,
+        journey=journey_out(db, journey) if journey else None,
+        today_workout=workout_out(db, workout) if workout else None,
+        next_pt_session=session_out(db, next_pt) if next_pt else None,
+        pt_package=package_out(db, package) if package else None,
+        next_class=class_out(db, upcoming[0], user) if upcoming else None,
+        occupancy=attendance_service.branch_occupancy(db, member.branch),
+        unread_alerts=unread,
+        streak_days=journey_service.streak(db, member, on=today),
+    )
+
+
+@router.get("/me/activity", response_model=list[ActivityEntryOut])
+def member_activity(
+    limit: int = Query(default=40, ge=1, le=120),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ActivityEntryOut]:
+    """The activity timeline, with each entry labelled by kind.
+
+    A gym visit, an own workout, a PT session and a group class are four
+    different things and stay four different things here.
+    """
+    member = _current_member(db, user)
+    return [
+        ActivityEntryOut(**entry.__dict__)
+        for entry in activity_service.timeline(db, member, limit=limit, offset=offset)
+    ]
 
 
 @router.get("/me/occupancy", response_model=OccupancyOut)

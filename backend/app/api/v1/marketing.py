@@ -7,7 +7,7 @@ screen with a plausible-looking zero-shaped story.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -36,6 +36,9 @@ from app.schemas.operations import (
 from app.services import audit, marketing_service
 
 router = APIRouter(prefix="/marketing", tags=["marketing"])
+
+#: How far back the acquisition report looks when no range is given.
+DEFAULT_WINDOW_DAYS = 90
 
 
 @router.get("/sources", response_model=list[MarketingSourceOut])
@@ -153,10 +156,15 @@ def dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(require_management),
 ) -> MarketingDashboardOut:
-    """SOURCE → MEMBERS → DAY 45 → PT CONVERSION."""
+    """SOURCE → MEMBERS → DAY 45 → PT CONVERSION.
+
+    Defaults to a rolling 90 days rather than the calendar month: a member who
+    joined on Instagram in June and converted to PT in August belongs to the
+    same story, and a month-to-date window would cut it in half.
+    """
     allowed = scoped_branch_filter(user, branch_id)
     today = branch_today(None)
-    period_start = start or today.replace(day=1)
+    period_start = start or (today - timedelta(days=DEFAULT_WINDOW_DAYS))
     period_end = end or today
 
     funnels = marketing_service.funnel(db, allowed, start=period_start, end=period_end)
@@ -259,4 +267,4 @@ def update_source(
     return source
 
 
-__all__ = ["router"]
+__all__ = ["DEFAULT_WINDOW_DAYS", "router"]

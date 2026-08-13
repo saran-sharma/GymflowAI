@@ -320,6 +320,44 @@ class ClassAttendanceRequest(BaseModel):
     attended: bool = True
 
 
+class ActivityEntryOut(BaseModel):
+    """One line of the member's timeline, labelled with which kind it is."""
+
+    kind: str
+    on: date
+    at: datetime | None = None
+    title: str
+    detail: str | None = None
+    reference_id: int | None = None
+    branch_id: int | None = None
+
+
+class MemberHomeOut(BaseModel):
+    """Everything the member's home screen needs, in one request.
+
+    Composed server-side rather than fetched as six calls, because the screen
+    is opened on gym wifi from a phone in someone's hand.
+    """
+
+    member_id: int
+    full_name: str
+    branch_id: int
+    branch_name: str
+    membership_plan: str | None = None
+    membership_status: str | None = None
+    days_remaining: int | None = None
+    is_inside: bool = False
+    trainer_name: str | None = None
+    journey: JourneyOut | None = None
+    today_workout: WorkoutSessionOut | None = None
+    next_pt_session: PTSessionOut | None = None
+    pt_package: PTPackageOut | None = None
+    next_class: GroupClassOut | None = None
+    occupancy: dict[str, Any] | None = None
+    unread_alerts: int = 0
+    streak_days: int = 0
+
+
 class ClassRosterEntry(BaseModel):
     member_id: int
     member_name: str
