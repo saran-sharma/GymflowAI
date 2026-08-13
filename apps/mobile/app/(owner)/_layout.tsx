@@ -1,3 +1,11 @@
+/**
+ * Owner navigation: DASHBOARD, TRAINERS, INCENTIVES, MARKETING, PROFILE.
+ *
+ * Branch performance, classes, PT opportunities, corrections, alerts and
+ * settings are reachable from the dashboard and the profile rather than
+ * fighting for a tab — five is the most a bottom bar reads cleanly at.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -18,7 +26,7 @@ export default function OwnerLayout() {
           paddingBottom: spacing.sm,
           paddingTop: spacing.sm,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
@@ -48,6 +56,15 @@ export default function OwnerLayout() {
         }}
       />
       <Tabs.Screen
+        name="marketing"
+        options={{
+          title: 'Marketing',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -56,9 +73,16 @@ export default function OwnerLayout() {
           ),
         }}
       />
-      {/* Detail screens are pushed on top of the tabs. */}
+      {/* Pushed on top of the tabs. */}
       <Tabs.Screen name="branch/[id]" options={{ href: null }} />
       <Tabs.Screen name="trainer/[id]" options={{ href: null }} />
+      <Tabs.Screen name="performance" options={{ href: null }} />
+      <Tabs.Screen name="classes" options={{ href: null }} />
+      <Tabs.Screen name="corrections" options={{ href: null }} />
+      <Tabs.Screen name="members" options={{ href: null }} />
+      <Tabs.Screen name="opportunities" options={{ href: null }} />
+      <Tabs.Screen name="alerts" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

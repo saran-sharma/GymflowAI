@@ -5,12 +5,20 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    alerts,
     attendance,
     auth,
     branches,
+    classes,
     incentives,
+    journeys,
+    marketing,
     members,
+    performance,
+    pt,
     reports,
+    sessions,
+    settings,
     system,
     trainers,
     users,
@@ -26,5 +34,14 @@ api_router.include_router(attendance.router)
 api_router.include_router(incentives.router)
 api_router.include_router(members.router)
 api_router.include_router(reports.router)
+# V1.5 — the SLAM programme, PT, classes, marketing and the alert centre.
+api_router.include_router(journeys.router)
+api_router.include_router(pt.router)
+api_router.include_router(classes.router)
+api_router.include_router(sessions.router)
+api_router.include_router(marketing.router)
+api_router.include_router(performance.router)
+api_router.include_router(alerts.router)
+api_router.include_router(settings.router)
 
 __all__ = ["api_router"]

@@ -11,7 +11,7 @@ Each one sits behind a `Protocol` in `backend/app/integrations/base.py`:
 | `IMemberProvider` | `LocalMemberProvider` (GymFlow's own database) | Yoactiv |
 | `ITrainerProvider` | `LocalMemberProvider` | Yoactiv |
 | `IAttendanceProvider` | GymFlow's own events | Yoactiv |
-| `IBodyCompositionProvider` | `NullBodyCompositionProvider` | InBody |
+| `IBodyCompositionProvider` | `NullBodyCompositionProvider` | InBody — writes to the empty `body_compositions` table |
 | `IAccessControlProvider` | `SoftwareAccessControlProvider` (QR + PIN) | Turnstile / fingerprint / RFID / face |
 | `INotificationProvider` | `OutboxNotificationProvider` (in-app) | WhatsApp, Expo push |
 | `IIntelligenceProvider` | `RuleBasedIntelligenceProvider` (deterministic) | A model |

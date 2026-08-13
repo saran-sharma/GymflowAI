@@ -13,10 +13,10 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { BranchSummary, Dashboard, Insight } from '../../src/api/types';
+import type { BranchSummary, Dashboard, NeedsAttention } from '../../src/api/types';
 import { Wordmark } from '../../src/components/Brand';
+import { AlertRow, SectionHeader } from '../../src/components/programme';
 import {
-  Badge,
   Body,
   Card,
   ErrorState,
@@ -41,7 +41,9 @@ export default function OwnerDashboardScreen() {
   const router = useRouter();
 
   const dashboard = useApi<Dashboard>((token) => api.dashboard(token), []);
-  const insights = useApi<Insight[]>((token) => api.insights(token), []);
+  // Fetching this also runs the server-side automations, so what the owner
+  // sees is the current state rather than the last sweep's leftovers.
+  const attention = useApi<NeedsAttention>((token) => api.needsAttention(token), []);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
   useFocusEffect(
@@ -76,7 +78,7 @@ export default function OwnerDashboardScreen() {
             refreshing={dashboard.refreshing}
             onRefresh={() => {
               void dashboard.refresh();
-              void insights.refresh();
+              void attention.refresh();
             }}
             tintColor={colors.brand}
           />
@@ -127,34 +129,52 @@ export default function OwnerDashboardScreen() {
           />
         ))}
 
-        {insights.data && insights.data.length > 0 ? (
-          <>
-            <Txt variant="heading" style={styles.sectionHead}>
-              Needs attention
+        {/* NEEDS ATTENTION. Every row is actionable and opens the person,
+            session or member it is about. */}
+        <SectionHeader
+          title="Needs attention"
+          action={attention.data?.items.length ? 'All alerts' : undefined}
+          onAction={() => router.push('/(owner)/alerts' as never)}
+        />
+        {attention.loading ? (
+          <Txt variant="label" color={colors.textFaint}>
+            Checking…
+          </Txt>
+        ) : attention.data && attention.data.items.length > 0 ? (
+          attention.data.items.map((item) => (
+            <AlertRow
+              key={item.id}
+              severity={item.severity}
+              title={item.title}
+              body={item.body}
+              onPress={() => router.push(routeForAlert(item.action_route) as never)}
+            />
+          ))
+        ) : (
+          <Card>
+            <Txt variant="body" color={colors.textMuted}>
+              Nothing needs you right now.
             </Txt>
-            {insights.data.map((insight) => (
-              <Card key={insight.key} style={styles.insight}>
-                <Row style={styles.cardHead}>
-                  <Txt variant="label" style={styles.insightTitle}>
-                    {insight.title}
-                  </Txt>
-                  <Badge
-                    label={insight.severity}
-                    color={
-                      insight.severity === 'critical'
-                        ? colors.absent
-                        : insight.severity === 'warning'
-                          ? colors.late
-                          : colors.info
-                    }
-                  />
-                </Row>
-                <Txt variant="body" color={colors.textMuted}>
-                  {insight.detail}
-                </Txt>
-              </Card>
-            ))}
-          </>
+          </Card>
+        )}
+
+        {attention.data && (attention.data.pt_ready_count > 0 || attention.data.pending_corrections > 0) ? (
+          <View style={styles.tiles}>
+            <StatTile
+              label="Ready for PT"
+              value={attention.data.pt_ready_count}
+              hint="Day 45 complete"
+              accent={attention.data.pt_ready_count ? colors.brand : colors.textMuted}
+              onPress={() => router.push('/(owner)/opportunities' as never)}
+            />
+            <StatTile
+              label="Corrections"
+              value={attention.data.pending_corrections}
+              hint="awaiting review"
+              accent={attention.data.pending_corrections ? colors.late : colors.textMuted}
+              onPress={() => router.push('/(owner)/corrections' as never)}
+            />
+          </View>
         ) : null}
 
         <Txt variant="label" color={colors.textFaint} style={styles.footer}>
@@ -163,6 +183,23 @@ export default function OwnerDashboardScreen() {
       </Body>
     </Screen>
   );
+}
+
+/**
+ * Turn the server's description of an alert into a screen in this app.
+ *
+ * Unrecognised routes fall back to the alert list rather than a blank screen.
+ */
+function routeForAlert(actionRoute: string | null): string {
+  const route = actionRoute ?? '';
+  if (route.startsWith('/owner/trainer/')) {
+    const id = route.split('/').pop();
+    return id ? `/(owner)/trainer/${id}` : '/(owner)/trainers';
+  }
+  if (route.startsWith('/owner/corrections')) return '/(owner)/corrections';
+  if (route.startsWith('/owner/classes')) return '/(owner)/classes';
+  if (route.startsWith('/owner/member/')) return '/(owner)/members';
+  return '/(owner)/alerts';
 }
 
 function BranchCard({ branch, onPress }: { branch: BranchSummary; onPress: () => void }) {
@@ -246,7 +283,5 @@ const styles = StyleSheet.create({
   branchStats: { justifyContent: 'space-between' },
   miniStat: { alignItems: 'flex-start', gap: 2 },
   occupancy: { gap: spacing.xs },
-  insight: { gap: spacing.xs },
-  insightTitle: { flex: 1, paddingRight: spacing.sm },
   footer: { textAlign: 'center', marginTop: spacing.lg },
 });

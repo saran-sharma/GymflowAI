@@ -1,8 +1,10 @@
 /**
  * The login screen, rendered.
  *
- * Covers the two things that break silently: the submit button's enabled
- * state, and whether a server error actually reaches the user.
+ * Covers the things that break silently: the submit button's enabled state,
+ * whether a failure reaches the user in words they can act on, that the
+ * password toggle actually toggles, and that the role chip is a shortcut
+ * rather than an authorization decision.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -41,15 +43,46 @@ async function renderLogin() {
   return result;
 }
 
+function signedInAs(role: string) {
+  return {
+    user: { id: 1, email: 'owner@slam.demo', full_name: 'Karan Shetty', role },
+    tokens: { access_token: 'a', refresh_token: 'r', token_type: 'bearer', expires_in: 1800 },
+  };
+}
+
+async function fillCredentials(identifier = 'owner@slam.demo', password = 'SlamDemo2026!') {
+  fireEvent.changeText(screen.getByTestId('login-email'), identifier);
+  fireEvent.changeText(screen.getByTestId('login-password'), password);
+}
+
 beforeEach(() => {
   mockReplace.mockReset();
   mockLogin.mockReset();
 });
 
-it('shows the SLAM branding and the product name', async () => {
+it('shows the SLAM logo, the product name and the positioning line', async () => {
   await renderLogin();
-  expect(screen.getByText('SLAM')).toBeTruthy();
+  expect(screen.getByTestId('slam-logo')).toBeTruthy();
+  expect(screen.getByLabelText('SLAM Fitness Studio')).toBeTruthy();
   expect(screen.getByText('GymFlow AI')).toBeTruthy();
+  expect(screen.getByText('Smart operations across every SLAM branch.')).toBeTruthy();
+});
+
+it('offers all four roles', async () => {
+  await renderLogin();
+  for (const role of ['owner', 'trainer', 'member', 'super_admin']) {
+    expect(screen.getByTestId(`role-${role}`)).toBeTruthy();
+  }
+  expect(screen.getByText('ADMIN')).toBeTruthy();
+});
+
+it('marks the selected role and lets it change', async () => {
+  await renderLogin();
+  expect(screen.getByTestId('role-owner').props.accessibilityState.selected).toBe(true);
+
+  fireEvent.press(screen.getByTestId('role-trainer'));
+  expect(screen.getByTestId('role-trainer').props.accessibilityState.selected).toBe(true);
+  expect(screen.getByTestId('role-owner').props.accessibilityState.selected).toBe(false);
 });
 
 it('keeps submit disabled until both fields are usable', async () => {
@@ -60,7 +93,6 @@ it('keeps submit disabled until both fields are usable', async () => {
   fireEvent.changeText(screen.getByTestId('login-email'), 'owner@slam.demo');
   expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
 
-  // Eight characters is the backend's minimum; a shorter one is not sent.
   fireEvent.changeText(screen.getByTestId('login-password'), 'short');
   expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
 
@@ -68,55 +100,104 @@ it('keeps submit disabled until both fields are usable', async () => {
   expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(false);
 });
 
-it('routes an owner to the owner app', async () => {
-  mockLogin.mockResolvedValueOnce({
-    user: { id: 1, role: 'owner', full_name: 'Karan Shetty', email: 'owner@slam.demo', branch: null, branch_id: null, phone: null, has_pin: false },
-    tokens: { access_token: 'a', refresh_token: 'r', token_type: 'bearer', expires_in: 1800 },
-  });
-
+it('accepts a mobile number as well as an email', async () => {
   await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), 'owner@slam.demo');
+  fireEvent.changeText(screen.getByTestId('login-email'), '9000012345');
   fireEvent.changeText(screen.getByTestId('login-password'), 'SlamDemo2026!');
-  fireEvent.press(screen.getByTestId('login-submit'));
-
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(owner)'));
+  expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(false);
 });
 
-it('routes a trainer to the trainer app', async () => {
-  mockLogin.mockResolvedValueOnce({
-    user: { id: 2, role: 'trainer', full_name: 'Vikas Menon', email: 'v@slam.demo', branch: null, branch_id: 4, phone: null, has_pin: true },
-    tokens: { access_token: 'a', refresh_token: 'r', token_type: 'bearer', expires_in: 1800 },
-  });
-
+it('rejects an identifier that is neither an email nor a number', async () => {
   await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), 'v@slam.demo');
+  fireEvent.changeText(screen.getByTestId('login-email'), 'not an email');
   fireEvent.changeText(screen.getByTestId('login-password'), 'SlamDemo2026!');
+  expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
+});
+
+it('hides the password until the eye is tapped', async () => {
+  await renderLogin();
+  const field = screen.getByTestId('login-password');
+  expect(field.props.secureTextEntry).toBe(true);
+
+  fireEvent.press(screen.getByTestId('toggle-password'));
+  expect(screen.getByTestId('login-password').props.secureTextEntry).toBe(false);
+  expect(screen.getByLabelText('Hide password')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('toggle-password'));
+  expect(screen.getByTestId('login-password').props.secureTextEntry).toBe(true);
+});
+
+it('routes on the role the server returns, not the chip that was tapped', async () => {
+  mockLogin.mockResolvedValue(signedInAs('trainer'));
+  await renderLogin();
+
+  // The person taps OWNER but the account is a trainer.
+  fireEvent.press(screen.getByTestId('role-owner'));
+  await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(trainer)'));
 });
 
-it('shows the server message when sign-in is refused', async () => {
-  mockLogin.mockRejectedValueOnce(new ApiError(401, 'http_401', 'Incorrect email or password'));
-
+it('explains bad credentials without leaking anything technical', async () => {
+  mockLogin.mockRejectedValue(new ApiError(401, 'http_401', 'Incorrect email or password'));
   await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), 'owner@slam.demo');
-  fireEvent.changeText(screen.getByTestId('login-password'), 'WrongPassword1!');
-  fireEvent.press(screen.getByTestId('login-submit'));
-
-  await waitFor(() => expect(screen.getByText('Incorrect email or password')).toBeTruthy());
-  expect(mockReplace).not.toHaveBeenCalled();
-});
-
-it('explains an unreachable server rather than showing a raw fetch error', async () => {
-  mockLogin.mockRejectedValueOnce(new ApiError(0, 'offline', 'No connection to GymFlow.'));
-
-  await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), 'owner@slam.demo');
-  fireEvent.changeText(screen.getByTestId('login-password'), 'SlamDemo2026!');
+  await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
   await waitFor(() =>
-    expect(screen.getByText('Cannot reach GymFlow. Check your connection.')).toBeTruthy(),
+    expect(screen.getByText('That email or password is not right. Try again.')).toBeTruthy(),
+  );
+  expect(mockReplace).not.toHaveBeenCalled();
+});
+
+it('reports a lost connection rather than a network stack trace', async () => {
+  mockLogin.mockRejectedValue(new ApiError(0, 'offline', 'No connection to GymFlow.'));
+  await renderLogin();
+  await fillCredentials();
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() =>
+    expect(
+      screen.getByText('No connection to GymFlow. Check your network and try again.'),
+    ).toBeTruthy(),
+  );
+});
+
+it('reports a server outage as an outage', async () => {
+  mockLogin.mockRejectedValue(new ApiError(503, 'http_503', 'Service Unavailable'));
+  await renderLogin();
+  await fillCredentials();
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() =>
+    expect(screen.getByText('GymFlow is unavailable right now. Try again shortly.')).toBeTruthy(),
+  );
+});
+
+it('reports a locked account as something the branch can fix', async () => {
+  mockLogin.mockRejectedValue(new ApiError(403, 'http_403', 'Account is temporarily locked'));
+  await renderLogin();
+  await fillCredentials();
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() =>
+    expect(screen.getByText('This account is locked. Contact your branch manager.')).toBeTruthy(),
+  );
+});
+
+it('offers a way to get help without leaving the screen', async () => {
+  await renderLogin();
+  fireEvent.press(screen.getByTestId('forgot-password'));
+  await waitFor(() =>
+    expect(screen.getByText(/Ask your SLAM branch manager/)).toBeTruthy(),
+  );
+});
+
+it('points at the branches by name from contact help', async () => {
+  await renderLogin();
+  fireEvent.press(screen.getByTestId('contact-branch'));
+  await waitFor(() =>
+    expect(screen.getByText(/Nagalkeni, Boganhalli and Alandur/)).toBeTruthy(),
   );
 });

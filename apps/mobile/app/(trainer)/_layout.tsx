@@ -1,3 +1,11 @@
+/**
+ * Trainer navigation: SHIFT, ATTENDANCE, SESSIONS, PROFILE.
+ *
+ * The scanner, PT split view, corrections, classes and updates are pushed over
+ * the tabs rather than competing for a slot — the shift is what a trainer opens
+ * the app for.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -39,6 +47,15 @@ export default function TrainerLayout() {
         }}
       />
       <Tabs.Screen
+        name="sessions"
+        options={{
+          title: 'Sessions',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-circle-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -47,8 +64,12 @@ export default function TrainerLayout() {
           ),
         }}
       />
-      {/* The scanner is pushed over the tabs, not a tab of its own. */}
+      {/* Pushed over the tabs, not tabs of their own. */}
       <Tabs.Screen name="scan" options={{ href: null }} />
+      <Tabs.Screen name="corrections" options={{ href: null }} />
+      <Tabs.Screen name="classes" options={{ href: null }} />
+      <Tabs.Screen name="alerts" options={{ href: null }} />
+      <Tabs.Screen name="pt/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

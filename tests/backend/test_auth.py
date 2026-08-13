@@ -167,3 +167,21 @@ def test_login_is_rate_limited(client, world, monkeypatch):
 
     codes = [login(client, world["owner"], "WrongPassword1!").status_code for _ in range(30)]
     assert 429 in codes, "brute-forcing login must eventually be throttled"
+
+
+def test_a_trainer_can_sign_in_with_their_mobile_number(client, db, world):
+    """SLAM knows some staff by phone, not email — both must reach the account."""
+    user = world["trainer_ngk_user"]
+    user.phone = "+91 90000 12345"
+    db.commit()
+
+    for typed in ("+91 90000 12345", "9000012345", "09000012345"):
+        response = client.post("/api/v1/auth/login", json={"email": typed, "password": PASSWORD})
+        assert response.status_code == 200, f"{typed}: {response.text}"
+        assert response.json()["user"]["id"] == user.id
+
+
+def test_an_unknown_mobile_number_fails_the_same_way_an_unknown_email_does(client, world):
+    response = client.post("/api/v1/auth/login", json={"email": "9999900000", "password": PASSWORD})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect email or password"

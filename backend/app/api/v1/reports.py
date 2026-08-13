@@ -30,7 +30,8 @@ from app.domain.shift_engine import (
     PRESENT_STATUSES,
 )
 from app.schemas.common import AuditLogOut, BranchSummaryOut, DashboardOut, OccupancyOut
-from app.services import attendance_service
+from app.schemas.operations import NeedsAttentionOut
+from app.services import attendance_service, automation_service, correction_service
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -177,6 +178,41 @@ def attendance_trend(
         }
         for day, counts in sorted(buckets.items())
     ]
+
+
+@router.get("/needs-attention", response_model=NeedsAttentionOut)
+def needs_attention(
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> NeedsAttentionOut:
+    """The owner's actionable list.
+
+    The automations are run first so the list reflects the current state
+    rather than whatever the last sweep happened to leave behind. Each item
+    carries the route to open, so an alert leads to the person or member it is
+    about instead of a generic screen.
+    """
+    allowed = scoped_branch_filter(user, None)
+    automation_service.run_all(db, allowed)
+
+    opportunities = automation_service.opportunity_summary(db, allowed)
+    pending = len(correction_service.pending_for_branches(db, allowed))
+    return NeedsAttentionOut(
+        items=automation_service.needs_attention(db, allowed, limit=limit),
+        pt_ready_count=opportunities["pt_ready_count"],
+        pending_corrections=pending,
+    )
+
+
+@router.get("/opportunities")
+def opportunities(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> dict:
+    """Members who finished the 45-day journey and have no PT package yet."""
+    allowed = scoped_branch_filter(user, None)
+    return automation_service.opportunity_summary(db, allowed)
 
 
 @router.get("/audit", response_model=list[AuditLogOut])

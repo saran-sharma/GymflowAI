@@ -111,6 +111,116 @@ class NotificationStatus(str, enum.Enum):
     SUPPRESSED = "suppressed"
 
 
+class JourneyType(str, enum.Enum):
+    """Only one journey exists in V1, but the column is an enum so SLAM's next
+    programme is a new member of this list rather than a new table."""
+
+    GENERAL_TRAINING = "general_training"
+
+
+class JourneyStatus(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
+
+
+class WorkoutSplit(str, enum.Enum):
+    """What a given journey day is for.
+
+    Days 1–3 of the SLAM journey are assessment and cardio; days 4 onward
+    rotate the PPL split.
+    """
+
+    ASSESSMENT = "assessment"
+    CARDIO = "cardio"
+    PUSH = "push"
+    PULL = "pull"
+    LEGS = "legs"
+    REST = "rest"
+
+
+class DayStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    MISSED = "missed"
+
+
+class AssessmentStatus(str, enum.Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class ItemStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+
+
+class SessionStatus(str, enum.Enum):
+    """Shared by PT sessions, own workouts and the trainer's day view.
+
+    One vocabulary across all three keeps the trainer's schedule readable —
+    "in progress" means the same thing whichever kind of session it labels.
+    """
+
+    SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    MISSED = "missed"
+    NO_SHOW = "no_show"
+
+
+class PackageStatus(str, enum.Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+class ClassStatus(str, enum.Enum):
+    SCHEDULED = "scheduled"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+
+
+class RsvpResponse(str, enum.Enum):
+    PENDING = "pending"
+    YES = "yes"
+    NO = "no"
+
+
+class AlertSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlertStatus(str, enum.Enum):
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
+class CorrectionType(str, enum.Enum):
+    MISSING_CHECKOUT = "missing_checkout"
+    LATE_REASON = "late_reason"
+    EARLY_EXIT_REASON = "early_exit_reason"
+    WRONG_CHECK_IN = "wrong_check_in"
+    SHIFT_CORRECTION = "shift_correction"
+
+
+class CorrectionStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
 # ----------------------------------------------------------------- tables
 
 
@@ -122,6 +232,20 @@ attendance_status_enum = Enum(AttendanceStatus, name="attendance_status")
 incentive_status_enum = Enum(IncentiveStatus, name="incentive_status")
 membership_status_enum = Enum(MembershipStatus, name="membership_status")
 notification_status_enum = Enum(NotificationStatus, name="notification_status")
+journey_type_enum = Enum(JourneyType, name="journey_type")
+journey_status_enum = Enum(JourneyStatus, name="journey_status")
+workout_split_enum = Enum(WorkoutSplit, name="workout_split")
+day_status_enum = Enum(DayStatus, name="day_status")
+assessment_status_enum = Enum(AssessmentStatus, name="assessment_status")
+item_status_enum = Enum(ItemStatus, name="item_status")
+session_status_enum = Enum(SessionStatus, name="session_status")
+package_status_enum = Enum(PackageStatus, name="package_status")
+class_status_enum = Enum(ClassStatus, name="class_status")
+rsvp_response_enum = Enum(RsvpResponse, name="rsvp_response")
+alert_severity_enum = Enum(AlertSeverity, name="alert_severity")
+alert_status_enum = Enum(AlertStatus, name="alert_status")
+correction_type_enum = Enum(CorrectionType, name="correction_type")
+correction_status_enum = Enum(CorrectionStatus, name="correction_status")
 
 
 class Role(Base, TimestampMixin):
@@ -232,10 +356,21 @@ class Member(Base, TimestampMixin, DemoMixin):
     # Set when the record originates in an external system of record (Yoactiv).
     external_ref: Mapped[str | None] = mapped_column(String(64), index=True)
 
+    # How SLAM acquired this member. Captured at registration; the owner's
+    # marketing dashboard is entirely derived from these three columns plus
+    # the referral row, so nothing here is a separate reporting copy.
+    marketing_source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("marketing_sources.id"), index=True
+    )
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    registered_on: Mapped[date | None] = mapped_column(Date, index=True)
+
     user: Mapped[User] = relationship(back_populates="member")
     branch: Mapped[Branch] = relationship(back_populates="members")
     assigned_trainer: Mapped[Trainer | None] = relationship()
     memberships: Mapped[list[Membership]] = relationship(back_populates="member")
+    marketing_source: Mapped[MarketingSource | None] = relationship()
+    campaign: Mapped[Campaign | None] = relationship()
 
 
 class Membership(Base, TimestampMixin, DemoMixin):
@@ -455,6 +590,582 @@ class AuditLog(Base):
     )
 
 
+# --------------------------------------------------------------- marketing
+
+
+class MarketingSource(Base, TimestampMixin, DemoMixin):
+    """How a member found SLAM. Configurable, not a hardcoded enum.
+
+    ``requires_referrer`` is what makes the referral capture conditional
+    without the API having to special-case the string "referral".
+    """
+
+    __tablename__ = "marketing_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(48), unique=True, nullable=False)
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    requires_referrer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class Campaign(Base, TimestampMixin, DemoMixin):
+    __tablename__ = "campaigns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Null branch = the campaign ran across the whole chain.
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str] = mapped_column(String(48), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    starts_on: Mapped[date | None] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    branch: Mapped[Branch | None] = relationship()
+
+
+class Referral(Base, TimestampMixin, DemoMixin):
+    """Who introduced whom.
+
+    No reward column: SLAM has not set a referral policy yet, and inventing
+    one here would put a number in front of a member that nobody agreed to.
+    """
+
+    __tablename__ = "referrals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    referrer_member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    referred_member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    referrer: Mapped[Member] = relationship(foreign_keys=[referrer_member_id])
+    referred: Mapped[Member] = relationship(foreign_keys=[referred_member_id])
+
+    __table_args__ = (UniqueConstraint("referred_member_id", name="uq_referral_referred"),)
+
+
+# ----------------------------------------------------------------- journey
+
+
+class Journey(Base, TimestampMixin, DemoMixin):
+    """A member's structured training programme — SLAM's 45-day journey in V1.
+
+    ``duration_days`` is stored per journey rather than read from settings at
+    display time so retuning the programme length tomorrow cannot silently
+    move the finish line for someone already halfway through it.
+    """
+
+    __tablename__ = "journeys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    journey_type: Mapped[JourneyType] = mapped_column(
+        journey_type_enum, default=JourneyType.GENERAL_TRAINING, nullable=False
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    duration_days: Mapped[int] = mapped_column(Integer, default=45, nullable=False)
+    assessment_days: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    cardio_sessions_required: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    status: Mapped[JourneyStatus] = mapped_column(
+        journey_status_enum, default=JourneyStatus.ACTIVE, nullable=False
+    )
+    assessment_status: Mapped[AssessmentStatus] = mapped_column(
+        assessment_status_enum, default=AssessmentStatus.NOT_STARTED, nullable=False
+    )
+    assigned_trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"))
+    completed_on: Mapped[date | None] = mapped_column(Date)
+    # Written once by the Day-45 automation; the member's completion screen and
+    # the owner's PT opportunity list both read this rather than recomputing.
+    completion_summary: Mapped[dict | None] = mapped_column(JSONType)
+    pt_offer_shown: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pt_converted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    member: Mapped[Member] = relationship()
+    branch: Mapped[Branch] = relationship()
+    assigned_trainer: Mapped[Trainer | None] = relationship()
+    days: Mapped[list[JourneyDay]] = relationship(
+        back_populates="journey", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_journeys_branch_status", "branch_id", "status"),)
+
+
+class JourneyDay(Base, TimestampMixin):
+    """One row per planned day. Materialised up front so "Day 12 of 45" is a
+    lookup rather than a calculation that every caller could get wrong."""
+
+    __tablename__ = "journey_days"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    journey_id: Mapped[int] = mapped_column(
+        ForeignKey("journeys.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    day_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    planned_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    split: Mapped[WorkoutSplit] = mapped_column(workout_split_enum, nullable=False)
+    status: Mapped[DayStatus] = mapped_column(
+        day_status_enum, default=DayStatus.PENDING, nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    journey: Mapped[Journey] = relationship(back_populates="days")
+
+    __table_args__ = (UniqueConstraint("journey_id", "day_number", name="uq_journey_day"),)
+
+
+class Assessment(Base, TimestampMixin, DemoMixin):
+    """The Day 1–3 fitness assessment, recorded by a trainer.
+
+    Deliberately holds only what a trainer measures by hand. Body composition
+    belongs to InBody and is not invented here — see BodyComposition.
+    """
+
+    __tablename__ = "assessments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    journey_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journeys.id", ondelete="CASCADE"), index=True
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"))
+    status: Mapped[AssessmentStatus] = mapped_column(
+        assessment_status_enum, default=AssessmentStatus.NOT_STARTED, nullable=False
+    )
+    goal: Mapped[str | None] = mapped_column(String(160))
+    height_cm: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    weight_kg: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    notes: Mapped[str | None] = mapped_column(Text)
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CardioSession(Base, TimestampMixin, DemoMixin):
+    """A Day 1–3 cardio block. Counted against ``cardio_sessions_required``."""
+
+    __tablename__ = "cardio_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    journey_id: Mapped[int] = mapped_column(
+        ForeignKey("journeys.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    day_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    machine: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    recorded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (UniqueConstraint("journey_id", "day_number", name="uq_cardio_journey_day"),)
+
+
+# ---------------------------------------------------------------- workouts
+
+
+class WorkoutPlan(Base, TimestampMixin, DemoMixin):
+    """A named PPL plan. Chain templates have ``member_id`` null; assigning one
+    to a member copies it, so editing the template never rewrites history."""
+
+    __tablename__ = "workout_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), index=True
+    )
+    journey_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journeys.id", ondelete="CASCADE"), index=True
+    )
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    items: Mapped[list[WorkoutPlanItem]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+
+
+class WorkoutPlanItem(Base, TimestampMixin):
+    __tablename__ = "workout_plan_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_plans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    split: Mapped[WorkoutSplit] = mapped_column(workout_split_enum, nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exercise: Mapped[str] = mapped_column(String(120), nullable=False)
+    sets: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    reps: Mapped[str] = mapped_column(String(32), default="10", nullable=False)
+    rest_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(160))
+
+    plan: Mapped[WorkoutPlan] = relationship(back_populates="items")
+
+    __table_args__ = (Index("ix_plan_items_plan_split", "plan_id", "split"),)
+
+
+class WorkoutSession(Base, TimestampMixin, DemoMixin):
+    """A member's OWN workout.
+
+    Distinct from a gym visit (an attendance event), a PT session and a group
+    class — §13 of the brief turns on these four staying separable.
+    """
+
+    __tablename__ = "workout_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    journey_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journeys.id", ondelete="CASCADE"), index=True
+    )
+    journey_day_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journey_days.id", ondelete="SET NULL")
+    )
+    day_number: Mapped[int | None] = mapped_column(Integer)
+    split: Mapped[WorkoutSplit] = mapped_column(workout_split_enum, nullable=False)
+    session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    status: Mapped[SessionStatus] = mapped_column(
+        session_status_enum, default=SessionStatus.SCHEDULED, nullable=False
+    )
+    # Set when a trainer is supervising the member's own workout — the
+    # "own workout support" line on the trainer's schedule.
+    supervising_trainer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("trainers.id"), index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    items: Mapped[list[WorkoutSessionItem]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    member: Mapped[Member] = relationship()
+
+    __table_args__ = (Index("ix_workout_sessions_member_date", "member_id", "session_date"),)
+
+
+class WorkoutSessionItem(Base, TimestampMixin):
+    __tablename__ = "workout_session_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    plan_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workout_plan_items.id", ondelete="SET NULL")
+    )
+    order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exercise: Mapped[str] = mapped_column(String(120), nullable=False)
+    sets: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    reps: Mapped[str] = mapped_column(String(32), default="10", nullable=False)
+    rest_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    status: Mapped[ItemStatus] = mapped_column(
+        item_status_enum, default=ItemStatus.PENDING, nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    session: Mapped[WorkoutSession] = relationship(back_populates="items")
+
+
+# ---------------------------------------------------------------------- PT
+
+
+class PTPackage(Base, TimestampMixin, DemoMixin):
+    """A block of personal-training sessions a member has bought.
+
+    ``price_amount`` is nullable and never defaulted: SLAM has not supplied
+    pricing, and a made-up number shown to a member would be worse than none.
+    """
+
+    __tablename__ = "pt_packages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"), index=True)
+    journey_id: Mapped[int | None] = mapped_column(ForeignKey("journeys.id"), index=True)
+    sessions_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    sessions_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[PackageStatus] = mapped_column(
+        package_status_enum, default=PackageStatus.ACTIVE, nullable=False
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    price_amount: Mapped[float | None] = mapped_column(Numeric(10, 2, asdecimal=False))
+    currency: Mapped[str | None] = mapped_column(String(8))
+    # "journey_conversion" when it came out of a completed 45-day journey,
+    # which is what the marketing funnel counts as a PT conversion.
+    origin: Mapped[str] = mapped_column(String(32), default="direct", nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    member: Mapped[Member] = relationship()
+    trainer: Mapped[Trainer | None] = relationship()
+
+    @property
+    def sessions_remaining(self) -> int:
+        return max(0, self.sessions_total - self.sessions_used)
+
+
+class PTSession(Base, TimestampMixin, DemoMixin):
+    """One PT appointment.
+
+    Member and trainer arrival are separate columns on purpose — the split PT
+    attendance view is a read of these two, not a second attendance model.
+    """
+
+    __tablename__ = "pt_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    package_id: Mapped[int] = mapped_column(
+        ForeignKey("pt_packages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trainer_id: Mapped[int] = mapped_column(ForeignKey("trainers.id"), nullable=False, index=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    scheduled_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Position within the package: "7 / 20".
+    session_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[SessionStatus] = mapped_column(
+        session_status_enum, default=SessionStatus.SCHEDULED, nullable=False
+    )
+    member_checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trainer_checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    package: Mapped[PTPackage] = relationship()
+    member: Mapped[Member] = relationship()
+    trainer: Mapped[Trainer] = relationship()
+
+    __table_args__ = (
+        Index("ix_pt_sessions_trainer_date", "trainer_id", "session_date"),
+        Index("ix_pt_sessions_branch_date", "branch_id", "session_date"),
+    )
+
+
+# ---------------------------------------------------------- group classes
+
+
+class GroupClass(Base, TimestampMixin, DemoMixin):
+    __tablename__ = "group_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    class_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    capacity: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+    status: Mapped[ClassStatus] = mapped_column(
+        class_status_enum, default=ClassStatus.SCHEDULED, nullable=False
+    )
+    announcement: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    branch: Mapped[Branch] = relationship()
+    trainer: Mapped[Trainer | None] = relationship()
+
+
+class GroupClassRsvp(Base, TimestampMixin):
+    """The member's answer. Kept apart from attendance: saying yes and turning
+    up are different facts, and SLAM needs to see the gap between them."""
+
+    __tablename__ = "group_class_rsvps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("group_classes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    response: Mapped[RsvpResponse] = mapped_column(
+        rsvp_response_enum, default=RsvpResponse.PENDING, nullable=False
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    member: Mapped[Member] = relationship()
+
+    __table_args__ = (UniqueConstraint("class_id", "member_id", name="uq_class_rsvp"),)
+
+
+class GroupClassAttendance(Base, TimestampMixin):
+    __tablename__ = "group_class_attendance"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("group_classes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    attended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    recorded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    member: Mapped[Member] = relationship()
+
+    __table_args__ = (UniqueConstraint("class_id", "member_id", name="uq_class_attendance"),)
+
+
+# ------------------------------------------------------------------ alerts
+
+
+class Alert(Base, TimestampMixin):
+    """In-app alert. The only notification channel V1 depends on.
+
+    ``dedupe_key`` is what lets the automations run as often as they like — a
+    second pass over the same fact updates the existing row rather than
+    stacking a duplicate in the owner's list.
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    # Which role should see it. Null user = anyone holding that role.
+    target_role: Mapped[str | None] = mapped_column(String(32), index=True)
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    severity: Mapped[AlertSeverity] = mapped_column(
+        alert_severity_enum, default=AlertSeverity.INFO, nullable=False
+    )
+    status: Mapped[AlertStatus] = mapped_column(
+        alert_status_enum, default=AlertStatus.OPEN, nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str | None] = mapped_column(String(48))
+    entity_id: Mapped[str | None] = mapped_column(String(48))
+    # Where tapping the alert should land in the app.
+    action_route: Mapped[str | None] = mapped_column(String(160))
+    dedupe_key: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (Index("ix_alerts_branch_status", "branch_id", "status"),)
+
+
+class Task(Base, TimestampMixin):
+    """Follow-up work the automations create — the PT call after Day 45."""
+
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
+    assigned_trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"))
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(24), default="open", nullable=False, index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(180), unique=True, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+# ------------------------------------------------------ attendance appeals
+
+
+class AttendanceCorrection(Base, TimestampMixin):
+    """A trainer's request to fix an attendance record, and its verdict.
+
+    The original values are copied in at request time so the audit answers
+    "what did this say before?" without replaying the event log.
+    """
+
+    __tablename__ = "attendance_corrections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trainer_attendance_id: Mapped[int] = mapped_column(
+        ForeignKey("trainer_attendance.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trainer_id: Mapped[int] = mapped_column(
+        ForeignKey("trainers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    correction_type: Mapped[CorrectionType] = mapped_column(correction_type_enum, nullable=False)
+    status: Mapped[CorrectionStatus] = mapped_column(
+        correction_status_enum, default=CorrectionStatus.PENDING, nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requested_check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_status: Mapped[AttendanceStatus | None] = mapped_column(attendance_status_enum)
+    new_status: Mapped[AttendanceStatus | None] = mapped_column(attendance_status_enum)
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    trainer: Mapped[Trainer] = relationship()
+    attendance: Mapped[TrainerAttendance] = relationship()
+
+
+class BodyComposition(Base, TimestampMixin):
+    """Reserved for InBody. No V1 workflow writes or reads this.
+
+    The table exists so the member's progress screen has a real place to put
+    scan results the day the integration is switched on — and so nothing in
+    the meantime is tempted to fabricate the numbers somewhere else.
+    """
+
+    __tablename__ = "body_compositions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), default="inbody", nullable=False)
+    external_ref: Mapped[str | None] = mapped_column(String(64), index=True)
+    weight_kg: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    body_fat_pct: Mapped[float | None] = mapped_column(Pct())
+    muscle_mass_kg: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    bmi: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    visceral_fat: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
+    bmr_kcal: Mapped[int | None] = mapped_column(Integer)
+    body_water_pct: Mapped[float | None] = mapped_column(Pct())
+
+
 class Setting(Base, TimestampMixin):
     """Configurable business rules, global or per branch."""
 
@@ -471,27 +1182,61 @@ class Setting(Base, TimestampMixin):
 
 
 __all__ = [
+    "Alert",
+    "AlertSeverity",
+    "AlertStatus",
+    "Assessment",
+    "AssessmentStatus",
+    "AttendanceCorrection",
     "AttendanceEvent",
     "AttendanceStatus",
     "AuditLog",
+    "BodyComposition",
     "Branch",
+    "Campaign",
     "CaptureMethod",
+    "CardioSession",
+    "ClassStatus",
+    "CorrectionStatus",
+    "CorrectionType",
+    "DayStatus",
     "EventType",
+    "GroupClass",
+    "GroupClassAttendance",
+    "GroupClassRsvp",
     "IncentiveResult",
     "IncentiveRule",
     "IncentiveStatus",
+    "ItemStatus",
+    "Journey",
+    "JourneyDay",
+    "JourneyStatus",
+    "JourneyType",
+    "MarketingSource",
     "Member",
     "Membership",
     "MembershipStatus",
     "Notification",
     "NotificationStatus",
+    "PTPackage",
+    "PTSession",
+    "PackageStatus",
     "PersonType",
+    "Referral",
     "RefreshToken",
     "Role",
     "RoleKey",
+    "RsvpResponse",
+    "SessionStatus",
     "Setting",
     "Shift",
+    "Task",
     "Trainer",
     "TrainerAttendance",
     "User",
+    "WorkoutPlan",
+    "WorkoutPlanItem",
+    "WorkoutSession",
+    "WorkoutSessionItem",
+    "WorkoutSplit",
 ]

@@ -1,8 +1,10 @@
 # GymFlow AI — architecture
 
-V1 exists to answer one question for SLAM's owner: **is the trainer who was
-supposed to be on the floor actually on the floor?** Every structural decision
-below serves that, and nothing else was built.
+GymFlow runs two things for SLAM: **trainer accountability** — is the trainer
+who was supposed to be on the floor actually on the floor? — and the **45-day
+General Training journey** every member is put through. Everything else in the
+product (PT, classes, acquisition, alerts) exists because one of those two
+produces it.
 
 ```
 ┌──────────────────────┐
@@ -124,6 +126,76 @@ reports need no migration when hardware lands, but the API rejects them today.
 - Attendance % = present days ÷ **rostered** days
 - Overall score = weighted blend, weights configurable
 
+### The 45-day journey
+
+The programme is pure arithmetic in `domain/journey.py` — no database, no
+clock — so every boundary is testable in isolation:
+
+| Day | What it is | Split |
+| --- | --- | --- |
+| 0 | Not started | — |
+| 1 – 3 | Assessment phase | Cardio |
+| 4 | First training day | Push |
+| 5, 6 | | Pull, Legs |
+| 7 | Rotation wraps | Push |
+| 45 | Final day | Legs |
+| 46+ | Complete, clamped to Day 45 | — |
+
+Journey length, the assessment window, the cardio requirement and the rotation
+itself are settings (`journey.*`). **Each journey stores the rules it was
+created with**, for the same reason attendance snapshots its shift rules: a
+member halfway through a 45-day programme must not have their finish line moved
+because the chain retuned the setting.
+
+### Day-45 completion is server-side and automatic
+
+`journey_service.settle_journey` is idempotent and runs from three places: the
+scheduled automation sweep, any read of a journey, and the moment a member
+finishes their last workout. Reaching the final day marks the journey complete,
+writes the progress summary, makes the member eligible for PT, raises an alert
+for the owner and one for the member, and opens a PT follow-up task.
+
+There is no manual trigger, and no client involvement. A member who never opens
+the app still completes on time.
+
+### PT, and why the split view is a read
+
+A PT session stores `member_checked_in_at` and `trainer_checked_in_at` as two
+separate columns. The dual-person attendance screen is a *read* of those two —
+not a second attendance model — which is why "COMPLETE SESSION" can require
+both without any extra state.
+
+Completion is the only thing that increments `sessions_used`, and it is guarded
+so a double tap cannot burn two of the member's sessions. Cancellations and
+no-shows cost the member nothing. Session numbers come from the highest number
+already booked, so a cancelled session never hands its slot to the next one and
+leaves two sessions both labelled "7 / 20".
+
+### Four kinds of activity, kept apart
+
+A **gym visit** (attendance event), an **own workout** (`workout_sessions`), a
+**PT session** (`pt_sessions`) and a **group class** (`group_class_attendance`)
+are four different facts. The member's timeline composes them and labels each;
+nothing merges them into a generic "attendance" number, because that number
+would answer none of the questions SLAM actually asks.
+
+The trainer's daily schedule is composed the same way, from the records that
+already exist, rather than stored as a fourth copy that could drift.
+
+### Numbers that are withheld rather than estimated
+
+Two places refuse to produce a figure:
+
+- **Branch comparison** returns a trend only when the previous window actually
+  holds rows. Otherwise `has_comparison` is false and the app renders "—". A 0%
+  delta and "we have no history" are different claims.
+- **Busy-period forecast** returns nothing until `occupancy.busy_period_min_days`
+  of check-in history exists, and says how far off it is.
+
+The marketing funnel is the same principle applied to counting: every figure is
+a count of member rows, and a member with no recorded source is reported as
+"Not recorded" rather than distributed across the sources that do have data.
+
 ### Incentive
 
 Eligibility only — never a payout figure, and every response carries
@@ -139,8 +211,8 @@ rather than a flat no.
 | SUPER ADMIN | Everything, plus configuration |
 | OWNER | All three branches, plus configuration |
 | BRANCH MANAGER | Their branch only |
-| TRAINER | Their own record only |
-| MEMBER | Their own membership and visits |
+| TRAINER | Their own record; members and sessions at their branch |
+| MEMBER | Their own membership, journey, workouts, PT and visits |
 
 Enforced in `app/core/deps.py` on every request. The mobile app also hides what
 a role cannot use — that is presentation, not security.
@@ -151,3 +223,8 @@ No offline check-in queue (an event written from a phone clock, or replayed
 hours later, would be exactly the record this product exists to make
 trustworthy). No payroll. No CRM. No biometric hardware. No live Yoactiv,
 InBody or WhatsApp integration. No AI on any critical path.
+
+No PT pricing, because SLAM has not supplied any — `pt_packages.price_amount`
+is nullable and never defaulted, and the offer screen shows session counts
+only. No referral rewards, for the same reason. No body-composition numbers:
+`body_compositions` exists and stays empty until InBody is connected.

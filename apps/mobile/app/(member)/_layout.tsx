@@ -1,3 +1,11 @@
+/**
+ * Member navigation: HOME, WORKOUT, PT, PROGRESS, PROFILE.
+ *
+ * Visits and classes are still reachable — visits folded into PROGRESS as the
+ * activity timeline, classes and updates pushed over the tabs — so nothing
+ * that worked before was removed without a replacement.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -18,23 +26,41 @@ export default function MemberLayout() {
           paddingBottom: spacing.sm,
           paddingTop: spacing.sm,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Membership',
-          tabBarIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />,
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="visits"
+        name="workout"
         options={{
-          title: 'Visits',
+          title: 'Workout',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="footsteps-outline" size={size} color={color} />
+            <Ionicons name="barbell-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="pt"
+        options={{
+          title: 'PT',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
         }}
       />
@@ -43,10 +69,14 @@ export default function MemberLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="ellipsis-horizontal-circle-outline" size={size} color={color} />
           ),
         }}
       />
+      {/* Reached from home and from profile, not tabs of their own. */}
+      <Tabs.Screen name="classes" options={{ href: null }} />
+      <Tabs.Screen name="alerts" options={{ href: null }} />
+      <Tabs.Screen name="visits" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -30,9 +30,21 @@ class ORMModel(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    """Sign-in credentials.
+
+    ``email`` carries either an email address or a mobile number: SLAM knows
+    some staff by one and some by the other, and the field name is kept so
+    existing clients do not have to change. The lookup normalises both.
+    """
+
+    email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     device_name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("email")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
 
 
 class RefreshRequest(BaseModel):

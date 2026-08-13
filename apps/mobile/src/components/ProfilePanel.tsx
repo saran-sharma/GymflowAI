@@ -7,8 +7,9 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Modal, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ApiError } from '../api/client';
 import { resolveBaseUrl } from '../api/client';
@@ -28,7 +29,7 @@ import {
 import { PUSH_ENABLED, registerForPush } from '../notifications';
 import { useAuth } from '../store/AuthContext';
 import { useNetwork } from '../store/NetworkContext';
-import { colors, radius, spacing, typography } from '../theme';
+import { colors, HIT_TARGET, radius, spacing, typography } from '../theme';
 import { initials } from '../utils/format';
 
 const roleLabels: Record<string, string> = {
@@ -39,9 +40,24 @@ const roleLabels: Record<string, string> = {
   member: 'Member',
 };
 
-export function ProfilePanel({ showPin = false }: { showPin?: boolean }) {
+/** A screen this role can reach from here rather than from a tab of its own. */
+export interface ProfileLink {
+  label: string;
+  detail?: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  route: string;
+}
+
+export function ProfilePanel({
+  showPin = false,
+  links = [],
+}: {
+  showPin?: boolean;
+  links?: ProfileLink[];
+}) {
   const { user, signOut, withToken, refreshUser } = useAuth();
   const { isOnline, type } = useNetwork();
+  const router = useRouter();
 
   const [pinOpen, setPinOpen] = useState(false);
   const [password, setPassword] = useState('');
@@ -108,6 +124,33 @@ export function ProfilePanel({ showPin = false }: { showPin?: boolean }) {
             <Detail label="Check-in PIN" value={user.has_pin ? 'Set' : 'Not set'} />
           ) : null}
         </Card>
+
+        {links.length ? (
+          <Card>
+            <Eyebrow>More</Eyebrow>
+            <Divider />
+            {links.map((link) => (
+              <Pressable
+                key={link.route}
+                accessibilityRole="button"
+                accessibilityLabel={link.label}
+                onPress={() => router.push(link.route as never)}
+                style={({ pressed }) => [styles.link, pressed && styles.linkPressed]}
+              >
+                <Ionicons name={link.icon} size={20} color={colors.textMuted} />
+                <View style={styles.linkText}>
+                  <Txt variant="body">{link.label}</Txt>
+                  {link.detail ? (
+                    <Txt variant="label" color={colors.textFaint}>
+                      {link.detail}
+                    </Txt>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+              </Pressable>
+            ))}
+          </Card>
+        ) : null}
 
         {message ? <Banner tone={message.tone}>{message.text}</Banner> : null}
 
@@ -237,6 +280,15 @@ const styles = StyleSheet.create({
   detail: { justifyContent: 'space-between', paddingVertical: 3, gap: spacing.lg },
   detailValue: { flexShrink: 1, textAlign: 'right' },
   statusRow: { gap: spacing.xs },
+  link: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: HIT_TARGET,
+  },
+  linkPressed: { opacity: 0.7 },
+  linkText: { flex: 1, gap: 2 },
   note: { marginTop: spacing.sm, lineHeight: 16 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'center', padding: spacing.xl },
   modalCard: { gap: spacing.md },

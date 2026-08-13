@@ -1,14 +1,24 @@
 # GymFlow AI
 
-**Trainer accountability for SLAM Fitness Studio — Nagalkeni, Boganhalli, Alandur.**
+**The smart operational layer for SLAM Fitness Studio — Nagalkeni, Boganhalli,
+Alandur.**
 
-The owner needs one thing answered honestly, every day, across three branches:
-*is the trainer who was supposed to be on the floor actually on the floor?*
+GymFlow AI runs the two things SLAM's day turns on.
 
-V1 answers exactly that. Who is working, who checked in, who is late, who is
+**Trainer accountability.** Who is working, who checked in, who is late, who is
 absent, who left early, who never checked out — and what that adds up to over a
-month in punctuality and incentive eligibility. It is not a gym CRM, and it was
-deliberately not built as one.
+month in punctuality and incentive eligibility.
+
+**The SLAM 45-day journey.** Days 1–3 assessment and cardio, days 4–45 the PPL
+rotation, and on Day 45 the programme completes *itself*: the summary is
+written, the member becomes eligible for PT, the owner is alerted and a
+follow-up task opens, with nobody pressing anything.
+
+Around those sit PT packages and sessions, group classes with RSVP and real
+attendance, acquisition sources and referrals, and an in-app alert centre.
+
+It is not a replacement for Yoactiv, and it works with every integration
+switched off — which is how it ships.
 
 ```
 GymFlow Mobile  ──►  GymFlow API  ──►  PostgreSQL
@@ -25,9 +35,9 @@ API *what* happened — which branch, which method, which credential — and nev
 | Path | What it is |
 | --- | --- |
 | [`apps/mobile/`](apps/mobile) | The V1 product. React Native · Expo · TypeScript. Owner, Trainer and Member apps in one binary. |
-| [`backend/`](backend) | FastAPI. Authentication, roles, branch isolation, the shift/punctuality/incentive engines, occupancy, audit. |
-| [`database/migrations/`](database/migrations) | Alembic migrations for the 15-table schema. |
-| [`tests/backend/`](tests/backend) | 126 tests: rules, permissions, branch isolation, end-to-end journeys. |
+| [`backend/`](backend) | FastAPI. Authentication, roles, branch isolation, the shift/punctuality/incentive engines, the 45-day journey, PT, classes, marketing, alerts, audit. |
+| [`database/migrations/`](database/migrations) | Alembic migrations for the 35-table schema. |
+| [`tests/backend/`](tests/backend) | 234 tests: rules, permissions, branch isolation, journey day boundaries, PT balances, end-to-end journeys. |
 | [`apps/web-demo/`](apps/web-demo) | The original browser demo, kept intact. Still published to GitHub Pages. |
 | [`docs/`](docs) | Architecture, integrations, development, deployment, Codespaces, Android builds. |
 | [`.devcontainer/`](.devcontainer) | Codespaces runtime — Node, Python and PostgreSQL, nothing installed locally. |
@@ -64,19 +74,45 @@ Trainer check-in PIN: `246813`
 
 ## The three apps
 
-**Trainer.** Open, see your name, branch and shift, press one thing. Scan the
-branch QR or type your PIN. The confirmation shows the *server's* time, the
-branch, the shift and the status it produced. Then your month: punctuality,
-late count, early exits, and where you stand against the incentive thresholds.
+**Trainer** — SHIFT · ATTENDANCE · SESSIONS · PROFILE. Open, see your name,
+branch and shift, press one thing. Scan the branch QR or type your PIN; the
+confirmation shows the *server's* time and the status it produced. Then today's
+schedule — PT, group classes and own-workout support — your month's punctuality
+and incentive standing, and a way to appeal a late mark or a forgotten
+check-out. A trainer can record what happened; a trainer can never edit a
+timestamp.
 
-**Owner.** Total trainers, present, late, absent, early exit, chain punctuality
-— above the fold. Then one card per branch with its own numbers and live
-occupancy, each a door into the branch, then the trainer, then their attendance
-and incentive standing.
+**Owner** — DASHBOARD · TRAINERS · INCENTIVES · MARKETING · PROFILE. The six
+accountability numbers above the fold, one card per branch, then **NEEDS
+ATTENTION**: late trainers, missing check-outs, unworked shifts, pending
+corrections, Day-45 members ready for PT, low PT balances, expiring
+memberships, poor class turnout. Every row opens the person or member it is
+about. Branch performance, marketing, class turnout, the correction queue and
+settings sit one tap away.
 
-**Member.** Deliberately small: membership status, days remaining, own visits,
-how busy their branch is right now, and who their trainer is. No CRM, no diet
-platform, no PT booking — those are later phases.
+**Member** — HOME · WORKOUT · PT · PROGRESS · PROFILE. The 45-day journey
+first: which day, which phase, today's split. The workout screen carries the
+PPL chart with sets, reps and rest, and ticking it off completes the journey
+day server-side. PT shows the balance ("6 / 20 completed, 14 remaining") and,
+after Day 45, the conversion offer. Progress keeps gym visits, own workouts, PT
+sessions and group classes as four separate things, and reserves an empty slot
+for InBody rather than inventing body-composition numbers.
+
+## The 45-day journey
+
+```
+Day 1 – 3     assessment + cardio        recorded by a trainer
+Day 4 – 45    push / pull / legs         the member ticks off their own chart
+Day 45        completes itself           summary · PT eligibility · alert · task
+```
+
+Day numbers are derived from the server clock, and each journey stores the
+rules it was created with — so retuning the programme length tomorrow cannot
+move the finish line for someone already halfway through one.
+
+The Day-45 automation is idempotent and runs on every read of a journey as well
+as from the scheduled sweep. Opening the app completes a finished journey;
+the sweep catches whoever never opens it. Nothing waits for a button.
 
 ## How the rules work
 
@@ -91,8 +127,10 @@ An 18:00–21:00 shift with a 10-minute grace:
 | Check-in, no check-out | **MISSING CHECKOUT** |
 
 Nothing above is hardcoded. Grace periods, check-in windows, punctuality
-weights and incentive thresholds are rows in `settings` and `incentive_rules`,
-resolvable per shift, per branch, or chain-wide. The rules in force are
+weights, incentive thresholds, journey length, the PPL rotation, PT package
+sizes, class capacity and every alert threshold are rows in `settings` and
+`incentive_rules`, resolvable per shift, per branch, or chain-wide, and
+editable from the owner's Settings screen. The rules in force are
 snapshotted onto each attendance record, so re-tuning tomorrow cannot rewrite
 yesterday's verdicts.
 
@@ -125,6 +163,11 @@ have contracts in [`backend/app/integrations/`](backend/app/integrations) and
 are **all disabled**. The core product is required to work that way, and the
 test suite asserts it.
 
+Two consequences you can see in the product: alerts are delivered in-app only,
+and the member's body-composition panel is empty and labelled rather than
+filled with plausible numbers. `body_compositions` is a real table waiting for
+InBody; no V1 workflow reads or writes it.
+
 Nothing invents a vendor API. Where documentation is missing — Yoactiv above
 all — the provider raises with what is actually needed rather than returning
 empty results that would read as "there is no data". See
@@ -134,7 +177,7 @@ obtain.
 ## Checks
 
 ```bash
-npm run verify     # everything: lint, 126 backend tests, typecheck, 39 mobile tests
+npm run verify     # everything: lint, 234 backend tests, typecheck, 47 mobile tests
 ```
 
 CI runs the same three suites on every pull request, backed by a real
