@@ -250,6 +250,9 @@ export const recordCardio = (
 export const journeysReadyForPt = (token: string) =>
   request<Journey[]>('/journeys?ready_for_pt=true', { token });
 
+export const journeys = (token: string, branchId?: number) =>
+  request<Journey[]>(`/journeys${branchId ? `?branch_id=${branchId}` : ''}`, { token });
+
 /* --------------------------------------------------------------- workouts */
 
 export const todayWorkout = (token: string) =>

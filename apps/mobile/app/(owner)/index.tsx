@@ -198,7 +198,7 @@ function routeForAlert(actionRoute: string | null): string {
   }
   if (route.startsWith('/owner/corrections')) return '/(owner)/corrections';
   if (route.startsWith('/owner/classes')) return '/(owner)/classes';
-  if (route.startsWith('/owner/member/')) return '/(owner)/opportunities';
+  if (route.startsWith('/owner/member/')) return '/(owner)/members';
   return '/(owner)/alerts';
 }
 
