@@ -461,3 +461,33 @@ export const updateSetting = (key: string, value: unknown, token: string) =>
     body: { value, branch_id: null },
     token,
   });
+
+/* ------------------------------------------------------ the trainer's desk */
+
+export const myClients = (token: string) =>
+  request<import('./types').TrainerClient[]>('/trainers/me/clients', { token });
+
+export const myClientDetail = (memberId: number, token: string) =>
+  request<import('./types').TrainerClientDetail>(`/trainers/me/clients/${memberId}`, { token });
+
+export const myAvailability = (token: string, days = 14) =>
+  request<import('./types').AvailabilitySlot[]>(`/trainers/me/availability?days=${days}`, {
+    token,
+  });
+
+export const publishAvailability = (
+  slotDate: string,
+  slots: import('./types').AvailabilitySlotInput[],
+  token: string,
+) =>
+  request<import('./types').AvailabilitySlot[]>('/trainers/me/availability', {
+    method: 'POST',
+    body: { slot_date: slotDate, slots },
+    token,
+  });
+
+export const removeAvailability = (slotId: number, token: string) =>
+  request<{ message: string }>(`/trainers/me/availability/${slotId}`, {
+    method: 'DELETE',
+    token,
+  });

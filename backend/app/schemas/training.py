@@ -7,7 +7,7 @@ readable in one file.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,6 +19,7 @@ from app.db.models import (
     ItemStatus,
     JourneyStatus,
     JourneyType,
+    MembershipStatus,
     PackageStatus,
     RsvpResponse,
     SessionStatus,
@@ -356,6 +357,66 @@ class MemberHomeOut(BaseModel):
     occupancy: dict[str, Any] | None = None
     unread_alerts: int = 0
     streak_days: int = 0
+
+
+class TrainerClientOut(BaseModel):
+    """One of a trainer's assigned members, as their desk needs them.
+
+    Everything here is read from a record that already exists. `payment_status`
+    is deliberately absent: GymFlow has no billing model, and a trainer acting
+    on an invented payment state would be acting on nothing.
+    """
+
+    member_id: int
+    member_code: str
+    full_name: str
+    branch_id: int
+    joined_on: date | None = None
+    membership_plan: str | None = None
+    membership_status: MembershipStatus | None = None
+    days_remaining: int | None = None
+    journey: JourneyOut | None = None
+    pt_package: PTPackageOut | None = None
+    next_pt_session: PTSessionOut | None = None
+    last_seen_on: date | None = None
+    visits_last_30: int = 0
+
+
+class TrainerClientDetailOut(BaseModel):
+    """The client detail screen, assembled from existing services only."""
+
+    client: TrainerClientOut
+    recent_sessions: list[PTSessionOut] = []
+    recent_workouts: list[WorkoutSessionOut] = []
+    activity: list[ActivityEntryOut] = []
+
+
+class AvailabilitySlotOut(ORMModel):
+    id: int
+    trainer_id: int
+    branch_id: int
+    slot_date: date
+    start_time: time
+    end_time: time
+    booked_session_id: int | None = None
+    note: str | None = None
+
+
+class AvailabilitySlotIn(BaseModel):
+    start_time: time
+    end_time: time
+    note: str | None = None
+
+
+class PublishAvailabilityRequest(BaseModel):
+    """One day's slots. Publishing a day replaces what was there for that day.
+
+    Replace rather than merge: a trainer editing their Tuesday is describing
+    Tuesday, and a merge would silently keep a slot they had just removed.
+    """
+
+    slot_date: date
+    slots: list[AvailabilitySlotIn] = Field(default_factory=list)
 
 
 class ClassRosterEntry(BaseModel):

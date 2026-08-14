@@ -696,3 +696,51 @@ export interface MemberHome {
   unread_alerts: number;
   streak_days: number;
 }
+
+/* ------------------------------------------------------ the trainer's desk */
+
+/**
+ * One of a trainer's assigned members.
+ *
+ * There is no payment field. GymFlow has no billing model, so a trainer acting
+ * on a payment state here would be acting on nothing.
+ */
+export interface TrainerClient {
+  member_id: number;
+  member_code: string;
+  full_name: string;
+  branch_id: number;
+  joined_on: string | null;
+  membership_plan: string | null;
+  membership_status: string | null;
+  days_remaining: number | null;
+  journey: Journey | null;
+  pt_package: PTPackage | null;
+  next_pt_session: PTSession | null;
+  last_seen_on: string | null;
+  visits_last_30: number;
+}
+
+export interface TrainerClientDetail {
+  client: TrainerClient;
+  recent_sessions: PTSession[];
+  recent_workouts: WorkoutSession[];
+  activity: ActivityEntry[];
+}
+
+export interface AvailabilitySlot {
+  id: number;
+  trainer_id: number;
+  branch_id: number;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  booked_session_id: number | null;
+  note: string | null;
+}
+
+export interface AvailabilitySlotInput {
+  start_time: string;
+  end_time: string;
+  note?: string | null;
+}

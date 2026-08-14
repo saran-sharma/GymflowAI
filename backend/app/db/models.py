@@ -1166,6 +1166,46 @@ class BodyComposition(Base, TimestampMixin):
     body_water_pct: Mapped[float | None] = mapped_column(Pct())
 
 
+class TrainerAvailability(Base, TimestampMixin):
+    """A slot a trainer has published as bookable.
+
+    Stored as an explicit date plus a local start/end time rather than a
+    recurring rule: SLAM trainers publish a week at a time and change it often,
+    and a recurrence that has to be exploded before it can be read is harder to
+    correct than the seven rows it replaces.
+
+    Nothing consumes these yet. Members cannot book PT — the API answers them
+    with "Ask your branch to book a PT session" — so for now this is the
+    trainer's published intent, and the desk that creates the session reads it.
+    The uniqueness constraint is what stops the same slot being published twice
+    and then booked twice.
+    """
+
+    __tablename__ = "trainer_availability"
+    __table_args__ = (
+        UniqueConstraint(
+            "trainer_id", "slot_date", "start_time", name="uq_trainer_availability_slot"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trainer_id: Mapped[int] = mapped_column(
+        ForeignKey("trainers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    slot_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    # Set when a PT session is created against this slot, so publishing and
+    # booking cannot disagree about whether the hour is still free.
+    booked_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pt_sessions.id", ondelete="SET NULL"), index=True
+    )
+    note: Mapped[str | None] = mapped_column(String(160))
+
+    trainer: Mapped[Trainer] = relationship()
+
+
 class Setting(Base, TimestampMixin):
     """Configurable business rules, global or per branch."""
 
