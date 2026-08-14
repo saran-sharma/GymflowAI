@@ -1,56 +1,83 @@
 /**
- * Member home — the SLAM journey, first.
+ * Member home.
  *
- * The whole screen comes from one request: opening the app on gym wifi should
- * not cost six round trips. Reading it also settles a finished journey
- * server-side, which is how Day 45 completes without anyone pressing anything.
+ * The screen answers two questions in the order a member actually asks them:
+ * "what am I doing today?" and then "how am I doing overall?". Everything that
+ * is neither of those sits below both, or on another screen entirely.
+ *
+ * It is still one request. Opening the app on gym wifi should not cost six
+ * round trips, and reading `/members/me/home` also settles a finished journey
+ * server-side — which is how Day 45 completes without anyone pressing anything.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { MemberHome } from '../../src/api/types';
 import {
-  AlertRow,
-  DayCounter,
-  DemoTag,
-  SectionHeader,
-  SplitBadge,
-} from '../../src/components/programme';
+  JourneyBar,
+  NotConnected,
+  PtLine,
+  TodayCard,
+  type SessionKind,
+} from '../../src/components/member';
 import {
+  Avatar,
   Badge,
   Body,
-  Button,
   Card,
-  Divider,
   ErrorState,
   Eyebrow,
+  LinkButton,
   Loading,
-  Meter,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Spacer,
+  StatCard,
+  StatRow,
+  Stack,
+  Text,
+  color,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
-import { initials, timeOfDay } from '../../src/utils/format';
+import { dayLabel, timeOfDay } from '../../src/utils/format';
+
+/** Local midnight-to-midnight test, so "today" means the member's today. */
+function isToday(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return false;
+  const now = new Date();
+  return (
+    then.getFullYear() === now.getFullYear() &&
+    then.getMonth() === now.getMonth() &&
+    then.getDate() === now.getDate()
+  );
+}
 
 export default function MemberHomeScreen() {
   const router = useRouter();
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
 
-  if (home.loading) return <Loading label="Loading your SLAM" />;
+  if (home.loading) return <Loading label="Loading your day" />;
+
   if (home.error || !home.data) {
+    const offline = home.error?.code === OFFLINE_CODE;
     return (
       <Screen>
         <ErrorState
-          title={home.error?.code === OFFLINE_CODE ? 'No connection' : 'Could not load your home'}
-          detail={home.error?.message}
+          offline={offline}
+          title={offline ? undefined : 'We could not load your day'}
+          detail={
+            offline
+              ? undefined
+              : (home.error?.message ??
+                'Your plan is safe — this is a problem reaching SLAM, not with your account.')
+          }
           onRetry={home.reload}
         />
       </Screen>
@@ -59,9 +86,20 @@ export default function MemberHomeScreen() {
 
   const me = home.data;
   const journey = me.journey;
-  const crowd = me.occupancy;
-  const expiring = (me.days_remaining ?? 999) <= 30;
-  const journeyComplete = journey?.status === 'completed';
+  const workout = me.today_workout;
+  const pt = me.next_pt_session;
+
+  const ptToday = pt ? isToday(pt.scheduled_start) : false;
+  const restDay = journey?.split_today === 'rest';
+  const journeyDone = journey?.status === 'completed';
+  const expiringSoon = me.days_remaining !== null && me.days_remaining <= 30;
+  const membershipExpired = me.membership_status !== null && me.membership_status !== 'active';
+
+  const kind: SessionKind = ptToday
+    ? 'pt_session'
+    : restDay
+      ? 'rest'
+      : 'own_workout';
 
   return (
     <Screen>
@@ -70,295 +108,218 @@ export default function MemberHomeScreen() {
           <RefreshControl
             refreshing={home.refreshing}
             onRefresh={() => void home.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Row style={styles.identity}>
-          <View style={styles.avatar}>
-            <Txt variant="heading">{initials(me.full_name)}</Txt>
-          </View>
-          <View style={styles.identityText}>
-            <Txt variant="heading">{me.full_name}</Txt>
-            <Txt variant="label" color={colors.textMuted}>
+        {/* Who and where. Quiet — the member knows their own name. */}
+        <Row gap="md">
+          <Avatar name={me.full_name} size={44} />
+          <Stack gap="xxs" style={styles.grow}>
+            <Text variant="heading">{me.full_name}</Text>
+            <Text variant="label" tone={color.textTertiary}>
               {me.branch_name}
-            </Txt>
-          </View>
-          {me.is_inside ? <Badge label="Inside" color={colors.onTime} filled /> : null}
+            </Text>
+          </Stack>
+          {me.is_inside ? <Badge label="Inside" tone="positive" solid /> : null}
         </Row>
 
-        {/* The 45-day journey is the member's reason to open the app. */}
-        {journey ? (
+        {membershipExpired ? (
           <Card>
-            <Row style={styles.cardHead}>
-              <Eyebrow>{journeyComplete ? 'General training' : 'Your 45-day journey'}</Eyebrow>
-              {journey.is_demo ? <DemoTag /> : null}
-            </Row>
-            {journeyComplete ? (
-              <>
-                <Txt variant="heading">Your 45-Day journey is complete.</Txt>
-                <Txt variant="body" color={colors.textMuted}>
-                  {journey.workouts_completed} workouts recorded over {journey.duration_days} days.
-                </Txt>
-                {!journey.pt_converted ? (
-                  <Button
-                    title="SEE WHAT COMES NEXT"
-                    variant="secondary"
-                    icon="arrow-forward"
-                    onPress={() => router.push('/(member)/pt' as never)}
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <DayCounter
-                  currentDay={journey.current_day}
-                  totalDays={journey.duration_days}
-                  phase={journey.phase}
-                  split={journey.split_today}
-                />
-                {journey.phase === 'assessment' ? (
-                  <>
-                    <Divider />
-                    <Row style={styles.detail}>
-                      <Txt variant="label" color={colors.textMuted}>
-                        Assessment
-                      </Txt>
-                      <Badge
-                        label={
-                          journey.assessment_status === 'completed' ? 'Completed' : 'Not started'
-                        }
-                        color={
-                          journey.assessment_status === 'completed' ? colors.onTime : colors.late
-                        }
-                      />
-                    </Row>
-                    <Row style={styles.detail}>
-                      <Txt variant="label" color={colors.textMuted}>
-                        Cardio
-                      </Txt>
-                      <Txt variant="mono">
-                        {journey.cardio_completed} / {journey.cardio_required}
-                      </Txt>
-                    </Row>
-                  </>
-                ) : null}
-              </>
-            )}
-          </Card>
-        ) : (
-          <Card>
-            <Eyebrow>General training</Eyebrow>
-            <Txt variant="body" color={colors.textMuted}>
-              Your 45-day journey has not started yet. Speak to your trainer at {me.branch_name}.
-            </Txt>
-          </Card>
-        )}
-
-        {/* Today's workout. */}
-        <SectionHeader title="Today" action="Open" onAction={() => router.push('/(member)/workout' as never)} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Today's workout"
-          onPress={() => router.push('/(member)/workout' as never)}
-          style={({ pressed }) => [styles.pressableCard, pressed && styles.pressed]}
-        >
-          <Row style={styles.cardHead}>
-            <Txt variant="heading">
-              {me.today_workout
-                ? me.today_workout.split_label
-                : journey
-                  ? 'Workout not started'
-                  : 'No workout planned'}
-            </Txt>
-            {journey ? <SplitBadge split={journey.split_today} /> : null}
-          </Row>
-          {me.today_workout ? (
-            <>
-              <Meter
-                value={
-                  me.today_workout.total_items
-                    ? (me.today_workout.completed_items / me.today_workout.total_items) * 100
-                    : 0
-                }
-                color={colors.onTime}
-              />
-              <Txt variant="label" color={colors.textMuted}>
-                {me.today_workout.completed_items} of {me.today_workout.total_items} exercises done
-              </Txt>
-            </>
-          ) : (
-            <Txt variant="label" color={colors.textMuted}>
-              Tap to see the chart and start.
-            </Txt>
-          )}
-        </Pressable>
-
-        {/* Today's PT, if there is one. */}
-        {me.next_pt_session ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Your next PT session"
-            onPress={() => router.push('/(member)/pt' as never)}
-            style={({ pressed }) => [styles.pressableCard, pressed && styles.pressed]}
-          >
-            <Row style={styles.cardHead}>
-              <Eyebrow>Next PT session</Eyebrow>
-              <Badge
-                label={`${me.next_pt_session.session_number} / ${me.next_pt_session.package_size ?? '—'}`}
-                color={colors.brand}
-              />
-            </Row>
-            <Row style={styles.detail}>
-              <Txt variant="heading">{timeOfDay(me.next_pt_session.scheduled_start)}</Txt>
-              <Txt variant="label" color={colors.textMuted}>
-                {me.next_pt_session.trainer_name ?? 'Your trainer'}
-              </Txt>
-            </Row>
-          </Pressable>
-        ) : null}
-
-        <View style={styles.tiles}>
-          <StatTile
-            label="Streak"
-            value={me.streak_days}
-            hint={me.streak_days === 1 ? 'day' : 'days'}
-            accent={me.streak_days > 0 ? colors.onTime : colors.textFaint}
-          />
-          <StatTile
-            label="Inside now"
-            value={crowd ? crowd.inside : '—'}
-            hint={crowd ? `of ${crowd.capacity}` : undefined}
-            accent={colors.brand}
-          />
-          <StatTile
-            label="Days left"
-            value={me.days_remaining ?? '—'}
-            hint={me.membership_plan ?? undefined}
-            accent={expiring ? colors.late : colors.text}
-          />
-        </View>
-
-        {crowd ? (
-          <Card>
-            <Row style={styles.cardHead}>
-              <Eyebrow>How busy is {me.branch_name}</Eyebrow>
-              <Badge
-                label={crowd.crowd_level}
-                color={
-                  crowd.crowd_level === 'High'
-                    ? colors.absent
-                    : crowd.crowd_level === 'Medium'
-                      ? colors.late
-                      : colors.onTime
-                }
-              />
-            </Row>
-            <Meter value={crowd.occupancy_pct} color={colors.brand} />
-            <Txt variant="label" color={colors.textFaint}>
-              {crowd.inside} members inside · {crowd.entries_today} entries today
-            </Txt>
-          </Card>
-        ) : null}
-
-        {me.next_class ? (
-          <>
-            <SectionHeader title="Next class" />
-            <AlertRow
-              severity="info"
-              title={`${me.next_class.name} · ${timeOfDay(me.next_class.starts_at)}`}
-              body={
-                me.next_class.my_response === 'yes'
-                  ? "You said yes. See you there."
-                  : `${me.next_class.available} places left — tap to reply.`
-              }
-              onPress={() => router.push('/(member)/classes' as never)}
-            />
-          </>
-        ) : null}
-
-        {me.trainer_name ? (
-          <Card>
-            <Eyebrow>Your trainer</Eyebrow>
-            <Divider />
-            <Row style={styles.trainer}>
-              <View style={styles.avatarSmall}>
-                <Txt variant="label">{initials(me.trainer_name)}</Txt>
-              </View>
-              <View style={styles.identityText}>
-                <Txt variant="body">{me.trainer_name}</Txt>
-                <Txt variant="label" color={colors.textFaint}>
-                  {me.branch_name}
-                </Txt>
-              </View>
-              <Ionicons name="fitness-outline" size={20} color={colors.textFaint} />
-            </Row>
-          </Card>
-        ) : null}
-
-        {me.membership_plan ? (
-          <Card>
-            <Row style={styles.cardHead}>
+            <Row gap="sm">
               <Eyebrow>Membership</Eyebrow>
-              <Badge
-                label={me.membership_status ?? 'unknown'}
-                color={me.membership_status === 'active' ? colors.onTime : colors.absent}
-              />
+              <Spacer />
+              <Badge label={me.membership_status ?? 'inactive'} tone="critical" />
             </Row>
-            <Txt variant="body">{me.membership_plan}</Txt>
-            {me.days_remaining !== null ? (
-              <Txt variant="label" color={expiring ? colors.late : colors.textMuted}>
-                {me.days_remaining} days remaining
-              </Txt>
+            <Text variant="body" tone={color.textSecondary}>
+              Your membership is not active. Speak to the front desk at {me.branch_name} to train
+              again.
+            </Text>
+          </Card>
+        ) : null}
+
+        {/* Today. The one thing this screen exists to say. */}
+        {renderToday()}
+
+        {/* The 45 days, immediately under today's session. */}
+        {journey && !journeyDone ? (
+          <JourneyBar
+            currentDay={journey.current_day}
+            totalDays={journey.duration_days}
+            phase={journey.phase}
+            daysCompleted={journey.days_completed}
+            completionPct={journey.completion_pct}
+            onPress={() => router.push('/(member)/progress' as never)}
+          />
+        ) : null}
+
+        {journeyDone && journey ? (
+          <Card>
+            <Eyebrow>Programme complete</Eyebrow>
+            <Text variant="heading">All {journey.duration_days} days done.</Text>
+            <Text variant="body" tone={color.textSecondary}>
+              {journey.workouts_completed} workouts recorded. Your trainer plans what comes next.
+            </Text>
+            {!journey.pt_converted ? (
+              <LinkButton title="See what comes next" onPress={() => router.push('/(member)/pt' as never)} />
             ) : null}
           </Card>
         ) : null}
 
+        {/* The next PT session, when it is not already today's card. */}
+        {pt && !ptToday ? (
+          <Section title="Next PT session">
+            <PtLine
+              trainerName={pt.trainer_name}
+              sessionNumber={pt.session_number}
+              packageSize={pt.package_size}
+              when={`${dayLabel(pt.session_date)} · ${timeOfDay(pt.scheduled_start)}`}
+              onPress={() => router.push('/(member)/pt' as never)}
+            />
+          </Section>
+        ) : null}
+
+        {/* How am I doing — three numbers, no more. */}
+        <StatRow>
+          <StatCard
+            label="Streak"
+            value={me.streak_days}
+            hint={me.streak_days === 1 ? 'day' : 'days'}
+            tone={me.streak_days > 0 ? 'positive' : 'neutral'}
+            icon="flame-outline"
+          />
+          <StatCard
+            label="Workouts"
+            value={journey?.workouts_completed ?? 0}
+            hint="this programme"
+            icon="barbell-outline"
+          />
+          <StatCard
+            label="Days left"
+            value={me.days_remaining ?? '—'}
+            hint={me.membership_plan ?? 'membership'}
+            tone={expiringSoon ? 'caution' : 'neutral'}
+            icon="calendar-outline"
+          />
+        </StatRow>
+
+        <Section
+          title="Progress"
+          action={
+            <LinkButton title="View all" onPress={() => router.push('/(member)/progress' as never)} />
+          }
+        >
+          <NotConnected
+            icon="body-outline"
+            title="No InBody scan on file"
+            detail="Weight, body fat and muscle mass appear here once your branch connects its InBody machine to GymFlow."
+          />
+        </Section>
+
+        {/* Everything below is secondary and is allowed to look it. */}
+        {me.next_class ? (
+          <Section title="Next class">
+            <StatCard
+              label={me.next_class.name}
+              value={timeOfDay(me.next_class.starts_at)}
+              hint={
+                me.next_class.my_response === 'yes'
+                  ? 'You said yes'
+                  : `${me.next_class.available} places left`
+              }
+              tone={me.next_class.my_response === 'yes' ? 'positive' : 'neutral'}
+              onPress={() => router.push('/(member)/classes' as never)}
+            />
+          </Section>
+        ) : null}
+
         {me.unread_alerts > 0 ? (
-          <Button
-            title={`${me.unread_alerts} UPDATE${me.unread_alerts === 1 ? '' : 'S'}`}
-            variant="secondary"
-            icon="notifications-outline"
+          <LinkButton
+            title={`${me.unread_alerts} update${me.unread_alerts === 1 ? '' : 's'} for you`}
             onPress={() => router.push('/(member)/alerts' as never)}
           />
         ) : null}
       </Body>
     </Screen>
   );
+
+  /**
+   * Today's card, in the order the day is actually decided: a booked PT
+   * session outranks a solo workout, a rest day outranks an empty chart, and
+   * "no journey yet" is stated rather than dressed up as a workout.
+   */
+  function renderToday() {
+    if (!journey) {
+      return (
+        <Card>
+          <Eyebrow>Today</Eyebrow>
+          <Text variant="heading">Your programme has not started</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            Your trainer starts your 45-day journey with you at {me.branch_name}.
+          </Text>
+        </Card>
+      );
+    }
+
+    if (ptToday && pt) {
+      return (
+        <TodayCard
+          testID="today-card"
+          kind="pt_session"
+          title={pt.trainer_name ?? 'Your trainer'}
+          subtitle={`Session ${pt.session_number}${
+            pt.package_size ? ` of ${pt.package_size}` : ''
+          } · ${timeOfDay(pt.scheduled_start)}`}
+          status={pt.member_checked_in_at ? 'Checked in' : 'Upcoming'}
+          statusTone={pt.member_checked_in_at ? 'positive' : 'neutral'}
+          cta="Open your PT session"
+          onPress={() => router.push('/(member)/pt' as never)}
+        />
+      );
+    }
+
+    if (restDay) {
+      return (
+        <TodayCard
+          testID="today-card"
+          kind="rest"
+          title="Rest & recovery"
+          subtitle="No workout is planned for today. Rest is part of the programme."
+          cta="See your week"
+          onPress={() => router.push('/(member)/workout' as never)}
+        />
+      );
+    }
+
+    const started = workout !== null;
+    const done = workout?.status === 'completed';
+
+    return (
+      <TodayCard
+        testID="today-card"
+        kind="own_workout"
+        title={workout?.split_label ?? journey.split_today.toUpperCase()}
+        subtitle={
+          started
+            ? `${workout.completed_items} of ${workout.total_items} exercises done`
+            : journey.phase === 'assessment'
+              ? `Day ${journey.current_day} · assessment and cardio with your trainer`
+              : `Day ${journey.current_day} of ${journey.duration_days}`
+        }
+        percent={
+          started && workout.total_items
+            ? (workout.completed_items / workout.total_items) * 100
+            : undefined
+        }
+        status={done ? 'Completed' : started ? 'In progress' : undefined}
+        statusTone={done ? 'positive' : 'brand'}
+        cta={done ? 'Review today’s workout' : started ? 'Continue workout' : 'Start today’s workout'}
+        onPress={() => router.push('/(member)/workout' as never)}
+      />
+    );
+  }
 }
 
 const styles = StyleSheet.create({
-  identity: { gap: spacing.md },
-  identityText: { flex: 1, gap: 2 },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.raised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.raised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardHead: { justifyContent: 'space-between' },
-  detail: { justifyContent: 'space-between', paddingVertical: 3 },
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  trainer: { gap: spacing.md },
-  pressableCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  pressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
+  grow: { flex: 1 },
 });

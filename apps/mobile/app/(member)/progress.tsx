@@ -1,41 +1,50 @@
 /**
  * Member progress.
  *
- * Four kinds of activity stay four kinds: a gym visit, an own workout, a PT
- * session and a group class are counted and shown separately. Body
- * composition has a place reserved on this screen and nothing in it — those
- * numbers come from InBody, which is not connected, and are not guessed here.
+ * The programme comes first because it is the thing the member is actually
+ * doing; body composition sits second because it is the thing they want to
+ * know. Four kinds of activity stay four kinds — a gym visit, an own workout,
+ * a PT session and a group class are different commitments and are counted
+ * separately.
+ *
+ * Body composition has a place here and nothing in it. Those numbers come from
+ * InBody, which is not connected to GymFlow, and are not guessed.
  */
 
 import React, { useCallback } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ActivityEntry, Journey, MemberActivity } from '../../src/api/types';
-import { BarChart, DayCounter, SectionHeader } from '../../src/components/programme';
+import { BarChart } from '../../src/components/programme';
+import { JourneyBar, NotConnected, kindMeta } from '../../src/components/member';
 import {
-  Badge,
   Body,
   Card,
-  Divider,
   EmptyState,
   ErrorState,
   Eyebrow,
   Loading,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  StatCard,
+  StatRow,
+  Stack,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
-const KIND_META: Record<ActivityEntry['kind'], { label: string; color: string }> = {
-  gym_visit: { label: 'GYM VISIT', color: colors.info },
-  own_workout: { label: 'OWN WORKOUT', color: colors.brand },
-  pt_session: { label: 'PT SESSION', color: colors.onTime },
-  group_class: { label: 'GROUP CLASS', color: '#A855F7' },
+/** The timeline's kinds, mapped onto the shared session vocabulary. */
+const TIMELINE: Record<ActivityEntry['kind'], { label: string; hue: string }> = {
+  gym_visit: { label: 'Gym visit', hue: color.status.info },
+  own_workout: { label: kindMeta.own_workout.label, hue: kindMeta.own_workout.hue },
+  pt_session: { label: kindMeta.pt_session.label, hue: kindMeta.pt_session.hue },
+  group_class: { label: kindMeta.group_class.label, hue: kindMeta.group_class.hue },
 };
 
 export default function MemberProgressScreen() {
@@ -56,10 +65,17 @@ export default function MemberProgressScreen() {
   }, [journey, timeline, stats]);
 
   if (timeline.loading && stats.loading) return <Loading label="Loading your progress" />;
+
   if (timeline.error) {
+    const offline = timeline.error.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={timeline.error.message} onRetry={refreshAll} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your progress'}
+          detail={offline ? undefined : timeline.error.message}
+          onRetry={refreshAll}
+        />
       </Screen>
     );
   }
@@ -67,56 +83,69 @@ export default function MemberProgressScreen() {
   const entries = timeline.data ?? [];
   const totals = stats.data?.totals;
   const weekly = stats.data?.weekly ?? [];
+  const plan = journey.data;
 
   return (
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl
-            refreshing={timeline.refreshing}
-            onRefresh={refreshAll}
-            tintColor={colors.brand}
-          />
+          <RefreshControl refreshing={timeline.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
         }
       >
-        {journey.data ? (
-          <Card>
-            <Eyebrow>45-day journey</Eyebrow>
-            <DayCounter
-              currentDay={journey.data.current_day}
-              totalDays={journey.data.duration_days}
-              phase={journey.data.phase}
-            />
-            <Divider />
-            <Row style={styles.detail}>
-              <Txt variant="label" color={colors.textMuted}>
-                Workouts completed
-              </Txt>
-              <Txt variant="mono">{journey.data.workouts_completed}</Txt>
-            </Row>
-            <Row style={styles.detail}>
-              <Txt variant="label" color={colors.textMuted}>
-                Days completed
-              </Txt>
-              <Txt variant="mono">
-                {journey.data.days_completed} / {journey.data.duration_days}
-              </Txt>
-            </Row>
-          </Card>
+        <Stack gap="xxs">
+          <Text variant="title">Progress</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            Where you are in the programme, and everything you have recorded.
+          </Text>
+        </Stack>
+
+        {plan ? (
+          <JourneyBar
+            currentDay={plan.current_day}
+            totalDays={plan.duration_days}
+            phase={plan.phase}
+            daysCompleted={plan.days_completed}
+            completionPct={plan.completion_pct}
+          />
         ) : null}
 
+        {/* Reserved for InBody. Deliberately empty rather than filled with
+            plausible-looking numbers nobody measured. */}
+        <Section title="Body composition">
+          <NotConnected
+            icon="body-outline"
+            title="No scan on file"
+            detail="Weight, body fat, skeletal muscle, BMI and the change since your last scan appear here once your branch connects its InBody machine to GymFlow."
+          />
+        </Section>
+
         {totals ? (
-          <>
-            <SectionHeader title="Your activity" />
-            <View style={styles.tiles}>
-              <StatTile label="Gym visits" value={totals.gym_visits} accent={colors.info} />
-              <StatTile label="Own workouts" value={totals.own_workouts} accent={colors.brand} />
-            </View>
-            <View style={styles.tiles}>
-              <StatTile label="PT sessions" value={totals.pt_sessions} accent={colors.onTime} />
-              <StatTile label="Group classes" value={totals.group_classes} accent="#A855F7" />
-            </View>
-          </>
+          <Section title="Your activity">
+            <StatRow>
+              <StatCard
+                label="Gym visits"
+                value={totals.gym_visits}
+                colorOverride={color.status.info}
+              />
+              <StatCard
+                label="Own workouts"
+                value={totals.own_workouts}
+                colorOverride={kindMeta.own_workout.hue}
+              />
+            </StatRow>
+            <StatRow>
+              <StatCard
+                label="PT sessions"
+                value={totals.pt_sessions}
+                colorOverride={kindMeta.pt_session.hue}
+              />
+              <StatCard
+                label="Group classes"
+                value={totals.group_classes}
+                colorOverride={kindMeta.group_class.hue}
+              />
+            </StatRow>
+          </Section>
         ) : null}
 
         {weekly.length ? (
@@ -128,66 +157,52 @@ export default function MemberProgressScreen() {
                 value: week.total,
               }))}
             />
-            <Txt variant="label" color={colors.textFaint}>
+            <Text variant="label" tone={color.textTertiary}>
               All activity per week, by week starting date.
-            </Txt>
+            </Text>
           </Card>
         ) : null}
 
-        {/* Reserved for InBody. Deliberately empty rather than filled with
-            plausible-looking numbers nobody measured. */}
-        <Card>
-          <Row style={styles.cardHead}>
-            <Eyebrow>Body composition</Eyebrow>
-            <Badge label="Coming soon" color={colors.textFaint} />
-          </Row>
-          <Txt variant="body" color={colors.textMuted}>
-            Weight, body fat, muscle mass, BMI, visceral fat, BMR and body water will appear here
-            once your branch's InBody scans are connected to GymFlow.
-          </Txt>
-        </Card>
-
-        <SectionHeader title="Recent activity" />
-        {entries.length === 0 ? (
-          <EmptyState
-            icon="footsteps-outline"
-            title="Nothing recorded yet"
-            detail="Your visits, workouts, PT sessions and classes will show up here."
-          />
-        ) : (
-          entries.map((entry, index) => {
-            const meta = KIND_META[entry.kind];
-            return (
-              <Row key={`${entry.kind}-${entry.reference_id}-${index}`} style={styles.entry}>
-                <View style={[styles.entryBar, { backgroundColor: meta.color }]} />
-                <View style={styles.entryText}>
-                  <Txt variant="label" color={colors.textFaint}>
-                    {dayLabel(entry.on)}
-                  </Txt>
-                  <Txt variant="body">
-                    {meta.label}
-                    {entry.detail ? ` — ${entry.detail}` : ''}
-                  </Txt>
-                </View>
-              </Row>
-            );
-          })
-        )}
+        <Section title="Recent activity">
+          {entries.length === 0 ? (
+            <EmptyState
+              icon="footsteps-outline"
+              title="Nothing recorded yet"
+              detail="Your visits, workouts, PT sessions and classes appear here as they happen."
+            />
+          ) : (
+            entries.map((entry, index) => {
+              const meta = TIMELINE[entry.kind];
+              return (
+                <Row
+                  key={`${entry.kind}-${entry.reference_id}-${index}`}
+                  gap="md"
+                  style={styles.entry}
+                >
+                  <View style={[styles.rule, { backgroundColor: meta.hue }]} />
+                  <Stack gap="xxs" style={styles.grow}>
+                    <Text variant="body">{meta.label}</Text>
+                    <Text variant="label" tone={color.textTertiary}>
+                      {dayLabel(entry.on)}
+                      {entry.detail ? ` · ${entry.detail}` : ''}
+                    </Text>
+                  </Stack>
+                </Row>
+              );
+            })
+          )}
+        </Section>
       </Body>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  cardHead: { justifyContent: 'space-between' },
-  detail: { justifyContent: 'space-between', paddingVertical: 3 },
-  tiles: { flexDirection: 'row', gap: spacing.sm },
+  grow: { flex: 1 },
   entry: {
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: color.border,
   },
-  entryBar: { width: 3, alignSelf: 'stretch', minHeight: 34, borderRadius: 2 },
-  entryText: { flex: 1, gap: 2 },
+  rule: { width: 3, alignSelf: 'stretch', minHeight: 34, borderRadius: 2 },
 });
