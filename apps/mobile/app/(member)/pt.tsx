@@ -1,44 +1,69 @@
 /**
- * The member's PT: balance, sessions, and the offer after Day 45.
+ * The member's personal training.
  *
- * Package sizes come from the server's configuration. No price is shown unless
- * SLAM has configured one — an invented number in front of a member would be
- * worse than none at all.
+ * What is shown is bounded by what the server will let a member do. Booking is
+ * one of the things it will not: `POST /pt/sessions` answers a member with
+ * "Ask your branch to book a PT session", and there is no availability model
+ * behind it to offer slots from. So this screen does the honest version — it
+ * shows the trainers at the member's branch and their specialities, and says
+ * where booking actually happens, rather than drawing a picker that would fail
+ * on submit.
+ *
+ * Prices are only ever echoed from configuration. An invented number in front
+ * of a member would be worse than none at all.
  */
 
 import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { PTOffer, PTPackage, PTSession } from '../../src/api/types';
-import { SectionHeader, sessionMeta } from '../../src/components/programme';
+import type { PTOffer, PTPackage, PTSession, Trainer } from '../../src/api/types';
+import { KindTag, NotConnected, PtLine } from '../../src/components/member';
 import {
   Badge,
   Banner,
   Body,
+  Button,
   Card,
   Divider,
+  Dot,
   EmptyState,
   ErrorState,
   Eyebrow,
   Loading,
-  Meter,
+  ProgressCard,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Spacer,
+  StatCard,
+  StatRow,
+  Stack,
+  Text,
+  color,
+  radii,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, radius, spacing } from '../../src/theme';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
+
+const STATUS_META: Record<string, { label: string; tone: 'positive' | 'caution' | 'critical' | 'neutral' }> = {
+  completed: { label: 'Completed', tone: 'positive' },
+  scheduled: { label: 'Scheduled', tone: 'neutral' },
+  in_progress: { label: 'In progress', tone: 'caution' },
+  no_show: { label: 'No show', tone: 'critical' },
+  missed: { label: 'Missed', tone: 'critical' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+};
 
 export default function MemberPtScreen() {
   const { withToken } = useAuth();
   const packageInfo = useApi<PTPackage | null>((token) => api.myPtPackage(token), []);
   const sessions = useApi<PTSession[]>((token) => api.myPtSessions(token), []);
   const offer = useApi<PTOffer>((token) => api.ptOffer(token), []);
+  const trainers = useApi<Trainer[]>((token) => api.listTrainers(token), []);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +73,8 @@ export default function MemberPtScreen() {
     void packageInfo.refresh();
     void sessions.refresh();
     void offer.refresh();
-  }, [packageInfo, sessions, offer]);
+    void trainers.refresh();
+  }, [packageInfo, sessions, offer, trainers]);
 
   const confirmArrival = useCallback(
     async (session: PTSession) => {
@@ -68,10 +94,18 @@ export default function MemberPtScreen() {
   );
 
   if (packageInfo.loading && offer.loading) return <Loading label="Loading your PT" />;
+
+  // Both failing means PT is unreachable; one failing still leaves a usable screen.
   if (packageInfo.error && offer.error) {
+    const offline = packageInfo.error.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={packageInfo.error.message} onRetry={refreshAll} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your PT'}
+          detail={offline ? undefined : packageInfo.error.message}
+          onRetry={refreshAll}
+        />
       </Screen>
     );
   }
@@ -81,207 +115,231 @@ export default function MemberPtScreen() {
   const upcoming = rows.filter((s) => s.status === 'scheduled' || s.status === 'in_progress');
   const past = rows.filter((s) => s.status !== 'scheduled' && s.status !== 'in_progress');
   const promotion = offer.data;
+  const roster = trainers.data ?? [];
+  const active = pack && pack.status === 'active';
 
   return (
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl
-            refreshing={packageInfo.refreshing}
-            onRefresh={refreshAll}
-            tintColor={colors.brand}
-          />
+          <RefreshControl refreshing={packageInfo.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
         }
       >
-        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {error ? <Banner tone="critical" icon="alert-circle-outline">{error}</Banner> : null}
 
-        {pack && pack.status !== 'completed' ? (
-          <Card>
-            <Row style={styles.cardHead}>
-              <Eyebrow>Your PT package</Eyebrow>
-              <Badge
-                label={pack.status}
-                color={pack.status === 'active' ? colors.onTime : colors.textFaint}
-              />
-            </Row>
-            <Row style={styles.balanceRow}>
-              <Txt variant="display">{pack.sessions_used}</Txt>
-              <Txt variant="heading" color={colors.textFaint}>
-                / {pack.sessions_total} completed
-              </Txt>
-            </Row>
-            <Meter
-              value={
-                pack.sessions_total ? (pack.sessions_used / pack.sessions_total) * 100 : 0
-              }
-              color={colors.brand}
-            />
-            <Txt variant="label" color={pack.low_balance ? colors.late : colors.textMuted}>
-              {pack.sessions_remaining} remaining
-              {pack.trainer_name ? ` · ${pack.trainer_name}` : ''}
-            </Txt>
-            {pack.low_balance ? (
-              <Banner tone="warning">
-                Only {pack.sessions_remaining} sessions left. Talk to your branch about renewing.
-              </Banner>
-            ) : null}
-          </Card>
+        {/* The balance, as a single number a member can act on. */}
+        {active ? (
+          <ProgressCard
+            label="Your PT package"
+            value={pack.sessions_remaining}
+            total={pack.sessions_total}
+            percent={pack.sessions_total ? (pack.sessions_used / pack.sessions_total) * 100 : 0}
+            caption={`${pack.sessions_used} used${pack.trainer_name ? ` · ${pack.trainer_name}` : ''}`}
+            tone={pack.low_balance ? 'caution' : 'brand'}
+            trailing={<Badge label="sessions left" tone="neutral" />}
+          />
+        ) : null}
+
+        {active && pack.low_balance ? (
+          <Banner tone="caution" icon="alert-circle-outline">
+            Only {pack.sessions_remaining} session{pack.sessions_remaining === 1 ? '' : 's'} left.
+            Talk to your branch about renewing.
+          </Banner>
         ) : null}
 
         {pack && pack.status === 'completed' ? (
           <Card>
-            <Eyebrow>PT package completed</Eyebrow>
-            <Txt variant="body">
-              You completed all {pack.sessions_total} sessions.
-            </Txt>
-            <Txt variant="label" color={colors.textMuted}>
+            <Eyebrow>Package complete</Eyebrow>
+            <Text variant="heading">All {pack.sessions_total} sessions done.</Text>
+            <Text variant="body" tone={color.textSecondary}>
               Speak to your branch about renewing.
-            </Txt>
+            </Text>
           </Card>
         ) : null}
 
-        {/* The Day-45 conversion. Only shown when the server says so. */}
-        {promotion?.eligible ? (
-          <Card>
-            <Eyebrow>What comes next</Eyebrow>
-            <Txt variant="heading">{promotion.headline}</Txt>
-            <Txt variant="body" color={colors.textMuted}>
-              {promotion.message}
-            </Txt>
-            <Divider />
-            {promotion.benefits.map((benefit) => (
-              <Row key={benefit} style={styles.benefit}>
-                <View style={styles.bullet} />
-                <Txt variant="body" color={colors.textMuted} style={styles.grow}>
-                  {benefit}
-                </Txt>
-              </Row>
+        {/* Upcoming first — it is the only part of this screen with a deadline. */}
+        {upcoming.length ? (
+          <Section title="Upcoming">
+            {upcoming.map((session) => (
+              <Card key={session.id}>
+                <Row gap="sm">
+                  <KindTag kind="pt_session" />
+                  <Spacer />
+                  <Badge
+                    label={`Session ${session.session_number}${
+                      session.package_size ? ` of ${session.package_size}` : ''
+                    }`}
+                    tone="brand"
+                  />
+                </Row>
+
+                <Stack gap="xxs">
+                  <Text variant="heading">{session.trainer_name ?? 'Your trainer'}</Text>
+                  <Text variant="label" tone={color.textSecondary}>
+                    {dayLabel(session.session_date)} · {timeOfDay(session.scheduled_start)}
+                  </Text>
+                </Stack>
+
+                <Divider />
+
+                {/* The member's half of the split attendance view. */}
+                <Row gap="md" align="stretch">
+                  <Stack gap="xxs" style={styles.half}>
+                    <Eyebrow>You</Eyebrow>
+                    <Text
+                      variant="body"
+                      tone={session.member_checked_in_at ? color.status.positive : color.textTertiary}
+                    >
+                      {session.member_checked_in_at
+                        ? `In at ${timeOfDay(session.member_checked_in_at)}`
+                        : 'Not checked in'}
+                    </Text>
+                  </Stack>
+                  <View style={styles.splitRule} />
+                  <Stack gap="xxs" style={styles.half}>
+                    <Eyebrow>Trainer</Eyebrow>
+                    <Text
+                      variant="body"
+                      tone={session.trainer_checked_in_at ? color.status.positive : color.textTertiary}
+                    >
+                      {session.trainer_checked_in_at
+                        ? `In at ${timeOfDay(session.trainer_checked_in_at)}`
+                        : 'Not checked in'}
+                    </Text>
+                  </Stack>
+                </Row>
+
+                {!session.member_checked_in_at ? (
+                  <Button
+                    title="I’m here — check me in"
+                    variant="secondary"
+                    loading={busy}
+                    onPress={() => void confirmArrival(session)}
+                  />
+                ) : confirmed === session.id ? (
+                  <Banner tone="positive" icon="checkmark-circle-outline">
+                    Arrival recorded. Your trainer closes the session.
+                  </Banner>
+                ) : null}
+              </Card>
             ))}
-            <Divider />
-            <Eyebrow>Packages</Eyebrow>
-            <View style={styles.options}>
-              {promotion.options.map((option) => (
-                <View key={option.sessions} style={styles.option}>
-                  <Txt variant="title">{option.sessions}</Txt>
-                  <Txt variant="label" color={colors.textFaint}>
-                    sessions
-                  </Txt>
-                  {option.price_amount !== null ? (
-                    <Txt variant="mono">
-                      {option.currency ?? ''} {option.price_amount}
-                    </Txt>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-            <Txt variant="label" color={colors.textFaint}>
-              {promotion.disclaimer}
-            </Txt>
-          </Card>
+          </Section>
         ) : null}
 
+        {/* No package at all: say what PT is and when it starts. */}
         {!pack && !promotion?.eligible ? (
           <EmptyState
             icon="person-outline"
             title="No PT package yet"
-            detail={promotion?.message ?? 'Personal training starts after your 45-day journey.'}
+            detail={
+              promotion?.message ??
+              'Personal training starts after your 45-day journey. Your trainer will talk you through it.'
+            }
           />
         ) : null}
 
-        {upcoming.length ? (
-          <>
-            <SectionHeader title="Upcoming sessions" />
-            {upcoming.map((session) => (
-              <Card key={session.id}>
-                <Row style={styles.cardHead}>
-                  <Txt variant="heading">{timeOfDay(session.scheduled_start)}</Txt>
-                  <Badge
-                    label={`${session.session_number} / ${session.package_size ?? '—'}`}
-                    color={colors.brand}
-                  />
-                </Row>
-                <Txt variant="label" color={colors.textMuted}>
-                  {dayLabel(session.session_date)} · {session.trainer_name ?? 'Your trainer'}
-                </Txt>
-                <Divider />
-                {/* The member's half of the split attendance view. */}
-                <Row style={styles.split}>
-                  <View style={styles.splitSide}>
-                    <Eyebrow>You</Eyebrow>
-                    <Txt
-                      variant="body"
-                      color={session.member_checked_in_at ? colors.onTime : colors.textFaint}
-                    >
-                      {session.member_checked_in_at
-                        ? `Checked in ${timeOfDay(session.member_checked_in_at)}`
-                        : 'Not checked in'}
-                    </Txt>
+        {/* The Day-45 conversion, only when the server says the member is eligible. */}
+        {promotion?.eligible ? (
+          <Card>
+            <Eyebrow>What comes next</Eyebrow>
+            <Text variant="title">{promotion.headline}</Text>
+            <Text variant="body" tone={color.textSecondary}>
+              {promotion.message}
+            </Text>
+
+            <Divider />
+
+            <Stack gap="sm">
+              {promotion.benefits.map((benefit) => (
+                <Row key={benefit} gap="sm" align="flex-start">
+                  <View style={styles.bulletWrap}>
+                    <Dot tone="brand" />
                   </View>
-                  <View style={styles.splitDivider} />
-                  <View style={styles.splitSide}>
-                    <Eyebrow>Trainer</Eyebrow>
-                    <Txt
-                      variant="body"
-                      color={session.trainer_checked_in_at ? colors.onTime : colors.textFaint}
-                    >
-                      {session.trainer_checked_in_at
-                        ? `Checked in ${timeOfDay(session.trainer_checked_in_at)}`
-                        : 'Not checked in'}
-                    </Txt>
-                  </View>
+                  <Text variant="body" tone={color.textSecondary} style={styles.grow}>
+                    {benefit}
+                  </Text>
                 </Row>
-                {!session.member_checked_in_at ? (
-                  <Txt
-                    variant="label"
-                    color={colors.brandSoft}
-                    onPress={busy ? undefined : () => void confirmArrival(session)}
-                    accessibilityRole="button"
-                    style={styles.arrivalAction}
-                  >
-                    I'm here — check me in
-                  </Txt>
-                ) : confirmed === session.id ? (
-                  <Txt variant="label" color={colors.onTime}>
-                    Arrival recorded. Your trainer completes the session.
-                  </Txt>
-                ) : null}
-              </Card>
+              ))}
+            </Stack>
+
+            <Divider />
+
+            <Eyebrow>Packages</Eyebrow>
+            <Row gap="sm" align="stretch">
+              {promotion.options.map((option) => (
+                <Stack key={option.sessions} gap="xxs" align="center" style={styles.option}>
+                  <Text variant="title">{option.sessions}</Text>
+                  <Text variant="caption" caps tone={color.textTertiary}>
+                    sessions
+                  </Text>
+                  {option.price_amount !== null ? (
+                    <Text variant="mono">
+                      {option.currency ?? ''} {option.price_amount}
+                    </Text>
+                  ) : null}
+                </Stack>
+              ))}
+            </Row>
+
+            <Text variant="label" tone={color.textTertiary}>
+              {promotion.disclaimer}
+            </Text>
+          </Card>
+        ) : null}
+
+        {/* Who a member could train with, from the real roster at their branch. */}
+        {roster.length ? (
+          <Section title="Trainers at your branch">
+            {roster.map((trainer) => (
+              <Row key={trainer.id} gap="md" style={styles.trainerRow}>
+                <Stack gap="xxs" style={styles.grow}>
+                  <Text variant="body">{trainer.full_name}</Text>
+                  <Text variant="label" tone={color.textTertiary}>
+                    {trainer.specialty ?? trainer.designation ?? 'Personal trainer'}
+                  </Text>
+                </Stack>
+                {pack?.trainer_id === trainer.id ? <Badge label="Yours" tone="brand" /> : null}
+              </Row>
             ))}
-          </>
+            <NotConnected
+              icon="calendar-outline"
+              title="Booking happens at your branch"
+              detail="GymFlow has no slot availability for trainers yet, and only staff can create a PT session. Ask the front desk or your trainer and the session will appear here."
+            />
+          </Section>
         ) : null}
 
         {past.length ? (
-          <>
-            <SectionHeader title="History" />
-            <View style={styles.tiles}>
-              <StatTile
+          <Section title="History">
+            <StatRow>
+              <StatCard
                 label="Completed"
                 value={past.filter((s) => s.status === 'completed').length}
-                accent={colors.onTime}
+                tone="positive"
               />
-              <StatTile
+              <StatCard
                 label="Missed"
                 value={past.filter((s) => s.status === 'no_show' || s.status === 'missed').length}
-                accent={colors.late}
+                tone="caution"
               />
-            </View>
+            </StatRow>
             {past.slice(0, 12).map((session) => {
-              const meta = sessionMeta[session.status];
+              const meta = STATUS_META[session.status] ?? { label: session.status, tone: 'neutral' as const };
               return (
-                <Row key={session.id} style={styles.historyRow}>
-                  <View style={styles.grow}>
-                    <Txt variant="body">
+                <Row key={session.id} gap="md" style={styles.historyRow}>
+                  <Stack gap="xxs" style={styles.grow}>
+                    <Text variant="body">
                       Session {session.session_number} · {session.trainer_name ?? 'Trainer'}
-                    </Txt>
-                    <Txt variant="label" color={colors.textFaint}>
+                    </Text>
+                    <Text variant="label" tone={color.textTertiary}>
                       {dayLabel(session.session_date)}
-                    </Txt>
-                  </View>
-                  <Badge label={meta.label} color={meta.color} />
+                    </Text>
+                  </Stack>
+                  <Badge label={meta.label} tone={meta.tone} />
                 </Row>
               );
             })}
-          </>
+          </Section>
         ) : null}
       </Body>
     </Screen>
@@ -290,30 +348,25 @@ export default function MemberPtScreen() {
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  cardHead: { justifyContent: 'space-between' },
-  balanceRow: { gap: spacing.sm, alignItems: 'baseline' },
-  benefit: { gap: spacing.sm, paddingVertical: 2 },
-  bullet: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.brand },
-  options: { flexDirection: 'row', gap: spacing.sm },
+  half: { flex: 1 },
+  splitRule: { width: 1, backgroundColor: color.border },
+  bulletWrap: { paddingTop: 7 },
   option: {
     flex: 1,
-    alignItems: 'center',
-    backgroundColor: colors.raised,
-    borderRadius: radius.md,
+    backgroundColor: color.surfaceOverlay,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    gap: 2,
+    borderColor: color.border,
+    paddingVertical: space.md,
   },
-  split: { alignItems: 'stretch', gap: spacing.md },
-  splitSide: { flex: 1, gap: 4 },
-  splitDivider: { width: 1, backgroundColor: colors.border },
-  arrivalAction: { paddingVertical: spacing.sm },
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  historyRow: {
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+  trainerRow: {
+    paddingVertical: space.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: color.border,
+  },
+  historyRow: {
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
   },
 });

@@ -9,7 +9,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { type ColorValue, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from './primitives';
 import { color, HIT_TARGET, radii, space } from './tokens';
@@ -47,9 +47,15 @@ export function tabScreenOptions({ compact = false }: { compact?: boolean } = {}
   };
 }
 
-/** Builds a tab's icon renderer, so a layout declares the glyph and nothing else. */
+/**
+ * Builds a tab's icon renderer, so a layout declares the glyph and nothing else.
+ *
+ * The tint arrives as React Native's `ColorValue` — navigators may hand back an
+ * opaque platform colour rather than a string — so it is passed through to
+ * Ionicons untouched instead of being narrowed.
+ */
 export function tabIcon(name: IconName) {
-  return function TabIcon({ color: tint, size }: { color: string; size: number }) {
+  return function TabIcon({ color: tint, size }: { color: ColorValue; size: number }) {
     return <Ionicons name={name} size={size} color={tint} />;
   };
 }
