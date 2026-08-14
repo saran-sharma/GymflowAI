@@ -491,3 +491,11 @@ export const removeAvailability = (slotId: number, token: string) =>
     method: 'DELETE',
     token,
   });
+
+/* ------------------------------------------------------------- owner desk */
+
+export const renewalsDue = (token: string, days = 30, branchId?: number) =>
+  request<import('./types').Renewals>(
+    `/reports/renewals?days=${days}${branchId ? `&branch_id=${branchId}` : ''}`,
+    { token },
+  );

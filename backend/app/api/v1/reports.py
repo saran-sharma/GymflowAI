@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today, now_utc
 from app.core.deps import (
@@ -18,6 +18,9 @@ from app.db.models import (
     AttendanceStatus,
     AuditLog,
     Branch,
+    Member,
+    Membership,
+    MembershipStatus,
     Trainer,
     TrainerAttendance,
     User,
@@ -30,7 +33,7 @@ from app.domain.shift_engine import (
     PRESENT_STATUSES,
 )
 from app.schemas.common import AuditLogOut, BranchSummaryOut, DashboardOut, OccupancyOut
-from app.schemas.operations import NeedsAttentionOut
+from app.schemas.operations import NeedsAttentionOut, RenewalItemOut, RenewalsOut
 from app.services import attendance_service, automation_service, correction_service
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -273,3 +276,55 @@ def insights(
 
 
 __all__ = ["router"]
+
+
+@router.get("/renewals", response_model=RenewalsOut)
+def renewals_due(
+    days: int = Query(default=30, ge=1, le=180),
+    branch_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> RenewalsOut:
+    """Memberships expiring inside the window, and who they belong to.
+
+    The expiry *alert* already existed — `automation_service` raises one per
+    member — but there was no way to ask how many there are, which is what a
+    dashboard tile needs. This counts the same rows the alerts are raised
+    from, so the tile and the alert list can never disagree.
+
+    No money is attached. GymFlow has no billing model, so what a renewal is
+    worth is not something this can answer.
+    """
+    allowed = scoped_branch_filter(user, branch_id)
+    today = branch_today(None)
+    horizon = today + timedelta(days=days)
+
+    stmt = (
+        select(Membership)
+        .options(joinedload(Membership.member).joinedload(Member.user))
+        .where(
+            Membership.status == MembershipStatus.ACTIVE,
+            Membership.ends_on >= today,
+            Membership.ends_on <= horizon,
+        )
+        .order_by(Membership.ends_on)
+    )
+    if allowed is not None:
+        stmt = stmt.where(Membership.branch_id.in_(allowed))
+
+    rows = db.scalars(stmt).all()
+    return RenewalsOut(
+        window_days=days,
+        count=len(rows),
+        items=[
+            RenewalItemOut(
+                member_id=row.member_id,
+                member_name=row.member.user.full_name,
+                branch_id=row.branch_id,
+                plan_name=row.plan_name,
+                ends_on=row.ends_on,
+                days_remaining=(row.ends_on - today).days,
+            )
+            for row in rows
+        ],
+    )

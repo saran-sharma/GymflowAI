@@ -1,85 +1,41 @@
 /**
- * Owner navigation: DASHBOARD, TRAINERS, INCENTIVES, MARKETING, PROFILE.
+ * Owner navigation: DASHBOARD, MEMBERS, TRAINERS, MARKETING, MORE.
  *
- * Branch performance, classes, PT opportunities, corrections, alerts and
- * settings are reachable from the dashboard and the profile rather than
- * fighting for a tab — five is the most a bottom bar reads cleanly at.
+ * Members is promoted to a tab because it is the list an owner opens most
+ * after the dashboard. Incentives, performance, classes, corrections, PT
+ * opportunities, alerts and settings live under MORE.
+ *
+ * There is no Revenue tab and no InBody tab. Neither has a data source — no
+ * billing model, and nothing writes body composition — and a tab that opens
+ * onto an apology is worse than no tab.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { colors, spacing } from '../../src/theme';
+import { tabIcon, tabScreenOptions } from '../../src/design';
 
 export default function OwnerLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.brand,
-        tabBarInactiveTintColor: colors.textFaint,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          height: 64,
-          paddingBottom: spacing.sm,
-          paddingTop: spacing.sm,
-        },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
-        sceneStyle: { backgroundColor: colors.bg },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <Ionicons name="grid" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="trainers"
-        options={{
-          title: 'Trainers',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="incentives"
-        options={{
-          title: 'Incentives',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="ribbon-outline" size={size} color={color} />
-          ),
-        }}
-      />
+    <Tabs screenOptions={tabScreenOptions({ compact: true })}>
+      <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: tabIcon('grid') }} />
+      <Tabs.Screen name="members" options={{ title: 'Members', tabBarIcon: tabIcon('people-circle') }} />
+      <Tabs.Screen name="trainers" options={{ title: 'Trainers', tabBarIcon: tabIcon('people') }} />
       <Tabs.Screen
         name="marketing"
-        options={{
-          title: 'Marketing',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="megaphone-outline" size={size} color={color} />
-          ),
-        }}
+        options={{ title: 'Marketing', tabBarIcon: tabIcon('megaphone') }}
       />
       <Tabs.Screen
         name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
-        }}
+        options={{ title: 'More', tabBarIcon: tabIcon('ellipsis-horizontal') }}
       />
       {/* Pushed on top of the tabs. */}
       <Tabs.Screen name="branch/[id]" options={{ href: null }} />
       <Tabs.Screen name="trainer/[id]" options={{ href: null }} />
+      <Tabs.Screen name="incentives" options={{ href: null }} />
       <Tabs.Screen name="performance" options={{ href: null }} />
       <Tabs.Screen name="classes" options={{ href: null }} />
       <Tabs.Screen name="corrections" options={{ href: null }} />
-      <Tabs.Screen name="members" options={{ href: null }} />
       <Tabs.Screen name="opportunities" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />

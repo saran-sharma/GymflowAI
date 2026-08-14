@@ -1,287 +1,349 @@
 /**
- * The owner's home screen.
+ * The Owner Dashboard.
  *
- * Answers the six questions V1 exists for, above the fold: who is working, who
- * checked in, who is late, who is absent, who left early, and how punctual the
- * chain is. Below that, one card per SLAM branch, each a door into the branch.
+ * Three kinds of number live here and are kept visually apart, because an
+ * owner acting on them acts on different timescales: what is true *right now*
+ * (members inside), what is true *today* (trainers present, late), and what is
+ * true *over a period* (punctuality, PT utilisation, member activity).
+ * Conflating them is how a dashboard gets someone to phone a trainer about a
+ * late mark from three weeks ago.
+ *
+ * Four tiles from the design are absent — revenue, PT revenue, and anything
+ * denominated in rupees. GymFlow has no billing model: no invoice, no payment,
+ * no ledger. InBody scans are absent for the same reason in a different shape:
+ * the table exists and nothing writes to it. Those are named at the bottom of
+ * the screen rather than filled with a number nobody could trace.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { BranchSummary, Dashboard, NeedsAttention } from '../../src/api/types';
-import { Wordmark } from '../../src/components/Brand';
-import { AlertRow, SectionHeader } from '../../src/components/programme';
+import type {
+  BranchPerformanceResponse,
+  Dashboard,
+  Insight,
+  NeedsAttention,
+  Occupancy,
+  Renewals,
+} from '../../src/api/types';
+import { NotConnected } from '../../src/components/member';
 import {
+  AlertCard,
+  Badge,
   Body,
   Card,
+  Divider,
   ErrorState,
   Eyebrow,
+  LinkButton,
   Loading,
-  Meter,
-  OfflineNotice,
+  MetricRow,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Segmented,
+  Spacer,
+  StatCard,
+  StatRow,
+  Stack,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { useAuth } from '../../src/store/AuthContext';
-import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
-import { colors, radius, spacing } from '../../src/theme';
 import { longDate, percent } from '../../src/utils/format';
 
+type Period = 'today' | 'week' | 'month';
+
+const PERIODS = [
+  { value: 'today' as const, label: 'Today' },
+  { value: 'week' as const, label: 'Week' },
+  { value: 'month' as const, label: 'Month' },
+];
+
+/** Insight severity → the tone vocabulary the design system already speaks. */
+const SEVERITY_TONE = {
+  critical: 'critical',
+  warning: 'caution',
+  info: 'info',
+} as const;
+
 export default function OwnerDashboardScreen() {
-  const { user } = useAuth();
-  const { isOnline } = useNetwork();
   const router = useRouter();
+  const [period, setPeriod] = useState<Period>('week');
 
   const dashboard = useApi<Dashboard>((token) => api.dashboard(token), []);
+  const occupancy = useApi<Occupancy[]>((token) => api.allOccupancy(token), []);
+  const renewals = useApi<Renewals>((token) => api.renewalsDue(token, 30), []);
+  const performance = useApi<BranchPerformanceResponse>(
+    (token) => api.branchPerformance(token, period),
+    [period],
+  );
   // Fetching this also runs the server-side automations, so what the owner
   // sees is the current state rather than the last sweep's leftovers.
   const attention = useApi<NeedsAttention>((token) => api.needsAttention(token), []);
+  const insights = useApi<Insight[]>((token) => api.insights(token), []);
+
+  const refreshAll = useCallback(() => {
+    void dashboard.refresh();
+    void occupancy.refresh();
+    void renewals.refresh();
+    void performance.refresh();
+    void attention.refresh();
+    void insights.refresh();
+  }, [dashboard, occupancy, renewals, performance, attention, insights]);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
   useFocusEffect(
     useCallback(() => {
       void dashboard.refresh();
+      void occupancy.refresh();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
 
   if (dashboard.loading) return <Loading label="Loading SLAM" />;
+
   if (dashboard.error || !dashboard.data) {
+    const offline = dashboard.error?.code === OFFLINE_CODE;
     return (
       <Screen>
         <ErrorState
-          title={dashboard.error?.code === OFFLINE_CODE ? 'No connection' : 'Could not load the dashboard'}
-          detail={dashboard.error?.message}
-          onRetry={dashboard.reload}
+          offline={offline}
+          title={offline ? undefined : 'We could not load your dashboard'}
+          detail={
+            offline
+              ? undefined
+              : (dashboard.error?.message ??
+                'The branches are still recording. This is a problem reaching GymFlow, not with your gyms.')
+          }
+          onRetry={refreshAll}
         />
       </Screen>
     );
   }
 
-  const data = dashboard.data;
-  const punctualityColor =
-    data.punctuality_pct >= 90 ? colors.onTime : data.punctuality_pct >= 75 ? colors.late : colors.absent;
+  const day = dashboard.data;
+  const crowds = occupancy.data ?? [];
+  const inside = crowds.reduce((total, branch) => total + branch.inside, 0);
+  const capacity = crowds.reduce((total, branch) => total + branch.capacity, 0);
+  const items = attention.data?.items ?? [];
+  const observations = insights.data ?? [];
 
   return (
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl
-            refreshing={dashboard.refreshing}
-            onRefresh={() => {
-              void dashboard.refresh();
-              void attention.refresh();
-            }}
-            tintColor={colors.brand}
-          />
+          <RefreshControl refreshing={dashboard.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
         }
       >
-        <Wordmark subtitle={longDate(data.work_date)} />
+        <Stack gap="xxs">
+          <Eyebrow>Owner</Eyebrow>
+          <Text variant="title">Dashboard</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            {longDate(day.work_date)} · {day.branches.length} branch
+            {day.branches.length === 1 ? '' : 'es'}
+          </Text>
+        </Stack>
 
-        {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
+        {/* Right now. One row, marked live, so it is never read as a total. */}
+        <Section
+          title="Right now"
+          action={<Badge label="Live" tone="critical" solid />}
+        >
+          <StatRow>
+            <StatCard
+              label="Members inside"
+              value={inside}
+              hint={capacity ? `of ${capacity}` : 'no capacity set'}
+              tone="brand"
+              icon="people-outline"
+              onPress={() => router.push('/(owner)/members' as never)}
+            />
+            <StatCard
+              label="Trainers present"
+              value={`${day.present}/${day.total_trainers}`}
+              hint={`${day.scheduled} scheduled`}
+              tone={day.present >= day.scheduled ? 'positive' : 'caution'}
+              icon="person-outline"
+              onPress={() => router.push('/(owner)/trainers' as never)}
+            />
+          </StatRow>
+        </Section>
 
-        {/* The six numbers. */}
-        <View style={styles.tiles}>
-          <StatTile label="Total trainers" value={data.total_trainers} hint={`${data.scheduled} rostered`} />
-          <StatTile label="Present" value={data.present} accent={colors.onTime} />
-        </View>
-        <View style={styles.tiles}>
-          <StatTile label="Late" value={data.late} accent={data.late ? colors.late : colors.textMuted} />
-          <StatTile label="Absent" value={data.absent} accent={data.absent ? colors.absent : colors.textMuted} />
-          <StatTile
-            label="Early exit"
-            value={data.early_exit}
-            accent={data.early_exit ? colors.earlyExit : colors.textMuted}
+        {/* Today. Settled counts for the current business day. */}
+        <Section title="Today">
+          <StatRow>
+            <StatCard
+              label="Late"
+              value={day.late}
+              hint="past grace"
+              tone={day.late ? 'caution' : 'positive'}
+              icon="time-outline"
+              onPress={() => router.push('/(owner)/trainers' as never)}
+            />
+            <StatCard
+              label="Absent"
+              value={day.absent}
+              hint="no check-in"
+              tone={day.absent ? 'critical' : 'positive'}
+              icon="close-circle-outline"
+              onPress={() => router.push('/(owner)/trainers' as never)}
+            />
+            <StatCard
+              label="Punctuality"
+              value={percent(day.punctuality_pct)}
+              hint="today"
+              tone={day.punctuality_pct >= 90 ? 'positive' : 'caution'}
+              icon="speedometer-outline"
+              onPress={() => router.push('/(owner)/performance' as never)}
+            />
+          </StatRow>
+
+          <StatCard
+            label="Renewals due"
+            value={renewals.data?.count ?? '—'}
+            hint="next 30 days"
+            tone={(renewals.data?.count ?? 0) > 0 ? 'caution' : 'neutral'}
+            icon="refresh-outline"
+            onPress={() => router.push('/(owner)/members' as never)}
           />
-        </View>
+        </Section>
 
-        <Card>
-          <Row style={styles.cardHead}>
-            <Eyebrow>Chain punctuality</Eyebrow>
-            <Txt variant="title" color={punctualityColor}>
-              {percent(data.punctuality_pct)}
-            </Txt>
-          </Row>
-          <Meter value={data.punctuality_pct} color={punctualityColor} />
-          <Txt variant="label" color={colors.textFaint}>
-            {data.present} of {data.scheduled} rostered shifts started, {data.missing_checkout} without a
-            check-out
-          </Txt>
-        </Card>
+        {/* Over a period. The only place a comparison is shown. */}
+        <Section
+          title="Performance"
+          action={
+            <LinkButton title="Detail" onPress={() => router.push('/(owner)/performance' as never)} />
+          }
+        >
+          <Segmented options={PERIODS} value={period} onChange={setPeriod} testIDPrefix="period" />
 
-        {/* One door per branch. */}
-        <Txt variant="heading" style={styles.sectionHead}>
-          Branches
-        </Txt>
-        {data.branches.map((branch) => (
-          <BranchCard
-            key={branch.branch_id}
-            branch={branch}
-            onPress={() => router.push(`/(owner)/branch/${branch.branch_id}` as never)}
-          />
-        ))}
+          {performance.loading ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Loading {period}…
+            </Text>
+          ) : performance.error ? (
+            <Text variant="label" tone={color.status.caution}>
+              Performance did not load. Pull to refresh.
+            </Text>
+          ) : (
+            (performance.data?.branches ?? []).map((branch) => (
+              <Card key={branch.branch_id}>
+                <Row gap="sm">
+                  <Eyebrow>{branch.branch_name}</Eyebrow>
+                  <Spacer />
+                  <Text variant="label" tone={color.textTertiary}>
+                    {branch.members_inside} inside
+                  </Text>
+                </Row>
+                <Divider />
+                <MetricRow
+                  label="Punctuality"
+                  value={percent(branch.punctuality.value)}
+                  progress={branch.punctuality.value}
+                  tone={branch.punctuality.value >= 90 ? 'positive' : 'caution'}
+                />
+                <MetricRow
+                  label="Attendance"
+                  value={percent(branch.attendance.value)}
+                  progress={branch.attendance.value}
+                  tone={branch.attendance.value >= 90 ? 'positive' : 'caution'}
+                />
+                <MetricRow
+                  label="PT utilisation"
+                  value={percent(branch.pt_utilisation.value)}
+                  progress={branch.pt_utilisation.value}
+                />
+                <MetricRow
+                  label="Member activity"
+                  value={percent(branch.member_activity.value)}
+                  progress={branch.member_activity.value}
+                />
+              </Card>
+            ))
+          )}
 
-        {/* NEEDS ATTENTION. Every row is actionable and opens the person,
-            session or member it is about. */}
-        <SectionHeader
-          title="Needs attention"
-          action={attention.data?.items.length ? 'All alerts' : undefined}
-          onAction={() => router.push('/(owner)/alerts' as never)}
-        />
-        {attention.loading ? (
-          <Txt variant="label" color={colors.textFaint}>
-            Checking…
-          </Txt>
-        ) : attention.data && attention.data.items.length > 0 ? (
-          attention.data.items.map((item) => (
-            <AlertRow
+          {performance.data?.note ? (
+            <Text variant="label" tone={color.textTertiary}>
+              {performance.data.note}
+            </Text>
+          ) : null}
+        </Section>
+
+        {/* Insights: deterministic, from the rule-based provider. No model. */}
+        <Section
+          title="Insights"
+          action={<Badge label="Rule-based" tone="neutral" />}
+        >
+          {observations.length === 0 && items.length === 0 ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Nothing needs your attention right now.
+            </Text>
+          ) : null}
+
+          {observations.map((observation) => (
+            <AlertCard
+              key={observation.key}
+              title={observation.title}
+              body={observation.detail}
+              tone={SEVERITY_TONE[observation.severity] ?? 'info'}
+            />
+          ))}
+
+          {items.slice(0, 8).map((item) => (
+            <AlertCard
               key={item.id}
-              severity={item.severity}
               title={item.title}
               body={item.body}
-              onPress={() => router.push(routeForAlert(item.action_route) as never)}
+              tone={SEVERITY_TONE[item.severity] ?? 'info'}
+              onPress={
+                item.action_route
+                  ? () => router.push(item.action_route as never)
+                  : undefined
+              }
             />
-          ))
-        ) : (
-          <Card>
-            <Txt variant="body" color={colors.textMuted}>
-              Nothing needs you right now.
-            </Txt>
-          </Card>
-        )}
+          ))}
 
-        {attention.data && (attention.data.pt_ready_count > 0 || attention.data.pending_corrections > 0) ? (
-          <View style={styles.tiles}>
-            <StatTile
-              label="Ready for PT"
-              value={attention.data.pt_ready_count}
-              hint="Day 45 complete"
-              accent={attention.data.pt_ready_count ? colors.brand : colors.textMuted}
-              onPress={() => router.push('/(owner)/opportunities' as never)}
-            />
-            <StatTile
-              label="Corrections"
-              value={attention.data.pending_corrections}
-              hint="awaiting review"
-              accent={attention.data.pending_corrections ? colors.late : colors.textMuted}
-              onPress={() => router.push('/(owner)/corrections' as never)}
-            />
-          </View>
-        ) : null}
+          {attention.data ? (
+            <Row gap="md">
+              <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+                {attention.data.pt_ready_count} ready for PT ·{' '}
+                {attention.data.pending_corrections} correction
+                {attention.data.pending_corrections === 1 ? '' : 's'} pending
+              </Text>
+            </Row>
+          ) : null}
+        </Section>
 
-        <Txt variant="label" color={colors.textFaint} style={styles.footer}>
-          Signed in as {user?.full_name}. Times are recorded by the GymFlow server.
-        </Txt>
+        {/* What this dashboard cannot tell you, said plainly. */}
+        <Section title="Not available">
+          <Stack gap="sm">
+            <NotConnected
+              icon="cash-outline"
+              title="Revenue and PT revenue"
+              detail="GymFlow has no billing model — no invoice, payment or ledger table — so there is no revenue figure to show, and no renewal value either."
+            />
+            <NotConnected
+              icon="body-outline"
+              title="InBody scans"
+              detail="The scan table exists but nothing reads or writes it. Scan counts appear once the InBody integration is switched on."
+            />
+            <NotConnected
+              icon="stats-chart-outline"
+              title="Trend charts"
+              detail="Revenue, membership growth and PT bookings by month need history GymFlow does not store yet. Punctuality, attendance and PT utilisation are shown above as period figures instead."
+            />
+          </Stack>
+        </Section>
       </Body>
     </Screen>
   );
 }
 
-/**
- * Turn the server's description of an alert into a screen in this app.
- *
- * Unrecognised routes fall back to the alert list rather than a blank screen.
- */
-function routeForAlert(actionRoute: string | null): string {
-  const route = actionRoute ?? '';
-  if (route.startsWith('/owner/trainer/')) {
-    const id = route.split('/').pop();
-    return id ? `/(owner)/trainer/${id}` : '/(owner)/trainers';
-  }
-  if (route.startsWith('/owner/corrections')) return '/(owner)/corrections';
-  if (route.startsWith('/owner/classes')) return '/(owner)/classes';
-  if (route.startsWith('/owner/member/')) return '/(owner)/members';
-  return '/(owner)/alerts';
-}
-
-function BranchCard({ branch, onPress }: { branch: BranchSummary; onPress: () => void }) {
-  const punctualityColor =
-    branch.punctuality_pct >= 90
-      ? colors.onTime
-      : branch.punctuality_pct >= 75
-        ? colors.late
-        : colors.absent;
-
-  // "SLAM Nagalkeni" reads as "NAGALKENI" on the card; the brand is the header.
-  const shortName = branch.branch_name.replace(/^SLAM\s+/i, '').toUpperCase();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${branch.branch_name}`}
-      style={({ pressed }) => [styles.branchCard, pressed && styles.branchPressed]}
-      testID={`branch-card-${branch.branch_code}`}
-    >
-      <Row style={styles.cardHead}>
-        <Txt variant="heading">{shortName}</Txt>
-        <Row style={styles.branchRight}>
-          <Txt variant="heading" color={punctualityColor}>
-            {percent(branch.punctuality_pct)}
-          </Txt>
-          <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-        </Row>
-      </Row>
-
-      <Meter value={branch.punctuality_pct} color={punctualityColor} />
-
-      <Row style={styles.branchStats}>
-        <MiniStat label="Scheduled" value={branch.scheduled} />
-        <MiniStat label="Present" value={branch.present} color={colors.onTime} />
-        <MiniStat label="Late" value={branch.late} color={branch.late ? colors.late : undefined} />
-        <MiniStat label="Absent" value={branch.absent} color={branch.absent ? colors.absent : undefined} />
-      </Row>
-
-      {branch.occupancy ? (
-        <Row style={styles.occupancy}>
-          <Ionicons name="people-outline" size={14} color={colors.textFaint} />
-          <Txt variant="label" color={colors.textFaint}>
-            {branch.occupancy.inside} inside of {branch.occupancy.capacity} ·{' '}
-            {branch.occupancy.crowd_level.toLowerCase()}
-          </Txt>
-        </Row>
-      ) : null}
-    </Pressable>
-  );
-}
-
-function MiniStat({ label, value, color = colors.text }: { label: string; value: number; color?: string }) {
-  return (
-    <View style={styles.miniStat}>
-      <Txt variant="heading" color={color}>
-        {value}
-      </Txt>
-      <Txt variant="caption" color={colors.textFaint}>
-        {label.toUpperCase()}
-      </Txt>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  cardHead: { justifyContent: 'space-between' },
-  sectionHead: { marginTop: spacing.lg },
-  branchCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  branchPressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
-  branchRight: { gap: spacing.xs },
-  branchStats: { justifyContent: 'space-between' },
-  miniStat: { alignItems: 'flex-start', gap: 2 },
-  occupancy: { gap: spacing.xs },
-  footer: { textAlign: 'center', marginTop: spacing.lg },
+  grow: { flex: 1 },
 });
