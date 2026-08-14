@@ -19,8 +19,8 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.core.config import settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
 from app.db import models  # noqa: E402,F401  (import registers every table)
+from app.db.base import Base  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:
