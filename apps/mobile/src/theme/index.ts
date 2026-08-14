@@ -1,75 +1,101 @@
 /**
- * SLAM's design language, carried over from the web demo.
+ * Compatibility view over the design system.
  *
- * Matte black surfaces with a faint red bias, one premium red accent, and
- * white/grey text. The neutrals are not pure grey on purpose — the ground and
- * the accent read as one family rather than "grey plus red".
+ * Screens written before `src/design` existed import `colors`, `spacing`,
+ * `radius` and `typography` from here. Rather than leave a second set of
+ * values to drift, this module is now a *projection* of `src/design/tokens` —
+ * so changing a token changes both the new components and every existing
+ * screen, and there is nowhere for the two to disagree.
+ *
+ * New work should import from `src/design` directly. Nothing here is
+ * deprecated in a way that breaks; it simply has a flatter shape.
  */
 
+import {
+  color,
+  control,
+  HIT_TARGET as HIT_TARGET_TOKEN,
+  radii,
+  space,
+  text,
+} from '../design/tokens';
+
+/* ------------------------------------------------------------------ colour */
+
+/**
+ * The flat palette the screens use.
+ *
+ * Every entry points at a semantic token. The status colours map one-to-one
+ * onto attendance outcomes, so a colour never means two different things
+ * across screens.
+ */
 export const colors = {
   // Surfaces, darkest to lightest.
-  bg: '#08080A',
-  surface: '#0E0E11',
-  card: '#141417',
-  raised: '#1B1B1F',
-  input: '#232329',
-  border: '#2C2C33',
-  borderStrong: '#3A3A42',
+  bg: color.background,
+  surface: color.surface,
+  card: color.surfaceRaised,
+  raised: color.surfaceOverlay,
+  input: color.surfaceInput,
+  border: color.border,
+  borderStrong: color.borderStrong,
 
   // The SLAM red.
-  brand: '#EF2B3C',
-  brandSoft: '#FF5B68',
-  brandDeep: '#C8102E',
+  brand: color.brand,
+  brandSoft: color.brandAccent,
+  brandDeep: color.brandDeep,
 
   // Text.
-  text: '#FFFFFF',
-  textMuted: '#A1A1AA',
-  textFaint: '#71717A',
-  textInverse: '#08080A',
+  text: color.text,
+  textMuted: color.textSecondary,
+  textFaint: color.textTertiary,
+  textInverse: color.textInverse,
 
-  // Status. These map one-to-one onto attendance statuses so a colour never
-  // means two different things across screens.
-  onTime: '#22C55E',
-  late: '#F59E0B',
-  absent: '#EF4444',
-  earlyExit: '#F97316',
-  missing: '#A855F7',
-  scheduled: '#64748B',
-  info: '#3B82F6',
+  // Outcome hues.
+  onTime: color.status.positive,
+  late: color.status.caution,
+  absent: color.status.critical,
+  earlyExit: color.status.warning,
+  missing: color.status.notable,
+  scheduled: color.status.neutral,
+  info: color.status.info,
 } as const;
 
+/* ----------------------------------------------------- spacing and shape */
+
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-  xxxl: 48,
+  xs: space.xs,
+  sm: space.sm,
+  md: space.md,
+  lg: space.lg,
+  xl: space.xl,
+  xxl: space.xxl,
+  xxxl: space.xxxl,
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  pill: 999,
+  sm: radii.sm,
+  md: radii.md,
+  lg: radii.lg,
+  xl: radii.xl,
+  pill: radii.pill,
 } as const;
 
-export const typography = {
-  // Display sizes are tight and slightly negative-tracked, which is what makes
-  // the numbers on the dashboard read as a product rather than a spreadsheet.
-  display: { fontSize: 40, fontWeight: '800' as const, letterSpacing: -1.4 },
-  title: { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.8 },
-  heading: { fontSize: 19, fontWeight: '700' as const, letterSpacing: -0.4 },
-  body: { fontSize: 15, fontWeight: '500' as const, letterSpacing: -0.1 },
-  label: { fontSize: 13, fontWeight: '600' as const, letterSpacing: 0.2 },
-  caption: { fontSize: 11, fontWeight: '700' as const, letterSpacing: 1.1 },
-  mono: { fontSize: 15, fontWeight: '700' as const, letterSpacing: 0.5 },
-} as const;
+/**
+ * The type scale.
+ *
+ * Spread into a style (`...typography.body`), so these now carry line heights
+ * as well — stacked text was previously relying on the platform default, which
+ * is what made multi-line copy look loose against the tight display sizes.
+ */
+export const typography = text;
 
 /** Minimum tap target. Trainers use this on a gym floor, often mid-set. */
-export const HIT_TARGET = 48;
+export const HIT_TARGET = HIT_TARGET_TOKEN;
+
+/** Control heights, for screens that size a custom pressable. */
+export const controlHeight = control.height;
+
+/* ------------------------------------------------------------- attendance */
 
 export type AttendanceStatus =
   | 'scheduled'
