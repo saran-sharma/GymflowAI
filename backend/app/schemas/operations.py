@@ -285,4 +285,21 @@ class NeedsAttentionOut(BaseModel):
     pending_corrections: int
 
 
+class RenewalItemOut(BaseModel):
+    member_id: int
+    member_name: str
+    branch_id: int
+    plan_name: str
+    ends_on: date
+    days_remaining: int
+
+
+class RenewalsOut(BaseModel):
+    """Memberships approaching expiry. No value attached — there is no billing model."""
+
+    window_days: int
+    count: int
+    items: list[RenewalItemOut]
+
+
 __all__ = [name for name in dir() if name[0].isupper()]

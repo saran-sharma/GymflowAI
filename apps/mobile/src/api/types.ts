@@ -744,3 +744,21 @@ export interface AvailabilitySlotInput {
   end_time: string;
   note?: string | null;
 }
+
+/* ------------------------------------------------------------- owner desk */
+
+export interface RenewalItem {
+  member_id: number;
+  member_name: string;
+  branch_id: number;
+  plan_name: string;
+  ends_on: string;
+  days_remaining: number;
+}
+
+/** Memberships approaching expiry. No value attached — there is no billing model. */
+export interface Renewals {
+  window_days: number;
+  count: number;
+  items: RenewalItem[];
+}
