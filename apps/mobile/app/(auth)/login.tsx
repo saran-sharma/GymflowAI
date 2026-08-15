@@ -5,6 +5,10 @@
  * trusts. Authorization comes from the account, and after a successful login
  * the app routes on the *server's* role, not the chip the person tapped. If
  * those disagree, the server wins and the screen says so.
+ *
+ * Built from the design system rather than hand-rolled inputs, so the field
+ * borders, error text and disabled button behave exactly as they do on every
+ * other screen. Nothing about authentication changed here.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -21,12 +25,27 @@ import {
 } from 'react-native';
 
 import { ApiError, OFFLINE_CODE, UNCONFIGURED_CODE } from '../../src/api/client';
-import { SlamLogo } from '../../src/components/Brand';
-import { Banner, Button, Eyebrow, OfflineNotice, Screen, Txt } from '../../src/components/ui';
+import type { Role } from '../../src/api/types';
+import {
+  Banner,
+  Button,
+  Eyebrow,
+  Input,
+  LinkButton,
+  OfflineNotice,
+  Screen,
+  SlamLogo,
+  Spacer,
+  Stack,
+  Row,
+  Text,
+  alpha,
+  color,
+  radii,
+  space,
+} from '../../src/design';
 import { homeRouteForRole, useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
-import { colors, HIT_TARGET, radius, spacing, typography } from '../../src/theme';
-import type { Role } from '../../src/api/types';
 
 /** The four ways into SLAM. `admin` maps onto the platform's super-admin role. */
 const ROLES: { key: Role; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -82,7 +101,6 @@ export default function LoginScreen() {
   const [role, setRole] = useState<Role>('owner');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -94,6 +112,17 @@ export default function LoginScreen() {
   const passwordValid = password.length >= 8;
   const canSubmit = identifierValid && passwordValid && !busy;
   const errorText = useMemo(() => messageFor(error, isOnline), [error, isOnline]);
+
+  // Validation speaks only once the person has left the field, so the form does
+  // not scold someone halfway through typing their own email address.
+  const identifierError =
+    touched && identifier.length > 0 && !identifierValid
+      ? 'Enter a valid email address or mobile number.'
+      : null;
+  const passwordError =
+    touched && password.length > 0 && !passwordValid
+      ? 'Your password is at least 8 characters.'
+      : null;
 
   async function submit() {
     setTouched(true);
@@ -132,21 +161,21 @@ export default function LoginScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
+          <Stack gap="sm" style={styles.header}>
             <SlamLogo width={196} />
-            <Txt variant="display" style={styles.headline}>
+            <Text variant="display" style={styles.headline}>
               GymFlow AI
-            </Txt>
-            <Txt variant="body" color={colors.textMuted}>
+            </Text>
+            <Text variant="body" tone={color.textSecondary}>
               Smart operations across every SLAM branch.
-            </Txt>
-          </View>
+            </Text>
+          </Stack>
 
           {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
 
-          <View style={styles.roles}>
+          <Stack gap="sm">
             <Eyebrow>I am a</Eyebrow>
-            <View style={styles.roleRow}>
+            <Row gap="sm" align="stretch">
               {ROLES.map((option) => {
                 const selected = option.key === role;
                 return (
@@ -159,113 +188,79 @@ export default function LoginScreen() {
                     testID={`role-${option.key}`}
                     style={({ pressed }) => [
                       styles.roleChip,
-                      selected && styles.roleChipSelected,
-                      pressed && styles.roleChipPressed,
+                      selected ? styles.roleChipSelected : null,
+                      pressed ? styles.roleChipPressed : null,
                     ]}
                   >
                     <Ionicons
                       name={option.icon}
                       size={18}
-                      color={selected ? colors.text : colors.textFaint}
+                      color={selected ? color.brand : color.textTertiary}
                     />
-                    <Txt
+                    <Text
                       variant="caption"
-                      color={selected ? colors.text : colors.textFaint}
+                      tone={selected ? color.text : color.textTertiary}
                       style={styles.roleLabel}
                     >
                       {option.label}
-                    </Txt>
+                    </Text>
                   </Pressable>
                 );
               })}
-            </View>
-          </View>
+            </Row>
+          </Stack>
 
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Eyebrow>Email or mobile</Eyebrow>
-              <TextInput
-                value={identifier}
-                onChangeText={setIdentifier}
-                onBlur={() => setTouched(true)}
-                placeholder="you@slam.fit or 98xxxxxxxx"
-                placeholderTextColor={colors.textFaint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="username"
-                keyboardType="email-address"
-                inputMode="email"
-                returnKeyType="next"
-                onSubmitEditing={() => passwordRef.current?.focus()}
-                style={[
-                  styles.input,
-                  touched && identifier.length > 0 && !identifierValid && styles.inputInvalid,
-                ]}
-                accessibilityLabel="Email address or mobile number"
-                testID="login-email"
-              />
-              {touched && identifier.length > 0 && !identifierValid ? (
-                <Txt variant="label" color={colors.brandSoft}>
-                  Enter a valid email address or mobile number.
-                </Txt>
-              ) : null}
-            </View>
+          <Stack gap="lg">
+            <Input
+              label="Email or mobile"
+              value={identifier}
+              onChangeText={setIdentifier}
+              onBlur={() => setTouched(true)}
+              placeholder="you@slam.fit or 98xxxxxxxx"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              keyboardType="email-address"
+              inputMode="email"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              error={identifierError}
+              accessibilityLabel="Email address or mobile number"
+              testID="login-email"
+            />
 
-            <View style={styles.field}>
-              <Eyebrow>Password</Eyebrow>
-              <View style={styles.passwordWrap}>
-                <TextInput
-                  ref={passwordRef}
-                  value={password}
-                  onChangeText={setPassword}
-                  onBlur={() => setTouched(true)}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.textFaint}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="current-password"
-                  style={[
-                    styles.input,
-                    styles.passwordInput,
-                    touched && password.length > 0 && !passwordValid && styles.inputInvalid,
-                  ]}
-                  onSubmitEditing={submit}
-                  returnKeyType="go"
-                  accessibilityLabel="Password"
-                  testID="login-password"
-                />
-                <Pressable
-                  onPress={() => setShowPassword((value) => !value)}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                  testID="toggle-password"
-                  style={styles.eye}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color={colors.textMuted}
-                  />
-                </Pressable>
-              </View>
-              {touched && password.length > 0 && !passwordValid ? (
-                <Txt variant="label" color={colors.brandSoft}>
-                  Your password is at least 8 characters.
-                </Txt>
-              ) : null}
-            </View>
+            <Input
+              ref={passwordRef}
+              label="Password"
+              secure
+              value={password}
+              onChangeText={setPassword}
+              onBlur={() => setTouched(true)}
+              placeholder="••••••••"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              returnKeyType="go"
+              onSubmitEditing={submit}
+              error={passwordError}
+              accessibilityLabel="Password"
+              testID="login-password"
+              toggleTestID="toggle-password"
+            />
 
             {errorText ? (
-              <Banner tone="danger" testID="login-error">
+              <Banner tone="critical" icon="alert-circle-outline" testID="login-error">
                 {errorText}
               </Banner>
             ) : null}
-            {notice ? <Banner tone="info">{notice}</Banner> : null}
+            {notice ? (
+              <Banner tone="info" icon="information-circle-outline">
+                {notice}
+              </Banner>
+            ) : null}
 
             <Button
-              title="SIGN IN"
+              title="Sign in"
               size="lg"
               loading={busy}
               disabled={!canSubmit}
@@ -273,34 +268,26 @@ export default function LoginScreen() {
               testID="login-submit"
             />
 
-            <View style={styles.links}>
-              <Pressable
+            <Row>
+              <LinkButton
+                title="Forgot password?"
                 onPress={() => setNotice(HELP_TEXT)}
-                accessibilityRole="button"
                 testID="forgot-password"
-                style={styles.link}
-              >
-                <Txt variant="label" color={colors.brandSoft}>
-                  Forgot password?
-                </Txt>
-              </Pressable>
-              <Pressable
+              />
+              <Spacer />
+              <LinkButton
+                title="Contact your SLAM branch"
+                tone={color.textSecondary}
                 onPress={() => setNotice(HELP_TEXT)}
-                accessibilityRole="button"
                 testID="contact-branch"
-                style={styles.link}
-              >
-                <Txt variant="label" color={colors.textMuted}>
-                  Contact your SLAM branch
-                </Txt>
-              </Pressable>
-            </View>
-          </View>
+              />
+            </Row>
+          </Stack>
 
-          <Txt variant="label" color={colors.textFaint} style={styles.footer}>
+          <Text variant="label" tone={color.textTertiary} align="center" style={styles.footer}>
             Your session is stored in the device keychain. Attendance times always come from the
             GymFlow server, never from your phone.
-          </Txt>
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -309,50 +296,26 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.xl, flexGrow: 1, justifyContent: 'center' },
-  header: { gap: spacing.sm, alignItems: 'flex-start' },
-  headline: { marginTop: spacing.md },
-  roles: { gap: spacing.sm },
-  roleRow: { flexDirection: 'row', gap: spacing.sm },
+  content: { padding: space.xl, gap: space.xl, flexGrow: 1, justifyContent: 'center' },
+  header: { alignItems: 'flex-start' },
+  headline: { marginTop: space.md },
   roleChip: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
+    paddingVertical: space.md,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    minHeight: HIT_TARGET + 12,
+    borderColor: color.border,
+    backgroundColor: color.surfaceRaised,
+    minHeight: 60,
   },
-  roleChipSelected: { borderColor: colors.brand, backgroundColor: `${colors.brand}1F` },
+  roleChipSelected: {
+    borderColor: color.brand,
+    backgroundColor: alpha(color.brand, 0.12),
+  },
   roleChipPressed: { opacity: 0.8 },
   roleLabel: { fontSize: 10 },
-  form: { gap: spacing.lg },
-  field: { gap: spacing.xs },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    height: 54,
-  },
-  inputInvalid: { borderColor: colors.brandDeep },
-  passwordWrap: { justifyContent: 'center' },
-  passwordInput: { paddingRight: 52 },
-  eye: {
-    position: 'absolute',
-    right: spacing.md,
-    height: HIT_TARGET,
-    width: HIT_TARGET,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  links: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  link: { paddingVertical: spacing.sm },
-  footer: { textAlign: 'center', lineHeight: 18 },
+  footer: { lineHeight: 18 },
 });

@@ -207,6 +207,8 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
   /** Renders the show/hide eye and manages masking. */
   secure?: boolean;
   icon?: IconName;
+  /** Test hook for the show/hide control, which is not the field itself. */
+  toggleTestID?: string;
 }
 
 /**
@@ -217,7 +219,7 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
  * disagree about whether the field is valid.
  */
 export const Input = forwardRef<TextInput, InputProps>(function Input(
-  { label, error, hint, secure = false, icon, ...rest },
+  { label, error, hint, secure = false, icon, toggleTestID, ...rest },
   ref,
 ) {
   const [revealed, setRevealed] = useState(false);
@@ -253,6 +255,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            testID={toggleTestID}
             style={styles.inputAction}
           >
             <Ionicons
