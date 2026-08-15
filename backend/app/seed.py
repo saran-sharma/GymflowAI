@@ -75,6 +75,7 @@ from app.services import (
     attendance_service,
     automation_service,
     class_service,
+    incentive_service,
     journey_service,
     marketing_service,
     pt_service,
@@ -211,6 +212,22 @@ MEMBERS = [
     # Finished the journey and has not converted — this is the member the
     # owner's PT opportunity list exists for.
     ("SLAM-ALD", "Priyanka Das", "Annual", 0, 46, "google", None, None),
+    # A second cohort, so the lists, charts and marketing report have enough
+    # rows to look like a working gym rather than a fixture file. Journey days
+    # are spread deliberately across the assessment window, the middle of the
+    # programme and the run-up to Day 45.
+    ("SLAM-NGK", "Rahul Iyer", "Annual + PT", 20, 8, "instagram", "AUG-TRANSFORM", None),
+    ("SLAM-NGK", "Meghna Pillai", "Monthly", 0, 16, "google", None, None),
+    ("SLAM-NGK", "Farhan Ali", "Elite Annual + PT", 30, 34, "referral", None, "Kavya Nair"),
+    ("SLAM-NGK", "Sneha Kapoor", "Quarterly", 0, 41, "website", None, None),
+    ("SLAM-NGK", "Imran Sheikh", "Monthly", 0, None, "walk_in", None, None),
+    ("SLAM-BGH", "Anjali Menon", "Quarterly + PT", 12, 5, "banner", "WEEKEND-TRIAL", None),
+    ("SLAM-BGH", "Karthik Nair", "Annual", 0, 27, "facebook", None, None),
+    ("SLAM-BGH", "Deepa Raman", "Elite Annual + PT", 20, 39, "instagram", None, None),
+    ("SLAM-BGH", "Suresh Kumar", "Monthly", 0, 2, "walk_in", None, None),
+    ("SLAM-ALD", "Lakshmi Iyer", "Annual + PT", 30, 19, "google", "AUG-TRANSFORM", None),
+    ("SLAM-ALD", "Rohit Desai", "Quarterly", 0, 43, "referral", None, "Nikhil Verma"),
+    ("SLAM-ALD", "Ayesha Khan", "Monthly", 0, 11, "website", None, None),
 ]
 
 # Campaigns SLAM ran. Nothing here carries a price — pricing has not been
@@ -785,8 +802,45 @@ def seed_classes(
     db.flush()
 
 
+def settle_expired_memberships(db: Session) -> int:
+    """Mark memberships whose end date has passed.
+
+    The seeder dates some of them into the past on purpose so the expired
+    state is testable; without this they would sit there labelled active with
+    an end date behind them, which is the one combination that should never
+    appear.
+    """
+    today = branch_today(None)
+    rows = list(
+        db.scalars(
+            select(Membership).where(
+                Membership.ends_on < today,
+                Membership.status == MembershipStatus.ACTIVE,
+            )
+        ).all()
+    )
+    for row in rows:
+        row.status = MembershipStatus.EXPIRED
+    db.commit()
+    return len(rows)
+
+
+def recompute_incentives(db: Session, branches: dict[str, Branch]) -> int:
+    """Run the real incentive rules over the seeded attendance.
+
+    Calculated rather than written: the incentive screen should show what the
+    rules actually produce from the demo shifts, so a change to the rules shows
+    up here the same way it would in production.
+    """
+    total = 0
+    for branch in branches.values():
+        total += incentive_service.recompute_branch(db, branch.id, branch.timezone)
+    db.commit()
+    return total
+
+
 def seed_members_currently_inside(
-    db: Session, branches: dict[str, Branch], rng: random.Random
+    db: Session, branches: dict[str, Branch], _rng: random.Random
 ) -> int:
     """Leave a handful of members checked in but not checked out, per branch.
 
@@ -800,6 +854,7 @@ def seed_members_currently_inside(
     """
     created = 0
     for branch in branches.values():
+        rng = random.Random(f"inside:{branch.id}")
         members = list(
             db.scalars(
                 select(Member)
@@ -834,7 +889,7 @@ def seed_members_currently_inside(
     return created
 
 
-def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) -> int:
+def seed_availability(db: Session, trainers: list[Trainer], _rng: random.Random) -> int:
     """Published PT hours for the next fortnight.
 
     Idempotent by the same key the table is unique on — trainer, date, start —
@@ -844,6 +899,9 @@ def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) 
     """
     created = 0
     for trainer in trainers:
+        # Seeded from the trainer, not the shared stream: a second run has to
+        # make the same choices or the existence check below misses and the
+        # table grows without ever duplicating a row.
         booked_sessions = list(
             db.scalars(
                 select(PTSession)
@@ -860,7 +918,12 @@ def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) 
             # Sunday is closed for PT at SLAM.
             if slot_date.weekday() == 6:
                 continue
-            hours = rng.sample([6, 7, 8, 17, 18, 19, 20], k=rng.randint(2, 4))
+            # Seeded per trainer *and* day, so the hours chosen for a Tuesday
+            # cannot shift because something earlier in the loop consumed a
+            # different number of draws. Without this the existence check below
+            # misses on a re-run and the table grows every time.
+            day_rng = random.Random(f"availability:{trainer.id}:{slot_date.isoformat()}")
+            hours = day_rng.sample([6, 7, 8, 17, 18, 19, 20], k=day_rng.randint(2, 4))
             for hour in sorted(hours):
                 exists = db.scalar(
                     select(TrainerAvailability).where(
@@ -871,7 +934,11 @@ def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) 
                 )
                 if exists is not None:
                     continue
-                booked = booked_sessions.pop() if booked_sessions and rng.random() < 0.2 else None
+                booked = (
+                    booked_sessions.pop()
+                    if booked_sessions and day_rng.random() < 0.2
+                    else None
+                )
                 db.add(
                     TrainerAvailability(
                         trainer_id=trainer.id,
@@ -888,7 +955,7 @@ def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) 
     return created
 
 
-def seed_payments(db: Session, members: list[Member], rng: random.Random) -> int:
+def seed_payments(db: Session, members: list[Member], _rng: random.Random) -> int:
     """Charges across the last quarter, settled and outstanding.
 
     Receipt numbers are prefixed ``DEMO-`` so a row is identifiable in a
@@ -897,6 +964,10 @@ def seed_payments(db: Session, members: list[Member], rng: random.Random) -> int
     created = 0
 
     for member in members:
+        # Same reasoning as availability: the set of charges a member gets must
+        # not change between runs, or the receipt numbers shift and the
+        # existence check stops matching.
+        rng = random.Random(f"payments:{member.id}")
         membership = db.scalar(
             select(Membership)
             .where(Membership.member_id == member.id)
@@ -1096,7 +1167,9 @@ def seed(db: Session, *, reset: bool = False) -> None:
                     plan_name=plan,
                     status=MembershipStatus.ACTIVE,
                     starts_on=registered,
-                    ends_on=today + timedelta(days=rng.choice([9, 18, 96, 240])),
+                    # A spread that always produces all three states: lapsed,
+                    # inside the 30-day renewal window, and comfortably clear.
+                    ends_on=today + timedelta(days=rng.choice([-21, -4, 9, 18, 96, 240])),
                     pt_sessions_total=pt_sessions,
                     pt_sessions_used=0,
                     is_demo=True,
@@ -1155,6 +1228,8 @@ def seed(db: Session, *, reset: bool = False) -> None:
     seed_availability(db, all_trainers, rng)
     seed_payments(db, all_members, rng)
     seed_members_currently_inside(db, branches, rng)
+    settle_expired_memberships(db)
+    recompute_incentives(db, branches)
 
     # Finish the way production does: run the real automations rather than
     # writing alerts by hand, so the demo shows exactly what the rules produce.
@@ -1165,7 +1240,21 @@ def seed(db: Session, *, reset: bool = False) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed the GymFlow demo database")
     parser.add_argument("--reset", action="store_true", help="Delete demo rows first")
+    parser.add_argument(
+        "--clear-demo",
+        action="store_true",
+        help="Delete demo rows and stop. Real records are never touched.",
+    )
     args = parser.parse_args()
+
+    # Removing demo data is a different intent from seeding it, so it exits
+    # here rather than falling through and immediately writing the rows back.
+    if args.clear_demo:
+        with SessionLocal() as db:
+            wipe_demo(db)
+            db.commit()
+        print("Demo rows deleted. Real records were not touched.")
+        return
 
     with SessionLocal() as db:
         seed(db, reset=args.reset)

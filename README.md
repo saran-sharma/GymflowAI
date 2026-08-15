@@ -219,9 +219,19 @@ who cannot see the column.
 npm run seed          # idempotent — safe to run repeatedly
 npm run seed:reset    # wipe demo rows, then seed
 
+python -m app.seed                      # same as npm run seed
+python -m app.seed --reset              # wipe demo rows, then seed
+python -m app.seed --clear-demo         # wipe demo rows and stop
+
 python -m app.scripts.clear_demo_data --dry-run   # report, delete nothing
 python -m app.scripts.clear_demo_data --yes       # delete demo rows only
 ```
+
+Idempotence is enforced by seeding each entity's randomness from its own
+identity — a trainer's published hours come from `availability:<id>:<date>`, a
+member's charges from `payments:<id>` — so a second run makes exactly the same
+choices and the existence checks match. Re-running the seed three times leaves
+the row counts unchanged.
 
 Cleanup deletes on the `is_demo` flag and nothing else, so a member who signed
 up at the front desk is never in scope. It refuses to run without `--yes`, and
