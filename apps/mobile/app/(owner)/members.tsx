@@ -5,6 +5,10 @@
  * programme is everyone, and what PT is actually being delivered — composed
  * from the journey and package endpoints rather than a separate report.
  *
+ * Who is in the building right now sits above both, because it is the only
+ * thing on this screen that changes minute to minute — and it is the question
+ * an owner opens the page to answer.
+ *
  * This is also where a `/owner/member/...` alert lands.
  */
 
@@ -12,7 +16,8 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import * as api from '../../src/api/endpoints';
-import type { Journey, PTPackage } from '../../src/api/types';
+import type { Journey, PTPackage, WhoIsInside } from '../../src/api/types';
+import { LiveGym } from '../../src/components/livegym';
 import { DemoTag, SectionHeader, SplitBadge } from '../../src/components/programme';
 import {
   Badge,
@@ -39,6 +44,7 @@ export default function OwnerMembersScreen() {
   const [tab, setTab] = useState<Tab>('journeys');
   const journeys = useApi<Journey[]>((token) => api.journeys(token), []);
   const packages = useApi<PTPackage[]>((token) => api.ptPackages(token), []);
+  const inside = useApi<WhoIsInside>((token) => api.whoIsInside(token), []);
 
   const active = useMemo(
     () => (journeys.data ?? []).filter((j) => j.status === 'active'),
@@ -73,12 +79,32 @@ export default function OwnerMembersScreen() {
             onRefresh={() => {
               void journeys.refresh();
               void packages.refresh();
+              void inside.refresh();
             }}
             tintColor={colors.brand}
           />
         }
       >
         <Txt variant="title">Members</Txt>
+
+        {/* Live, and marked as such — the only figure here that moves. */}
+        <SectionHeader title="Currently in gym" />
+        {inside.loading ? (
+          <Txt variant="label" color={colors.textFaint}>
+            Checking the floor…
+          </Txt>
+        ) : inside.error ? (
+          <Txt variant="label" color={colors.late}>
+            {inside.error.status === 400
+              ? 'Choose a branch to see who is currently in the gym.'
+              : 'The floor list did not load. Pull to refresh.'}
+          </Txt>
+        ) : inside.data ? (
+          <LiveGym
+            data={inside.data}
+            emptyDetail="Members appear here the moment they scan in at the branch."
+          />
+        ) : null}
 
         <View style={styles.tiles}>
           <StatTile label="On a journey" value={active.length} accent={colors.brand} />

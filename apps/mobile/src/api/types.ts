@@ -808,3 +808,24 @@ export interface RevenueSummary {
   pending_total: number;
   lines: RevenueLine[];
 }
+
+/* --------------------------------------------------------------- live gym */
+
+export interface MemberInside {
+  member_id: number;
+  member_code: string;
+  full_name: string;
+  branch_id: number;
+  checked_in_at: string;
+  minutes_inside: number;
+  method: string | null;
+}
+
+/** Live occupancy: the count and the people making it up, from one rule. */
+export interface WhoIsInside {
+  branch_id: number;
+  branch_name: string;
+  count: number;
+  capacity: number | null;
+  members: MemberInside[];
+}

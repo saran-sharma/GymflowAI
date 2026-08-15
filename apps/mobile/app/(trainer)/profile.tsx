@@ -10,6 +10,12 @@ export default function TrainerMoreScreen() {
       showPin
       links={[
         {
+          label: 'Check in / out',
+          detail: 'Record your arrival and departure',
+          icon: 'qr-code-outline',
+          route: '/(trainer)/shift',
+        },
+        {
           label: 'Availability',
           detail: 'Publish the hours you can take PT',
           icon: 'calendar-outline',

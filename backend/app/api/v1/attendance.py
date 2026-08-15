@@ -17,6 +17,7 @@ from app.core.deps import (
     assert_branch_access,
     get_current_user,
     require_management,
+    resolve_branch,
     scoped_branch_filter,
 )
 from app.core.rate_limit import checkin_rate_limit
@@ -24,6 +25,7 @@ from app.db.models import (
     AttendanceStatus,
     Branch,
     CaptureMethod,
+    RoleKey,
     Trainer,
     TrainerAttendance,
     User,
@@ -34,8 +36,10 @@ from app.schemas.common import (
     AttendanceDayOut,
     CheckRequest,
     CheckResponse,
+    MemberInsideOut,
     MessageOut,
     TrainerTodayOut,
+    WhoIsInsideOut,
 )
 from app.services import attendance_service, audit, settings_service
 
@@ -309,3 +313,40 @@ def settle_days(
 
 
 __all__ = ["router"]
+
+
+@router.get("/inside", response_model=WhoIsInsideOut)
+def who_is_inside(
+    branch_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WhoIsInsideOut:
+    """Who is in the gym right now.
+
+    Open to staff — an owner and a trainer both need it, for different reasons
+    — and closed to members: the roster of who is in the building is not a
+    member's business. The branch is resolved server-side from the caller's
+    own scope, so asking for someone else's branch is refused rather than
+    filtered.
+    """
+    if user.role.key == RoleKey.MEMBER.value:
+        raise HTTPException(status_code=403, detail="Only staff can see who is in the gym")
+
+    # A single-branch user gets their own; someone who sees every branch has to
+    # say which one, because "the gym" is not a question with one answer for
+    # them and quietly picking the first would be worse than asking.
+    target = branch_id if branch_id is not None else user.branch_id
+    if target is None:
+        raise HTTPException(
+            status_code=400, detail="Choose a branch to see who is currently in the gym"
+        )
+
+    branch = resolve_branch(db, user, target)
+    members = attendance_service.who_is_inside(db, branch)
+    return WhoIsInsideOut(
+        branch_id=branch.id,
+        branch_name=branch.name,
+        count=len(members),
+        capacity=branch.capacity,
+        members=[MemberInsideOut(**row) for row in members],
+    )

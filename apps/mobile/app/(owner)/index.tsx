@@ -13,8 +13,10 @@
  * bounded by the window, and outstanding never is — an invoice from March that
  * is still unpaid is this month's problem.
  *
- * InBody scans are still absent: the table exists and nothing writes to it. It
- * is named at the bottom rather than filled with a number nobody could trace.
+ * InBody is deliberately not on this screen at all. Body composition is a
+ * member and trainer concern; an owner running three branches does not need a
+ * scan count, and a panel telling them to switch an integration on reads as a
+ * setup chore for something they never asked for.
  */
 
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -393,21 +395,12 @@ export default function OwnerDashboardScreen() {
           ) : null}
         </Section>
 
-        {/* What this dashboard cannot tell you, said plainly. */}
-        <Section title="Not available">
-          <Stack gap="sm">
-            <NotConnected
-              icon="body-outline"
-              title="InBody scans"
-              detail="The scan table exists but nothing reads or writes it. Scan counts appear once the InBody integration is switched on."
-            />
-            <NotConnected
-              icon="stats-chart-outline"
-              title="Trend charts"
-              detail="Revenue, membership growth and PT bookings by month need history GymFlow does not store yet. Punctuality, attendance and PT utilisation are shown above as period figures instead."
-            />
-          </Stack>
-        </Section>
+        {/* One thing this dashboard still cannot draw, said plainly. */}
+        <NotConnected
+          icon="stats-chart-outline"
+          title="Monthly trend charts"
+          detail="Revenue, membership growth and PT bookings by month need history GymFlow does not store yet. Punctuality, attendance and PT utilisation are shown above as period figures instead."
+        />
       </Body>
     </Screen>
   );
