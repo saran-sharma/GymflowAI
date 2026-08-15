@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -23,6 +23,7 @@ import {
   Body,
   Button,
   Card,
+  DayStrip,
   EmptyState,
   ErrorState,
   Eyebrow,
@@ -35,7 +36,6 @@ import {
   Text,
   alpha,
   color,
-  hairline,
   radii,
   space,
 } from '../../src/design';
@@ -97,6 +97,21 @@ export default function TrainerAvailabilityScreen() {
     [slotsForDay],
   );
 
+  /** The fortnight as the day strip wants it, dotted where anything is published. */
+  const strip = useMemo(
+    () =>
+      days.map((iso) => {
+        const { weekday, day } = shortDay(iso);
+        return {
+          date: iso,
+          weekday,
+          day,
+          marked: (published.data ?? []).some((slot) => slot.slot_date === iso),
+        };
+      }),
+    [days, published.data],
+  );
+
   const selectDay = useCallback((iso: string) => {
     setSelected(iso);
     setDraft(null);
@@ -130,9 +145,7 @@ export default function TrainerAvailabilityScreen() {
       setSaved(true);
       await published.refresh();
     } catch (caught) {
-      setError(
-        caught instanceof ApiError ? caught.message : 'That did not publish. Try again.',
-      );
+      setError(caught instanceof ApiError ? caught.message : 'That did not publish. Try again.');
     } finally {
       setBusy(false);
     }
@@ -174,7 +187,11 @@ export default function TrainerAvailabilityScreen() {
           </Text>
         </Stack>
 
-        {error ? <Banner tone="critical" icon="alert-circle-outline">{error}</Banner> : null}
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
         {saved && !dirty ? (
           <Banner tone="positive" icon="checkmark-circle-outline">
             Published. {chosen.size} hour{chosen.size === 1 ? '' : 's'} on this day.
@@ -182,47 +199,18 @@ export default function TrainerAvailabilityScreen() {
         ) : null}
 
         {/* Two weeks is as far ahead as anyone publishes. */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Row gap="sm">
-            {days.map((iso) => {
-              const { weekday, day } = shortDay(iso);
-              const active = iso === selected;
-              const count = (published.data ?? []).filter((s) => s.slot_date === iso).length;
-              return (
-                <Pressable
-                  key={iso}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${weekday} ${day}, ${count} slots published`}
-                  accessibilityState={{ selected: active }}
-                  onPress={() => selectDay(iso)}
-                  style={[styles.day, active ? styles.dayActive : null]}
-                >
-                  <Text variant="caption" caps tone={active ? color.text : color.textTertiary}>
-                    {weekday}
-                  </Text>
-                  <Text variant="heading" tone={active ? color.text : color.textSecondary}>
-                    {day}
-                  </Text>
-                  <View
-                    style={[
-                      styles.dot,
-                      { backgroundColor: count ? color.brand : 'transparent' },
-                    ]}
-                  />
-                </Pressable>
-              );
-            })}
-          </Row>
-        </ScrollView>
+        <DayStrip
+          days={strip}
+          value={selected}
+          onChange={selectDay}
+          testIDPrefix="availability-day"
+        />
 
         <Card>
           <Row gap="sm">
             <Eyebrow>Hours</Eyebrow>
             <Spacer />
-            <Badge
-              label={`${chosen.size} selected`}
-              tone={chosen.size ? 'brand' : 'neutral'}
-            />
+            <Badge label={`${chosen.size} selected`} tone={chosen.size ? 'brand' : 'neutral'} />
           </Row>
 
           <Row gap="sm" wrap>
@@ -305,18 +293,6 @@ export default function TrainerAvailabilityScreen() {
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  day: {
-    alignItems: 'center',
-    gap: 2,
-    minWidth: 52,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.sm,
-    borderRadius: radii.md,
-    backgroundColor: color.surfaceRaised,
-    ...hairline,
-  },
-  dayActive: { backgroundColor: color.surfaceOverlay, borderColor: color.brand },
-  dot: { width: 5, height: 5, borderRadius: 3, marginTop: 2 },
   hour: {
     minWidth: 68,
     alignItems: 'center',

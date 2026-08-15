@@ -21,11 +21,11 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
-  Loading,
   Row,
   Screen,
   Txt,
 } from '../../src/components/ui';
+import { SkeletonScreen } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { colors, spacing } from '../../src/theme';
@@ -55,7 +55,7 @@ export default function MemberClassesScreen() {
     [withToken, classes],
   );
 
-  if (classes.loading) return <Loading label="Loading classes" />;
+  if (classes.loading) return <SkeletonScreen cards={4} stats={false} />;
   if (classes.error) {
     const offline = classes.error?.code === OFFLINE_CODE;
     return (

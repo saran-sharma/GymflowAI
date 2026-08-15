@@ -80,7 +80,12 @@ export function Skeleton({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        { width, height, borderRadius: radius, backgroundColor: color.surfaceOverlay },
+        {
+          width,
+          height,
+          borderRadius: radius,
+          backgroundColor: color.surfaceOverlay,
+        },
         { opacity: pulse },
         style,
       ]}
@@ -110,16 +115,24 @@ export function SkeletonCard({ lines = 2 }: { lines?: number }) {
   );
 }
 
-/** A whole-screen placeholder: a row of stats over a few cards. */
-export function SkeletonScreen({ cards = 3 }: { cards?: number }) {
+/**
+ * A whole-screen placeholder: an optional row of stats over a few cards.
+ *
+ * `stats` matches the screen being waited on — a list that opens with three
+ * tiles should reserve them, and one that opens straight into rows should not,
+ * or the placeholder promises a shape the real screen never fills.
+ */
+export function SkeletonScreen({ cards = 3, stats = true }: { cards?: number; stats?: boolean }) {
   return (
     <Screen>
       <View style={styles.skeletonScreen}>
-        <Row gap="sm" align="stretch">
-          <SkeletonStat />
-          <SkeletonStat />
-          <SkeletonStat />
-        </Row>
+        {stats ? (
+          <Row gap="sm" align="stretch">
+            <SkeletonStat />
+            <SkeletonStat />
+            <SkeletonStat />
+          </Row>
+        ) : null}
         {Array.from({ length: cards }).map((_, index) => (
           <SkeletonCard key={index} />
         ))}

@@ -13,7 +13,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -28,18 +28,23 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
-  Loading,
   Meter,
   Row,
   Screen,
   StatTile,
   Txt,
 } from '../../src/components/ui';
+import { Segmented, SkeletonScreen } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, radius, spacing } from '../../src/theme';
+import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
 type Tab = 'journeys' | 'pt';
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'journeys', label: '45-day journeys' },
+  { value: 'pt', label: 'PT activity' },
+];
 
 export default function OwnerMembersScreen() {
   const [tab, setTab] = useState<Tab>('journeys');
@@ -60,7 +65,7 @@ export default function OwnerMembersScreen() {
     [packages.data],
   );
 
-  if (journeys.loading && packages.loading) return <Loading label="Loading members" />;
+  if (journeys.loading && packages.loading) return <SkeletonScreen cards={4} />;
   if (journeys.error && packages.error) {
     const offline = journeys.error?.code === OFFLINE_CODE;
     return (
@@ -119,30 +124,7 @@ export default function OwnerMembersScreen() {
           <StatTile label="PT packages" value={livePackages.length} accent={colors.info} />
         </View>
 
-        <Row style={styles.tabs}>
-          {(
-            [
-              ['journeys', '45-day journeys'],
-              ['pt', 'PT activity'],
-            ] as const
-          ).map(([key, label]) => (
-            <Pressable
-              key={key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: tab === key }}
-              onPress={() => setTab(key)}
-              style={({ pressed }) => [
-                styles.tab,
-                tab === key && styles.tabSelected,
-                pressed && styles.tabPressed,
-              ]}
-            >
-              <Txt variant="label" color={tab === key ? colors.text : colors.textFaint}>
-                {label}
-              </Txt>
-            </Pressable>
-          ))}
-        </Row>
+        <Segmented options={TABS} value={tab} onChange={setTab} testIDPrefix="members-tab" />
 
         {tab === 'journeys' ? (
           <>
@@ -261,18 +243,6 @@ export default function OwnerMembersScreen() {
 const styles = StyleSheet.create({
   grow: { flex: 1 },
   tiles: { flexDirection: 'row', gap: spacing.sm },
-  tabs: { gap: spacing.sm, paddingVertical: spacing.sm },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  tabSelected: { borderColor: colors.brand, backgroundColor: `${colors.brand}1F` },
-  tabPressed: { opacity: 0.8 },
   cardHead: { justifyContent: 'space-between' },
   dayRow: { gap: spacing.sm },
   historyRow: {

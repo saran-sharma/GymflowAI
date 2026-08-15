@@ -16,13 +16,22 @@ import {
   AlertCard,
   Badge,
   Button,
+  Chips,
+  DayStrip,
   EmptyState,
   ErrorState,
+  HeroCard,
   Input,
+  MetricTile,
+  PersonRow,
   ProgressBar,
   ProgressCard,
+  ProgressRing,
+  ScreenHeader,
   SessionCard,
   StatCard,
+  TappableCard,
+  TimelineRow,
   alpha,
   color,
   radii,
@@ -216,5 +225,119 @@ describe('empty and error are different states', () => {
     await draw(<ErrorState offline onRetry={jest.fn()} />);
     expect(screen.getByText('No connection')).toBeTruthy();
     expect(screen.queryByText('Something went wrong')).toBeNull();
+  });
+});
+
+describe('the reference-pattern components', () => {
+  it('clamps the ring the same way the bar does', async () => {
+    await draw(<ProgressRing value={340} label="9/9" accessibilityLabel="Session" />);
+    const ring = screen.getByLabelText('Session');
+    expect(ring.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 100 });
+  });
+
+  it('reads a NaN ring as zero rather than drawing nothing', async () => {
+    await draw(<ProgressRing value={Number.NaN} accessibilityLabel="Empty" />);
+    expect(screen.getByLabelText('Empty').props.accessibilityValue.now).toBe(0);
+  });
+
+  it('announces the hero by its title and subtitle together', async () => {
+    await draw(
+      <HeroCard
+        title="12 inside"
+        subtitle="Nagalkeni"
+        ring={{ value: 40, label: '40%', caption: 'full' }}
+        metrics={[{ label: 'Present', value: 4, unit: 'trainers', progress: 80 }]}
+      />,
+    );
+    expect(screen.getByLabelText('12 inside. Nagalkeni')).toBeTruthy();
+    expect(screen.getByText('40%')).toBeTruthy();
+    expect(screen.getByText('Present')).toBeTruthy();
+    expect(screen.getByText('trainers')).toBeTruthy();
+  });
+
+  it('keeps a metric and its unit in one accessible label', async () => {
+    await draw(<MetricTile label="Streak" value={12} unit="days" icon="flame" />);
+    expect(screen.getByLabelText('Streak: 12 days')).toBeTruthy();
+  });
+
+  it('marks the selected chip as a selected tab', async () => {
+    const onChange = jest.fn();
+    await draw(
+      <Chips
+        options={[
+          { value: 'all', label: 'All' },
+          { value: 'low', label: 'Low balance' },
+        ]}
+        value="all"
+        onChange={onChange}
+        testIDPrefix="filter"
+      />,
+    );
+    expect(screen.getByTestId('filter-all').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByTestId('filter-low').props.accessibilityState.selected).toBe(false);
+    fireEvent.press(screen.getByTestId('filter-low'));
+    expect(onChange).toHaveBeenCalledWith('low');
+  });
+
+  it('says which day is chosen and which days carry entries', async () => {
+    const onChange = jest.fn();
+    await draw(
+      <DayStrip
+        days={[
+          { date: '2026-08-15', weekday: 'Sat', day: '15', marked: true },
+          { date: '2026-08-16', weekday: 'Sun', day: '16' },
+        ]}
+        value="2026-08-15"
+        onChange={onChange}
+        testIDPrefix="day"
+      />,
+    );
+    expect(screen.getByLabelText('Sat 15, has entries')).toBeTruthy();
+    expect(screen.getByLabelText('Sun 16')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('day-2026-08-16'));
+    expect(onChange).toHaveBeenCalledWith('2026-08-16');
+  });
+
+  it('gives the pushed-screen back control a real tap target', async () => {
+    const onBack = jest.fn();
+    await draw(<ScreenHeader title="PT attendance" subtitle="Today · 07:00" onBack={onBack} />);
+    const back = screen.getByLabelText('Back');
+    fireEvent.press(back);
+    expect(onBack).toHaveBeenCalled();
+    expect(screen.getByText('PT attendance')).toBeTruthy();
+    expect(screen.getByText('Today · 07:00')).toBeTruthy();
+  });
+
+  it('renders a person row as one tappable thing, not three', async () => {
+    const onPress = jest.fn();
+    await draw(
+      <PersonRow name="Vikas Menon" detail="Strength · SLAM-T-004" onPress={onPress} testID="p" />,
+    );
+    fireEvent.press(screen.getByTestId('p'));
+    expect(onPress).toHaveBeenCalled();
+    expect(screen.getByLabelText('Open Vikas Menon')).toBeTruthy();
+  });
+
+  it('gives TappableCard the press role a bare Pressable-round-a-Card lacked', async () => {
+    const onPress = jest.fn();
+    await draw(
+      <TappableCard onPress={onPress} accessibilityLabel="Open Vikas" testID="row">
+        <Badge label="Eligible" tone="positive" />
+      </TappableCard>,
+    );
+    expect(screen.getByTestId('row').props.accessibilityRole).toBe('button');
+    fireEvent.press(screen.getByTestId('row'));
+    expect(onPress).toHaveBeenCalled();
+  });
+
+  it('keeps the timeline rail out of the accessibility tree as decoration', async () => {
+    await draw(
+      <TimelineRow time="07:00" endTime="08:00" live connected={false}>
+        <SessionCard title="Aditya Rao" />
+      </TimelineRow>,
+    );
+    expect(screen.getByText('07:00')).toBeTruthy();
+    expect(screen.getByText('08:00')).toBeTruthy();
+    expect(screen.getByText('Aditya Rao')).toBeTruthy();
   });
 });

@@ -11,7 +11,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
@@ -20,12 +20,13 @@ import type { TrainerClient } from '../../src/api/types';
 import {
   Badge,
   Body,
+  Chips,
   EmptyState,
   ErrorState,
-  Loading,
   ProgressBar,
   Row,
   Screen,
+  SkeletonScreen,
   Spacer,
   Stack,
   Text,
@@ -37,11 +38,39 @@ import {
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
 
+type Filter = 'all' | 'journey' | 'pt' | 'low';
+
+/**
+ * The four questions a trainer asks of their roster, in the order they ask
+ * them. Every one is answered from fields the roster already carries — no
+ * filter here needs a request the screen does not already make.
+ */
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'journey', label: 'On a journey' },
+  { value: 'pt', label: 'PT running' },
+  { value: 'low', label: 'Low balance' },
+];
+
+function matches(client: TrainerClient, filter: Filter): boolean {
+  switch (filter) {
+    case 'journey':
+      return client.journey?.status === 'active';
+    case 'pt':
+      return client.pt_package?.status === 'active';
+    case 'low':
+      return Boolean(client.pt_package?.low_balance);
+    default:
+      return true;
+  }
+}
+
 export default function TrainerClientsScreen() {
   const router = useRouter();
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  if (clients.loading) return <Loading label="Loading your clients" />;
+  if (clients.loading) return <SkeletonScreen cards={4} stats={false} />;
 
   if (clients.error) {
     const offline = clients.error.code === OFFLINE_CODE;
@@ -57,7 +86,8 @@ export default function TrainerClientsScreen() {
     );
   }
 
-  const rows = clients.data ?? [];
+  const all = clients.data ?? [];
+  const rows = all.filter((row) => matches(row, filter));
 
   return (
     <Screen>
@@ -73,17 +103,32 @@ export default function TrainerClientsScreen() {
         <Stack gap="xxs">
           <Text variant="title">Clients</Text>
           <Text variant="body" tone={color.textSecondary}>
-            {rows.length === 0
+            {all.length === 0
               ? 'Members assigned to you appear here.'
-              : `${rows.length} member${rows.length === 1 ? '' : 's'} assigned to you.`}
+              : `${all.length} member${all.length === 1 ? '' : 's'} assigned to you.`}
           </Text>
         </Stack>
 
-        {rows.length === 0 ? (
+        {all.length ? (
+          <Chips
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            testIDPrefix="clients-filter"
+          />
+        ) : null}
+
+        {all.length === 0 ? (
           <EmptyState
             icon="people-outline"
             title="No clients assigned yet"
             detail="Your branch assigns members to you. Once they are, their programme and PT balance appear here."
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon="funnel-outline"
+            title="Nobody matches that filter"
+            detail={`None of your ${all.length} clients are ${FILTERS.find((f) => f.value === filter)?.label.toLowerCase()}.`}
           />
         ) : (
           rows.map((row) => (
@@ -94,7 +139,6 @@ export default function TrainerClientsScreen() {
             />
           ))
         )}
-
       </Body>
     </Screen>
   );
@@ -153,7 +197,8 @@ function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => 
           </Text>
           <Spacer />
           <Text variant="label" tone={color.textTertiary}>
-            {client.visits_last_30} visit{client.visits_last_30 === 1 ? '' : 's'} / 30d
+            {client.visits_last_30} visit
+            {client.visits_last_30 === 1 ? '' : 's'} / 30d
           </Text>
         </Row>
       </Stack>
@@ -169,5 +214,8 @@ const styles = StyleSheet.create({
     ...hairline,
     padding: space.lg,
   },
-  pressed: { backgroundColor: color.surfaceOverlay, borderColor: color.borderStrong },
+  pressed: {
+    backgroundColor: color.surfaceOverlay,
+    borderColor: color.borderStrong,
+  },
 });

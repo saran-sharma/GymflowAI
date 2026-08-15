@@ -7,7 +7,7 @@
 
 import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -16,17 +16,16 @@ import {
   Badge,
   Banner,
   Body,
-  Card,
   EmptyState,
   ErrorState,
   Eyebrow,
-  Loading,
   Meter,
   Row,
   Screen,
   StatTile,
   Txt,
 } from '../../src/components/ui';
+import { SkeletonScreen, TappableCard } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { colors, incentiveMeta, spacing } from '../../src/theme';
 import { percent } from '../../src/utils/format';
@@ -44,7 +43,7 @@ export default function OwnerIncentivesScreen() {
     };
   }, [results.data]);
 
-  if (results.loading) return <Loading label="Calculating eligibility" />;
+  if (results.loading) return <SkeletonScreen cards={4} />;
   if (results.error) {
     const offline = results.error?.code === OFFLINE_CODE;
     return (
@@ -89,38 +88,35 @@ export default function OwnerIncentivesScreen() {
           rows.map((row) => {
             const meta = incentiveMeta[row.status];
             return (
-              <Pressable
+              <TappableCard
                 key={row.trainer_id}
                 onPress={() => router.push(`/(owner)/trainer/${row.trainer_id}` as never)}
-                accessibilityRole="button"
                 accessibilityLabel={`Open ${row.trainer_name}`}
+                testID={`incentive-row-${row.trainer_id}`}
               >
-                <Card style={styles.card}>
-                  <Row style={styles.head}>
-                    <View style={styles.headText}>
-                      <Txt variant="heading">{row.trainer_name}</Txt>
-                      <Eyebrow>{row.branch_name}</Eyebrow>
-                    </View>
-                    <Badge label={meta.label} color={meta.color} />
-                  </Row>
+                <Row style={styles.head}>
+                  <View style={styles.headText}>
+                    <Txt variant="heading">{row.trainer_name}</Txt>
+                    <Eyebrow>{row.branch_name}</Eyebrow>
+                  </View>
+                  <Badge label={meta.label} color={meta.color} />
+                </Row>
 
-                  <Meter value={row.score} color={meta.color} />
+                <Meter value={row.score} color={meta.color} />
 
-                  <Row style={styles.stats}>
-                    <Stat label="Punctuality" value={percent(row.punctuality_pct)} />
-                    <Stat label="Attendance" value={percent(row.attendance_pct)} />
-                    <Stat label="Late" value={String(row.late_count)} />
-                    <Stat label="Early" value={String(row.early_exit_count)} />
-                  </Row>
-                </Card>
-              </Pressable>
+                <Row style={styles.stats}>
+                  <Stat label="Punctuality" value={percent(row.punctuality_pct)} />
+                  <Stat label="Attendance" value={percent(row.attendance_pct)} />
+                  <Stat label="Late" value={String(row.late_count)} />
+                  <Stat label="Early" value={String(row.early_exit_count)} />
+                </Row>
+              </TappableCard>
             );
           })
         )}
 
         <Banner tone="info">
-          {rows[0]?.disclaimer ??
-            'Final payroll/incentive calculation is subject to SLAM policy.'}
+          {rows[0]?.disclaimer ?? 'Final payroll/incentive calculation is subject to SLAM policy.'}
         </Banner>
       </Body>
     </Screen>
@@ -140,7 +136,6 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: spacing.sm },
-  card: { gap: spacing.md },
   head: { justifyContent: 'space-between' },
   headText: { flex: 1, gap: 2 },
   stats: { justifyContent: 'space-between' },

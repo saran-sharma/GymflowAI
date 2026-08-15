@@ -9,10 +9,10 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { type ColorValue, Pressable, StyleSheet, View } from 'react-native';
+import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Text } from './primitives';
-import { color, HIT_TARGET, radii, space } from './tokens';
+import { Row, Text } from './primitives';
+import { alpha, color, hairline, HIT_TARGET, radii, space } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -127,6 +127,53 @@ export function Segmented<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  back: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    minHeight: HIT_TARGET,
+    paddingRight: space.sm,
+  },
+  backPressed: { opacity: 0.6 },
+  chipRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    minHeight: 38,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.pill,
+    backgroundColor: color.surfaceRaised,
+    ...hairline,
+  },
+  chipSelected: { backgroundColor: alpha(color.brand, 0.2), borderColor: color.brand },
+  chipPressed: { backgroundColor: color.surfaceOverlay },
+  dayRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
+  day: {
+    alignItems: 'center',
+    gap: 2,
+    minWidth: 48,
+    paddingVertical: space.sm,
+    borderRadius: radii.pill,
+    backgroundColor: color.surfaceRaised,
+    ...hairline,
+  },
+  daySelected: { backgroundColor: color.brand, borderColor: color.brand },
+  dayPressed: { backgroundColor: color.surfaceOverlay },
+  dayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
+  header: { minHeight: HIT_TARGET },
+  headerSide: { width: 44 },
+  headerTrailing: { alignItems: 'flex-end' },
+  headerButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -space.sm,
+  },
+  headerTitle: { flex: 1, gap: 1 },
+  headerCentre: { textAlign: 'center' },
   segmented: { flexDirection: 'row', gap: space.sm },
   segment: {
     flex: 1,
@@ -141,6 +188,244 @@ const styles = StyleSheet.create({
     borderColor: color.border,
     backgroundColor: color.surfaceRaised,
   },
-  segmentSelected: { borderColor: color.brand, backgroundColor: `${color.brand}1F` },
+  segmentSelected: {
+    borderColor: color.brand,
+    backgroundColor: `${color.brand}1F`,
+  },
   segmentPressed: { backgroundColor: color.surfaceOverlay },
 });
+
+/* ------------------------------------------------------------- back link */
+
+/**
+ * The "go back" affordance on pushed detail screens.
+ *
+ * Detail routes are pushed over a tab, so the tab bar stays visible and there
+ * is no header — which leaves the screen itself responsible for the way out.
+ * Two screens had grown their own version of this row; the target here is a
+ * full `HIT_TARGET`, which neither of theirs was.
+ */
+export function BackLink({
+  label = 'Back',
+  onPress,
+  testID,
+}: {
+  label?: string;
+  onPress: () => void;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      hitSlop={space.sm}
+      style={({ pressed }) => [styles.back, pressed ? styles.backPressed : null]}
+    >
+      <Ionicons name="chevron-back" size={20} color={color.textSecondary} />
+      <Text variant="label" tone={color.textSecondary}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/* ----------------------------------------------------------------- chips */
+
+/**
+ * A scrolling row of filter pills.
+ *
+ * `Segmented` divides a fixed width between its options, which stops working
+ * somewhere past three — the labels start truncating. Chips scroll instead, so
+ * a category list can grow without the control degrading. The selected chip is
+ * filled; the rest are outlines, so the current filter is readable without
+ * comparing every pill to its neighbour.
+ */
+export function Chips<T extends string>({
+  options,
+  value,
+  onChange,
+  testIDPrefix,
+}: {
+  options: SegmentOption<T>[];
+  value: T;
+  onChange: (next: T) => void;
+  testIDPrefix?: string;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRow}
+      accessibilityRole="tablist"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={option.label}
+            testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
+            style={({ pressed }) => [
+              styles.chip,
+              selected ? styles.chipSelected : null,
+              pressed && !selected ? styles.chipPressed : null,
+            ]}
+          >
+            {option.icon ? (
+              <Ionicons
+                name={option.icon}
+                size={15}
+                color={selected ? color.text : color.textTertiary}
+              />
+            ) : null}
+            <Text variant="label" tone={selected ? color.text : color.textSecondary}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+/* ------------------------------------------------------------- day strip */
+
+export interface DayStripItem {
+  /** ISO date, `YYYY-MM-DD`. Also the key. */
+  date: string;
+  /** One or two letters: S, M, T… */
+  weekday: string;
+  /** The day of the month. */
+  day: string;
+  /** Draws a dot under the number — "something is on this day". */
+  marked?: boolean;
+}
+
+/**
+ * A horizontal week, with the chosen day filled.
+ *
+ * Two screens had grown their own version of this. The filled pill rather than
+ * an underline is deliberate: on a dark ground an underline on a two-character
+ * label is nearly invisible, and this control is often the only way to tell
+ * which day you are looking at.
+ */
+export function DayStrip({
+  days,
+  value,
+  onChange,
+  testIDPrefix,
+}: {
+  days: DayStripItem[];
+  value: string;
+  onChange: (date: string) => void;
+  testIDPrefix?: string;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.dayRow}
+    >
+      {days.map((item) => {
+        const selected = item.date === value;
+        return (
+          <Pressable
+            key={item.date}
+            onPress={() => onChange(item.date)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={`${item.weekday} ${item.day}${item.marked ? ', has entries' : ''}`}
+            testID={testIDPrefix ? `${testIDPrefix}-${item.date}` : undefined}
+            style={({ pressed }) => [
+              styles.day,
+              selected ? styles.daySelected : null,
+              pressed && !selected ? styles.dayPressed : null,
+            ]}
+          >
+            <Text variant="caption" caps tone={selected ? color.textInverse : color.textTertiary}>
+              {item.weekday}
+            </Text>
+            <Text variant="heading" tone={selected ? color.textInverse : color.text}>
+              {item.day}
+            </Text>
+            <View
+              style={[
+                styles.dayDot,
+                {
+                  backgroundColor: item.marked
+                    ? selected
+                      ? color.textInverse
+                      : color.brandAccent
+                    : 'transparent',
+                },
+              ]}
+            />
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+/* --------------------------------------------------------- screen header */
+
+/**
+ * The header a pushed screen draws for itself.
+ *
+ * Detail routes are pushed over a tab and run headerless, so the way back and
+ * the screen's name are the screen's own job. Centring the title and reserving
+ * the trailing slot keeps that name in the same place on every detail screen,
+ * whether or not there is an action on the right.
+ */
+export function ScreenHeader({
+  title,
+  subtitle,
+  onBack,
+  backLabel = 'Back',
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  backLabel?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <Row gap="sm" align="center" style={styles.header}>
+      <View style={styles.headerSide}>
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel={backLabel}
+            hitSlop={space.md}
+            style={({ pressed }) => [styles.headerButton, pressed ? styles.backPressed : null]}
+          >
+            <Ionicons name="chevron-back" size={22} color={color.text} />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={styles.headerTitle}>
+        <Text variant="heading" numberOfLines={1} style={styles.headerCentre}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text
+            variant="label"
+            tone={color.textTertiary}
+            numberOfLines={1}
+            style={styles.headerCentre}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <View style={[styles.headerSide, styles.headerTrailing]}>{action}</View>
+    </Row>
+  );
+}

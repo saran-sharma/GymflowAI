@@ -36,16 +36,15 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  HeroCard,
   LinkButton,
-  Loading,
   MetricRow,
   Row,
   Screen,
+  SkeletonScreen,
   Section,
   SessionCard,
   Spacer,
-  StatCard,
-  StatRow,
   Stack,
   Text,
   color,
@@ -55,7 +54,10 @@ import { useApi } from '../../src/hooks/useApi';
 import { timeOfDay } from '../../src/utils/format';
 
 /** A scheduled item's badge, from the status the server gave it. */
-function itemStatus(item: ScheduleItem): { label: string; tone: 'positive' | 'caution' | 'critical' | 'neutral' } {
+function itemStatus(item: ScheduleItem): {
+  label: string;
+  tone: 'positive' | 'caution' | 'critical' | 'neutral';
+} {
   switch (item.status) {
     case 'completed':
       return { label: 'Done', tone: 'positive' };
@@ -93,7 +95,7 @@ export default function TrainerDeskScreen() {
     void inside.refresh();
   }, [today, schedule, clients, incentive, inside]);
 
-  if (today.loading && schedule.loading) return <Loading label="Loading your desk" />;
+  if (today.loading && schedule.loading) return <SkeletonScreen cards={3} />;
 
   if (today.error && schedule.error) {
     const offline = today.error.code === OFFLINE_CODE;
@@ -124,23 +126,45 @@ export default function TrainerDeskScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={today.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={today.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
-        <Stack gap="xxs">
-          <Eyebrow>Trainer</Eyebrow>
-          <Text variant="title">{trainer?.full_name ?? 'Your desk'}</Text>
-          <Text variant="body" tone={color.textSecondary}>
-            {trainer?.specialty ?? trainer?.designation ?? 'Personal trainer'}
-            {trainer?.branch_name ? ` · ${trainer.branch_name}` : ''}
-          </Text>
-        </Stack>
+        <HeroCard
+          testID="trainer-hero"
+          eyebrow="Today"
+          title={trainer?.full_name ?? 'Your desk'}
+          subtitle={`${trainer?.specialty ?? trainer?.designation ?? 'Personal trainer'}${
+            trainer?.branch_name ? ` · ${trainer.branch_name}` : ''
+          }`}
+          ring={
+            items.length
+              ? {
+                  value: (done / items.length) * 100,
+                  label: `${done}/${items.length}`,
+                  caption: 'sessions',
+                }
+              : undefined
+          }
+          metrics={[
+            { label: 'Done', value: done, unit: items.length ? `of ${items.length}` : undefined },
+            { label: 'Left', value: Math.max(0, items.length - done), unit: 'today' },
+            { label: 'Clients', value: activeClients, unit: `of ${roster.length}` },
+          ]}
+        />
+
+        {/* A number nobody can act on is a number in the wrong place. */}
+        {lowBalance ? (
+          <Banner tone="caution" icon="alert-circle-outline">
+            {lowBalance === 1 ? 'One client is' : `${lowBalance} clients are`} low on sessions.
+          </Banner>
+        ) : null}
 
         {/* Who is on the floor right now — the first thing a trainer looks at. */}
-        <Section
-          title="Currently in gym"
-          action={<Badge label="Live" tone="critical" solid />}
-        >
+        <Section title="Currently in gym" action={<Badge label="Live" tone="critical" solid />}>
           {inside.loading ? (
             <Text variant="label" tone={color.textTertiary}>
               Checking the floor…
@@ -158,29 +182,6 @@ export default function TrainerDeskScreen() {
         </Section>
 
         {/* What the desk can actually count. */}
-        <StatRow>
-          <StatCard
-            label="Sessions today"
-            value={items.length}
-            hint={`${done} done`}
-            tone={items.length ? 'brand' : 'neutral'}
-            icon="calendar-outline"
-          />
-          <StatCard
-            label="Active clients"
-            value={activeClients}
-            hint={`of ${roster.length}`}
-            icon="people-outline"
-          />
-          <StatCard
-            label="Low balance"
-            value={lowBalance}
-            hint="need renewal"
-            tone={lowBalance ? 'caution' : 'neutral'}
-            icon="alert-circle-outline"
-          />
-        </StatRow>
-
         <Button
           title="Publish availability"
           variant="secondary"
@@ -269,7 +270,10 @@ export default function TrainerDeskScreen() {
           title="Today's sessions"
           action={
             items.length ? (
-              <LinkButton title="All sessions" onPress={() => router.push('/(trainer)/sessions' as never)} />
+              <LinkButton
+                title="All sessions"
+                onPress={() => router.push('/(trainer)/sessions' as never)}
+              />
             ) : undefined
           }
         >
@@ -314,9 +318,7 @@ export default function TrainerDeskScreen() {
           </Banner>
         ) : null}
 
-        <Section
-          title="Not available"
-        >
+        <Section title="Not available">
           <Stack gap="sm">
             <NotConnected
               icon="cash-outline"

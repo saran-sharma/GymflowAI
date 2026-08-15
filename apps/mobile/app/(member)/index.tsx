@@ -32,12 +32,13 @@ import {
   ErrorState,
   Eyebrow,
   LinkButton,
-  Loading,
+  MetricTile,
   Row,
   Screen,
+  SkeletonScreen,
+  StatCard,
   Section,
   Spacer,
-  StatCard,
   StatRow,
   Stack,
   Text,
@@ -64,7 +65,7 @@ export default function MemberHomeScreen() {
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
   const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
 
-  if (home.loading) return <Loading label="Loading your day" />;
+  if (home.loading) return <SkeletonScreen cards={3} />;
 
   if (home.error || !home.data) {
     const offline = home.error?.code === OFFLINE_CODE;
@@ -98,11 +99,7 @@ export default function MemberHomeScreen() {
   const owed = (payments.data ?? []).filter((row) => row.status === 'pending');
   const outstanding = owed.reduce((total, row) => total + row.amount, 0);
 
-  const kind: SessionKind = ptToday
-    ? 'pt_session'
-    : restDay
-      ? 'rest'
-      : 'own_workout';
+  const kind: SessionKind = ptToday ? 'pt_session' : restDay ? 'rest' : 'own_workout';
 
   return (
     <Screen>
@@ -178,7 +175,10 @@ export default function MemberHomeScreen() {
               {journey.workouts_completed} workouts recorded. Your trainer plans what comes next.
             </Text>
             {!journey.pt_converted ? (
-              <LinkButton title="See what comes next" onPress={() => router.push('/(member)/pt' as never)} />
+              <LinkButton
+                title="See what comes next"
+                onPress={() => router.push('/(member)/pt' as never)}
+              />
             ) : null}
           </Card>
         ) : null}
@@ -198,32 +198,35 @@ export default function MemberHomeScreen() {
 
         {/* How am I doing — three numbers, no more. */}
         <StatRow>
-          <StatCard
+          <MetricTile
             label="Streak"
             value={me.streak_days}
-            hint={me.streak_days === 1 ? 'day' : 'days'}
-            tone={me.streak_days > 0 ? 'positive' : 'neutral'}
-            icon="flame-outline"
+            unit={me.streak_days === 1 ? 'day' : 'days'}
+            tone={me.streak_days > 0 ? 'positive' : undefined}
+            icon="flame"
           />
-          <StatCard
+          <MetricTile
             label="Workouts"
             value={journey?.workouts_completed ?? 0}
-            hint="this programme"
-            icon="barbell-outline"
+            unit="done"
+            icon="barbell"
           />
-          <StatCard
+          <MetricTile
             label="Days left"
             value={me.days_remaining ?? '—'}
-            hint={me.membership_plan ?? 'membership'}
-            tone={expiringSoon ? 'caution' : 'neutral'}
-            icon="calendar-outline"
+            unit="on plan"
+            tone={expiringSoon ? 'caution' : undefined}
+            icon="calendar"
           />
         </StatRow>
 
         <Section
           title="Progress"
           action={
-            <LinkButton title="View all" onPress={() => router.push('/(member)/progress' as never)} />
+            <LinkButton
+              title="View all"
+              onPress={() => router.push('/(member)/progress' as never)}
+            />
           }
         >
           <NotConnected
@@ -328,9 +331,16 @@ export default function MemberHomeScreen() {
             ? (workout.completed_items / workout.total_items) * 100
             : undefined
         }
+        ringLabel={
+          started && workout.total_items
+            ? `${workout.completed_items}/${workout.total_items}`
+            : undefined
+        }
         status={done ? 'Completed' : started ? 'In progress' : undefined}
         statusTone={done ? 'positive' : 'brand'}
-        cta={done ? 'Review today’s workout' : started ? 'Continue workout' : 'Start today’s workout'}
+        cta={
+          done ? 'Review today’s workout' : started ? 'Continue workout' : 'Start today’s workout'
+        }
         onPress={() => router.push('/(member)/workout' as never)}
       />
     );

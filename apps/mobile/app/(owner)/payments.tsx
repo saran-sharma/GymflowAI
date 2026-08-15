@@ -24,11 +24,11 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
-  Loading,
   Row,
   Screen,
   Section,
   Segmented,
+  SkeletonScreen,
   Spacer,
   StatCard,
   StatRow,
@@ -74,7 +74,7 @@ export default function OwnerPaymentsScreen() {
     void payments.refresh();
   }, [summary, payments]);
 
-  if (summary.loading && payments.loading) return <Loading label="Loading payments" />;
+  if (summary.loading && payments.loading) return <SkeletonScreen cards={4} />;
 
   if (payments.error) {
     const offline = payments.error.code === OFFLINE_CODE;
@@ -97,7 +97,11 @@ export default function OwnerPaymentsScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={payments.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={payments.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
         <Stack gap="xxs">
@@ -147,7 +151,12 @@ export default function OwnerPaymentsScreen() {
         ) : null}
 
         <Section title="Charges">
-          <Segmented options={FILTERS} value={filter} onChange={setFilter} testIDPrefix="payment-filter" />
+          <Segmented
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            testIDPrefix="payment-filter"
+          />
 
           {rows.length === 0 ? (
             <EmptyState
