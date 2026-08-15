@@ -762,3 +762,49 @@ export interface Renewals {
   count: number;
   items: RenewalItem[];
 }
+
+/* ---------------------------------------------------------------- payments */
+
+export type PaymentKind = 'membership' | 'pt' | 'group_class' | 'renewal' | 'addon';
+export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'cancelled';
+export type PaymentMethod = 'cash' | 'card' | 'upi' | 'bank_transfer' | 'other';
+
+export interface Payment {
+  id: number;
+  branch_id: number;
+  member_id: number;
+  member_name: string | null;
+  kind: PaymentKind;
+  status: PaymentStatus;
+  method: PaymentMethod | null;
+  amount: number;
+  discount: number;
+  tax: number;
+  currency: string;
+  membership_id: number | null;
+  pt_package_id: number | null;
+  group_class_id: number | null;
+  trainer_id: number | null;
+  trainer_name: string | null;
+  due_on: string | null;
+  paid_at: string | null;
+  collected_by_user_id: number | null;
+  receipt_no: string | null;
+  notes: string | null;
+}
+
+export interface RevenueLine {
+  kind: PaymentKind;
+  collected: number;
+  pending: number;
+  count: number;
+}
+
+export interface RevenueSummary {
+  period_start: string;
+  period_end: string;
+  currency: string;
+  collected_total: number;
+  pending_total: number;
+  lines: RevenueLine[];
+}

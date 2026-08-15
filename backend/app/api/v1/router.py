@@ -14,6 +14,7 @@ from app.api.v1 import (
     journeys,
     marketing,
     members,
+    payments,
     performance,
     pt,
     reports,
@@ -39,6 +40,7 @@ api_router.include_router(journeys.router)
 api_router.include_router(pt.router)
 api_router.include_router(classes.router)
 api_router.include_router(sessions.router)
+api_router.include_router(payments.router)
 api_router.include_router(marketing.router)
 api_router.include_router(performance.router)
 api_router.include_router(alerts.router)

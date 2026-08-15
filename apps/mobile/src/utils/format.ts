@@ -63,3 +63,17 @@ export function relativeMinutes(iso: string | null | undefined, now = Date.now()
   if (ago < 60) return `${ago} min ago`;
   return `${Math.floor(ago / 60)}h ${ago % 60}m ago`;
 }
+
+/**
+ * Money, in the shortest form that is still exact enough to act on.
+ *
+ * SLAM talks in lakhs, so ₹1,86,000 reads as ₹1.86L on a tile — but only above
+ * a lakh. Below that the rounding hides more than it saves, and a trainer
+ * chasing ₹4,800 needs the actual number.
+ */
+export function money(amount: number | null | undefined, currency = 'INR'): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return '—';
+  const symbol = currency === 'INR' ? '₹' : `${currency} `;
+  if (Math.abs(amount) >= 100000) return `${symbol}${(amount / 100000).toFixed(2)}L`;
+  return `${symbol}${Math.round(amount).toLocaleString('en-IN')}`;
+}
