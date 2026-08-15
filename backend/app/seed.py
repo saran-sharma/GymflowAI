@@ -935,9 +935,7 @@ def seed_availability(db: Session, trainers: list[Trainer], _rng: random.Random)
                 if exists is not None:
                     continue
                 booked = (
-                    booked_sessions.pop()
-                    if booked_sessions and day_rng.random() < 0.2
-                    else None
+                    booked_sessions.pop() if booked_sessions and day_rng.random() < 0.2 else None
                 )
                 db.add(
                     TrainerAvailability(
