@@ -34,6 +34,7 @@ import {
   Screen,
   Txt,
 } from '../../../src/components/ui';
+import { ScreenHeader } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
 import { colors, radius, spacing } from '../../../src/theme';
@@ -100,23 +101,12 @@ export default function PtSplitScreen() {
           />
         }
       >
-        <Row style={styles.header}>
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={colors.textMuted}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          />
-          <View style={styles.grow}>
-            <Txt variant="heading">PT attendance</Txt>
-            <Txt variant="label" color={colors.textMuted}>
-              {dayLabel(session.session_date)} · {timeOfDay(session.scheduled_start)}
-            </Txt>
-          </View>
-          <Badge label={meta.label} color={meta.color} />
-        </Row>
+        <ScreenHeader
+          title="PT attendance"
+          subtitle={`${dayLabel(session.session_date)} · ${timeOfDay(session.scheduled_start)}`}
+          onBack={() => router.back()}
+          action={<Badge label={meta.label} color={meta.color} />}
+        />
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {done ? <Banner tone="success">Session recorded.</Banner> : null}
@@ -181,19 +171,15 @@ export default function PtSplitScreen() {
               icon="close-circle-outline"
               disabled={busy}
               onPress={() =>
-                Alert.alert(
-                  'Mark as no-show?',
-                  'This does not use one of the member’s sessions.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'No-show',
-                      style: 'destructive',
-                      onPress: () =>
-                        void act((token) => api.ptCloseSession(session.id, 'no_show', token)),
-                    },
-                  ],
-                )
+                Alert.alert('Mark as no-show?', 'This does not use one of the member’s sessions.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'No-show',
+                    style: 'destructive',
+                    onPress: () =>
+                      void act((token) => api.ptCloseSession(session.id, 'no_show', token)),
+                  },
+                ])
               }
             />
             <Button
@@ -201,15 +187,19 @@ export default function PtSplitScreen() {
               variant="ghost"
               disabled={busy}
               onPress={() =>
-                Alert.alert('Cancel this session?', 'The member keeps the session in their package.', [
-                  { text: 'Keep it', style: 'cancel' },
-                  {
-                    text: 'Cancel session',
-                    style: 'destructive',
-                    onPress: () =>
-                      void act((token) => api.ptCloseSession(session.id, 'cancelled', token)),
-                  },
-                ])
+                Alert.alert(
+                  'Cancel this session?',
+                  'The member keeps the session in their package.',
+                  [
+                    { text: 'Keep it', style: 'cancel' },
+                    {
+                      text: 'Cancel session',
+                      style: 'destructive',
+                      onPress: () =>
+                        void act((token) => api.ptCloseSession(session.id, 'cancelled', token)),
+                    },
+                  ],
+                )
               }
             />
           </>
@@ -264,12 +254,7 @@ function Side({
           </Txt>
         </>
       ) : (
-        <Button
-          title="CHECK IN"
-          variant="secondary"
-          disabled={disabled}
-          onPress={onPress}
-        />
+        <Button title="CHECK IN" variant="secondary" disabled={disabled} onPress={onPress} />
       )}
     </View>
   );
@@ -277,7 +262,6 @@ function Side({
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  header: { gap: spacing.md, paddingBottom: spacing.sm },
   cardHead: { justifyContent: 'space-between' },
   split: { flexDirection: 'row', gap: spacing.sm },
   side: {

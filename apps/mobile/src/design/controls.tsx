@@ -18,6 +18,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 import { Row, Spacer, Stack, Text } from './primitives';
 import {
@@ -75,11 +76,18 @@ export function Button({
   const palette: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
     primary: { bg: color.brand, fg: color.text, border: 'transparent' },
     secondary: { bg: color.surfaceOverlay, fg: color.text, border: color.border },
-    destructive: { bg: alpha(color.status.critical, 0.14), fg: color.brandAccent, border: color.brandDeep },
+    destructive: {
+      bg: alpha(color.status.critical, 0.14),
+      fg: color.brandAccent,
+      border: color.brandDeep,
+    },
     ghost: { bg: 'transparent', fg: color.textSecondary, border: 'transparent' },
   };
 
-  const sizing: Record<ButtonSize, { height: number; font: number; radius: number; tracking: number }> = {
+  const sizing: Record<
+    ButtonSize,
+    { height: number; font: number; radius: number; tracking: number }
+  > = {
     sm: { height: control.height.sm, font: 13, radius: radii.sm, tracking: 0.3 },
     md: { height: control.height.md, font: 15, radius: radii.md, tracking: 0.3 },
     lg: { height: control.height.lg, font: 17, radius: radii.lg, tracking: 0.3 },
@@ -227,7 +235,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 
   return (
     <Stack gap="xs">
-      {label ? <Text variant="caption" caps tone={color.textTertiary}>{label}</Text> : null}
+      {label ? (
+        <Text variant="caption" caps tone={color.textTertiary}>
+          {label}
+        </Text>
+      ) : null}
 
       <View style={styles.inputWrap}>
         {icon ? (
@@ -290,7 +302,12 @@ export interface ProgressBarProps {
   height?: number;
 }
 
-export function ProgressBar({ value, tone = 'brand', colorOverride, height = 6 }: ProgressBarProps) {
+export function ProgressBar({
+  value,
+  tone = 'brand',
+  colorOverride,
+  height = 6,
+}: ProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   return (
     <View
@@ -384,4 +401,93 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   track: { width: '100%', backgroundColor: color.surfaceOverlay, overflow: 'hidden' },
+  ringCentre: { position: 'absolute', alignItems: 'center', justifyContent: 'center', gap: 1 },
 });
+
+/* -------------------------------------------------------------- progress ring */
+
+export interface ProgressRingProps {
+  /** 0–100. Values outside the range are clamped rather than drawn wrong. */
+  value: number;
+  /** The figure inside the ring — usually a fraction, e.g. "7/9". */
+  label?: string;
+  /** One quiet word under it, e.g. "workout". */
+  caption?: string;
+  size?: number;
+  thickness?: number;
+  tone?: Tone;
+  colorOverride?: string;
+  accessibilityLabel?: string;
+}
+
+/**
+ * A closed progress track, for the one figure a screen is really about.
+ *
+ * A bar says "how far along"; a ring says "how much of the whole", and reads
+ * at a glance from arm's length, which is how a trainer looks at a phone
+ * between sets. Use it once per screen — a page of rings is a dashboard nobody
+ * can rank.
+ */
+export function ProgressRing({
+  value,
+  label,
+  caption,
+  size = 84,
+  thickness = 7,
+  tone = 'brand',
+  colorOverride,
+  accessibilityLabel,
+}: ProgressRingProps) {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const hue = colorOverride ?? toneColor[tone];
+
+  return (
+    <View
+      style={{ width: size, height: size }}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped) }}
+    >
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color.surfaceOverlay}
+          strokeWidth={thickness}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={hue}
+          strokeWidth={thickness}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={circumference * (1 - clamped / 100)}
+          /* Start at twelve o'clock rather than three. */
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      {label || caption ? (
+        <View style={[styles.ringCentre, { width: size, height: size }]}>
+          {label ? (
+            <Text variant="heading" numberOfLines={1}>
+              {label}
+            </Text>
+          ) : null}
+          {caption ? (
+            <Text variant="caption" caps tone={color.textTertiary} numberOfLines={1}>
+              {caption}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}

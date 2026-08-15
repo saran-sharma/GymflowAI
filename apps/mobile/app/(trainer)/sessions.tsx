@@ -25,7 +25,7 @@ import {
   StatTile,
   Txt,
 } from '../../src/components/ui';
-import { LinkButton, SessionCard, SkeletonScreen } from '../../src/design';
+import { LinkButton, SessionCard, SkeletonScreen, TimelineRow } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { colors, spacing } from '../../src/theme';
@@ -124,39 +124,46 @@ export default function TrainerSessionsScreen() {
             detail="PT sessions and classes you are taking today will appear here."
           />
         ) : (
-          items.map((item) => (
-            <SessionCard
+          items.map((item, index) => (
+            <TimelineRow
               key={`${item.kind}-${item.reference_id}`}
-              testID={`session-${item.reference_id}`}
-              kind={KIND_LABEL[item.kind]}
-              kindIcon={KIND_ICON[item.kind]}
-              time={item.starts_at ? timeOfDay(item.starts_at) : undefined}
-              title={item.title}
-              subtitle={item.subtitle ?? undefined}
-              status={{
-                label: sessionMeta[item.status].label,
-                colorOverride: sessionMeta[item.status].color,
-              }}
-              onPress={
-                item.kind === 'pt'
-                  ? () => router.push(`/(trainer)/pt/${item.reference_id}` as never)
-                  : undefined
-              }
-              footer={
-                item.can_complete && item.kind === 'own_workout_support' ? (
-                  <LinkButton
-                    title={busyId === item.reference_id ? 'Marking…' : 'Mark completed'}
-                    disabled={busyId !== null}
-                    onPress={() => void completeSupport(item)}
-                  />
-                ) : item.can_complete && item.kind === 'group_class' ? (
-                  <LinkButton
-                    title="Take attendance"
-                    onPress={() => router.push('/(trainer)/classes' as never)}
-                  />
-                ) : undefined
-              }
-            />
+              time={item.starts_at ? timeOfDay(item.starts_at) : '—'}
+              endTime={item.ends_at ? timeOfDay(item.ends_at) : undefined}
+              live={item.status === 'in_progress'}
+              connected={index < items.length - 1}
+              tone={item.status === 'in_progress' ? 'caution' : 'brand'}
+            >
+              <SessionCard
+                testID={`session-${item.reference_id}`}
+                kind={KIND_LABEL[item.kind]}
+                kindIcon={KIND_ICON[item.kind]}
+                title={item.title}
+                subtitle={item.subtitle ?? undefined}
+                status={{
+                  label: sessionMeta[item.status].label,
+                  colorOverride: sessionMeta[item.status].color,
+                }}
+                onPress={
+                  item.kind === 'pt'
+                    ? () => router.push(`/(trainer)/pt/${item.reference_id}` as never)
+                    : undefined
+                }
+                footer={
+                  item.can_complete && item.kind === 'own_workout_support' ? (
+                    <LinkButton
+                      title={busyId === item.reference_id ? 'Marking…' : 'Mark completed'}
+                      disabled={busyId !== null}
+                      onPress={() => void completeSupport(item)}
+                    />
+                  ) : item.can_complete && item.kind === 'group_class' ? (
+                    <LinkButton
+                      title="Take attendance"
+                      onPress={() => router.push('/(trainer)/classes' as never)}
+                    />
+                  ) : undefined
+                }
+              />
+            </TimelineRow>
           ))
         )}
 

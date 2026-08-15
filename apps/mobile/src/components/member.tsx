@@ -20,6 +20,7 @@ import {
   Card,
   Eyebrow,
   ProgressBar,
+  ProgressRing,
   Row,
   Spacer,
   Stack,
@@ -74,17 +75,8 @@ export function KindTag({ kind, solid = false }: { kind: SessionKind; solid?: bo
         },
       ]}
     >
-      <Ionicons
-        name={meta.icon}
-        size={11}
-        color={solid ? color.textInverse : meta.hue}
-      />
-      <Text
-        variant="caption"
-        caps
-        tone={solid ? color.textInverse : meta.hue}
-        numberOfLines={1}
-      >
+      <Ionicons name={meta.icon} size={11} color={solid ? color.textInverse : meta.hue} />
+      <Text variant="caption" caps tone={solid ? color.textInverse : meta.hue} numberOfLines={1}>
         {meta.label}
       </Text>
     </View>
@@ -101,6 +93,12 @@ export interface TodayCardProps {
   subtitle?: string;
   /** Progress through the session, 0–100. Omitted when nothing has started. */
   percent?: number;
+  /**
+   * Draws the progress as a ring beside the title instead of a bar under it,
+   * with this text inside. Use it when the progress has a natural fraction —
+   * "4/9" reads as a position in a session in a way that a bar cannot.
+   */
+  ringLabel?: string;
   /** Right-hand status word, when the session has one. */
   status?: string;
   statusTone?: Tone;
@@ -122,6 +120,7 @@ export function TodayCard({
   title,
   subtitle,
   percent,
+  ringLabel,
   status,
   statusTone = 'neutral',
   cta,
@@ -140,16 +139,30 @@ export function TodayCard({
           {status ? <Badge label={status} tone={statusTone} /> : null}
         </Row>
 
-        <Stack gap="xxs">
-          <Text variant="title">{title}</Text>
-          {subtitle ? (
-            <Text variant="body" tone={color.textSecondary}>
-              {subtitle}
-            </Text>
-          ) : null}
-        </Stack>
+        <Row gap="lg" align="center">
+          <Stack gap="xxs" style={styles.grow}>
+            <Text variant="title">{title}</Text>
+            {subtitle ? (
+              <Text variant="body" tone={color.textSecondary}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </Stack>
 
-        {percent !== undefined ? <ProgressBar value={percent} colorOverride={meta.hue} /> : null}
+          {percent !== undefined && ringLabel ? (
+            <ProgressRing
+              value={percent}
+              label={ringLabel}
+              caption={meta.label}
+              colorOverride={meta.hue}
+              accessibilityLabel={`${title}: ${ringLabel}`}
+            />
+          ) : null}
+        </Row>
+
+        {percent !== undefined && !ringLabel ? (
+          <ProgressBar value={percent} colorOverride={meta.hue} />
+        ) : null}
 
         <Pressable
           accessibilityRole="button"

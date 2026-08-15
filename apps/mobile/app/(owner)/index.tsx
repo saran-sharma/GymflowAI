@@ -44,6 +44,7 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  HeroCard,
   LinkButton,
   MetricRow,
   Row,
@@ -155,42 +156,54 @@ export default function OwnerDashboardScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={dashboard.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={dashboard.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
-        <Stack gap="xxs">
-          <Eyebrow>Owner</Eyebrow>
-          <Text variant="title">Dashboard</Text>
-          <Text variant="body" tone={color.textSecondary}>
-            {longDate(day.work_date)} · {day.branches.length} branch
-            {day.branches.length === 1 ? '' : 'es'}
-          </Text>
-        </Stack>
-
-        {/* Right now. One row, marked live, so it is never read as a total. */}
-        <Section
-          title="Right now"
-          action={<Badge label="Live" tone="critical" solid />}
-        >
-          <StatRow>
-            <StatCard
-              label="Members inside"
-              value={inside}
-              hint={capacity ? `of ${capacity}` : 'no capacity set'}
-              tone="brand"
-              icon="people-outline"
-              onPress={() => router.push('/(owner)/members' as never)}
-            />
-            <StatCard
-              label="Trainers present"
-              value={`${day.present}/${day.total_trainers}`}
-              hint={`${day.scheduled} scheduled`}
-              tone={day.present >= day.scheduled ? 'positive' : 'caution'}
-              icon="person-outline"
-              onPress={() => router.push('/(owner)/trainers' as never)}
-            />
-          </StatRow>
-        </Section>
+        {/*
+          Right now, and only right now. The ring is occupancy against capacity
+          because that is the single figure an owner opens this screen for; the
+          three under it are the rest of the live picture. Everything settled
+          starts at "Today" below, and the "Live" badge is what keeps the two
+          from being read as one number.
+        */}
+        <HeroCard
+          testID="owner-hero"
+          eyebrow="Right now"
+          title={`${inside} inside`}
+          subtitle={`${longDate(day.work_date)} · ${day.branches.length} branch${
+            day.branches.length === 1 ? '' : 'es'
+          }`}
+          status={{ label: 'Live', tone: 'critical', solid: true }}
+          ring={
+            capacity
+              ? {
+                  value: (inside / capacity) * 100,
+                  label: `${Math.round((inside / capacity) * 100)}%`,
+                  caption: 'full',
+                }
+              : undefined
+          }
+          metrics={[
+            {
+              label: 'Present',
+              value: `${day.present}/${day.total_trainers}`,
+              unit: 'trainers',
+              progress: day.total_trainers ? (day.present / day.total_trainers) * 100 : 0,
+              tone: day.present >= day.scheduled ? 'positive' : 'caution',
+            },
+            { label: 'Scheduled', value: day.scheduled, unit: 'shifts' },
+            {
+              label: 'Capacity',
+              value: capacity ? capacity : '—',
+              unit: capacity ? 'members' : 'not set',
+            },
+          ]}
+          onPress={() => router.push('/(owner)/members' as never)}
+        />
 
         {/* Today. Settled counts for the current business day. */}
         <Section title="Today">
@@ -235,7 +248,10 @@ export default function OwnerDashboardScreen() {
         <Section
           title="Money"
           action={
-            <LinkButton title="Payments" onPress={() => router.push('/(owner)/payments' as never)} />
+            <LinkButton
+              title="Payments"
+              onPress={() => router.push('/(owner)/payments' as never)}
+            />
           }
         >
           <StatRow>
@@ -295,7 +311,10 @@ export default function OwnerDashboardScreen() {
         <Section
           title="Performance"
           action={
-            <LinkButton title="Detail" onPress={() => router.push('/(owner)/performance' as never)} />
+            <LinkButton
+              title="Detail"
+              onPress={() => router.push('/(owner)/performance' as never)}
+            />
           }
         >
           <Segmented options={PERIODS} value={period} onChange={setPeriod} testIDPrefix="period" />
@@ -351,10 +370,7 @@ export default function OwnerDashboardScreen() {
         </Section>
 
         {/* Insights: deterministic, from the rule-based provider. No model. */}
-        <Section
-          title="Insights"
-          action={<Badge label="Rule-based" tone="neutral" />}
-        >
+        <Section title="Insights" action={<Badge label="Rule-based" tone="neutral" />}>
           {observations.length === 0 && items.length === 0 ? (
             <EmptyState
               icon="checkmark-circle-outline"
@@ -379,9 +395,7 @@ export default function OwnerDashboardScreen() {
               body={item.body}
               tone={SEVERITY_TONE[item.severity] ?? 'info'}
               onPress={
-                item.action_route
-                  ? () => router.push(item.action_route as never)
-                  : undefined
+                item.action_route ? () => router.push(item.action_route as never) : undefined
               }
             />
           ))}
@@ -389,8 +403,8 @@ export default function OwnerDashboardScreen() {
           {attention.data ? (
             <Row gap="md">
               <Text variant="label" tone={color.textTertiary} style={styles.grow}>
-                {attention.data.pt_ready_count} ready for PT ·{' '}
-                {attention.data.pending_corrections} correction
+                {attention.data.pt_ready_count} ready for PT · {attention.data.pending_corrections}{' '}
+                correction
                 {attention.data.pending_corrections === 1 ? '' : 's'} pending
               </Text>
             </Row>
