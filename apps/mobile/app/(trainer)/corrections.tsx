@@ -9,7 +9,7 @@
 import React, { useCallback, useState } from 'react';
 import { Modal, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AttendanceCorrection, AttendanceDay, CorrectionKind } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -101,9 +101,15 @@ export default function TrainerCorrectionsScreen() {
 
   if (history.loading) return <Loading label="Loading your attendance" />;
   if (history.error) {
+    const offline = history.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={history.error.message} onRetry={history.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your corrections'}
+          detail={offline ? undefined : history.error?.message}
+          onRetry={history.reload}
+        />
       </Screen>
     );
   }

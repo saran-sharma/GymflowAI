@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Screen, Txt } from '../../src/components/ui';
+import { Button, Loading, Screen, Txt } from '../../src/components/ui';
 import { colors, radius, spacing } from '../../src/theme';
 
 /** The prefix every GymFlow branch token carries. */
@@ -44,17 +44,7 @@ export default function ScanScreen() {
     });
   }
 
-  if (!permission) {
-    return (
-      <Screen>
-        <View style={styles.centered}>
-          <Txt variant="body" color={colors.textMuted}>
-            Preparing the camera…
-          </Txt>
-        </View>
-      </Screen>
-    );
-  }
+  if (!permission) return <Loading label="Preparing the camera" />;
 
   if (!permission.granted) {
     return (
@@ -103,7 +93,14 @@ export default function ScanScreen() {
           <Txt variant="heading" style={styles.centerText}>
             Scan the branch code
           </Txt>
-          <Txt variant="body" color={colors.textMuted} style={styles.centerText}>
+          {/* A rejected code and the standing instruction sat in the same
+              muted grey, so a failure read as guidance. The tone is the
+              difference between "keep going" and "that did not work". */}
+          <Txt
+            variant="body"
+            color={hint ? colors.brandSoft : colors.textMuted}
+            style={styles.centerText}
+          >
             {hint ?? 'Point the camera at the GymFlow code on the front desk screen.'}
           </Txt>
         </View>

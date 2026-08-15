@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ScheduleItem } from '../../src/api/types';
 import { SectionHeader, sessionMeta } from '../../src/components/programme';
@@ -79,9 +79,15 @@ export default function TrainerSessionsScreen() {
 
   if (schedule.loading) return <Loading label="Loading today's sessions" />;
   if (schedule.error) {
+    const offline = schedule.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={schedule.error.message} onRetry={schedule.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : "We could not load today's sessions"}
+          detail={offline ? undefined : schedule.error?.message}
+          onRetry={schedule.reload}
+        />
       </Screen>
     );
   }

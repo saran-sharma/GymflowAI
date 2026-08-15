@@ -311,16 +311,23 @@ export function ErrorState({
   title = 'Something went wrong',
   detail,
   onRetry,
+  offline = false,
 }: {
   title?: string;
   detail?: string;
   onRetry?: () => void;
+  /** Losing signal is not a server fault, and should not look like one. */
+  offline?: boolean;
 }) {
   return (
     <View style={styles.centered}>
-      <Ionicons name="alert-circle-outline" size={40} color={colors.brand} />
+      <Ionicons
+        name={offline ? 'cloud-offline-outline' : 'alert-circle-outline'}
+        size={40}
+        color={colors.brand}
+      />
       <Txt variant="heading" style={styles.stateText}>
-        {title}
+        {offline ? 'No connection' : title}
       </Txt>
       {detail ? (
         <Txt variant="body" color={colors.textMuted} style={styles.stateDetail}>

@@ -23,6 +23,7 @@ import {
   Body,
   Button,
   Card,
+  EmptyState,
   ErrorState,
   Eyebrow,
   Loading,
@@ -270,9 +271,11 @@ export default function TrainerAvailabilityScreen() {
 
         <Section title="Published">
           {(published.data ?? []).length === 0 ? (
-            <Text variant="label" tone={color.textTertiary}>
-              Nothing published yet. Pick a day and choose your hours.
-            </Text>
+            <EmptyState
+              icon="calendar-outline"
+              title="Nothing published yet"
+              detail="Pick a day above and choose the hours you can take PT."
+            />
           ) : (
             days
               .map((iso) => ({

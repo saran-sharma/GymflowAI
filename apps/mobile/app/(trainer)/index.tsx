@@ -33,6 +33,7 @@ import {
   Button,
   Card,
   Divider,
+  EmptyState,
   ErrorState,
   Eyebrow,
   LinkButton,
@@ -273,9 +274,11 @@ export default function TrainerDeskScreen() {
           }
         >
           {items.length === 0 ? (
-            <Text variant="label" tone={color.textTertiary}>
-              Nothing scheduled today. PT sessions and classes assigned to you appear here.
-            </Text>
+            <EmptyState
+              icon="calendar-outline"
+              title="Nothing scheduled today"
+              detail="PT sessions and classes assigned to you appear here as your branch books them."
+            />
           ) : (
             items.map((item) => {
               const badge = itemStatus(item);

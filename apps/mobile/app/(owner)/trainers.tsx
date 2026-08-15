@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Trainer } from '../../src/api/types';
 import {
@@ -36,9 +37,15 @@ export default function OwnerTrainersScreen() {
 
   if (trainers.loading) return <Loading label="Loading trainers" />;
   if (trainers.error) {
+    const offline = trainers.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={trainers.error.message} onRetry={trainers.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load trainers'}
+          detail={offline ? undefined : trainers.error?.message}
+          onRetry={trainers.reload}
+        />
       </Screen>
     );
   }

@@ -5,7 +5,7 @@
 import React, { useCallback, useState } from 'react';
 import { Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Branch, GroupClass } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -74,9 +74,15 @@ export default function OwnerClassesScreen() {
 
   if (classes.loading) return <Loading label="Loading classes" />;
   if (classes.error) {
+    const offline = classes.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={classes.error.message} onRetry={classes.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load classes'}
+          detail={offline ? undefined : classes.error?.message}
+          onRetry={classes.reload}
+        />
       </Screen>
     );
   }

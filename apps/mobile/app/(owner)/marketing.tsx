@@ -9,6 +9,7 @@
 import React from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { MarketingDashboard } from '../../src/api/types';
 import { BarChart, SectionHeader } from '../../src/components/programme';
@@ -36,9 +37,15 @@ export default function OwnerMarketingScreen() {
 
   if (marketing.loading) return <Loading label="Loading marketing activity" />;
   if (marketing.error || !marketing.data) {
+    const offline = marketing.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={marketing.error?.message} onRetry={marketing.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load marketing'}
+          detail={offline ? undefined : marketing.error?.message}
+          onRetry={marketing.reload}
+        />
       </Screen>
     );
   }
