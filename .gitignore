@@ -19,6 +19,8 @@ ios/
 .env
 .env.*
 !.env.example
+.dev/
+.dev-logs/
 .pytest_cache
 .ruff_cache
 .mypy_cache

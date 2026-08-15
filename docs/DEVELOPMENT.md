@@ -1,44 +1,55 @@
-# Running GymFlow AI locally
+# Running GymFlow AI Locally & In Codespaces
 
-> **The quickest path is GitHub Codespaces** — no Node, Python, PostgreSQL or
-> Android Studio on your machine. See [CODESPACES.md](CODESPACES.md). This page
-> covers running everything directly on your own machine instead.
+> **The quickest path is GitHub Codespaces** — no local PostgreSQL, Node or Android Studio required.
+> Simply run `npm run dev` and open your development client.
 
-Two processes: the API and the mobile app. Start the API first — the app is
-useless without it, and says so clearly rather than failing silently.
+## QUICK START
 
-## 1. Database
+1. Open Codespaces (or clone locally).
+2. Run:
 
-```bash
-# Postgres 16, running locally
-createuser gymflow --pwprompt          # password: gymflow (development only)
-createdb gymflow  --owner gymflow
-createdb gymflow_test --owner gymflow  # the test suite uses its own database
-```
+   ```bash
+   npm run dev
+   ```
 
-## 2. API
+3. Open the GymFlow AI development build.
+4. Edit code.
+5. Changes will appear automatically through Fast Refresh.
 
-```bash
-cd backend
-python3 -m venv ../.venv
-../.venv/bin/pip install -r requirements-dev.txt
+---
 
-cp .env.example .env                   # defaults work for local development
+## Daily Workflow Commands
 
-../.venv/bin/alembic upgrade head      # create the schema
-../.venv/bin/python -m app.seed        # SLAM demo data (all rows flagged DEMO)
+| Command | Description |
+| --- | --- |
+| `npm run dev` (or `./dev.sh`) | Start both Backend (:8000) and Metro (:8081) in one command |
+| `npm run dev:backend` | Start only the FastAPI backend (:8000) |
+| `npm run dev:mobile` | Start only Metro bundler for mobile (:8081) |
+| `npm run dev:status` | Run system diagnostics (ports, health, database, Expo config) |
+| `npm run dev:stop` | Stop all running development services cleanly |
+| `npm run dev:clean` | Clear Metro bundler cache and restart |
+| `npm run verify` | Run full test suite, linter, and typechecks |
 
-../.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+---
 
-`--host 0.0.0.0` matters: an Android emulator or a phone on the same wifi
-cannot reach a server bound to `127.0.0.1`.
+## Architecture & URL Separation
 
-Interactive API docs: <http://localhost:8000/docs>
+GymFlow AI separates the **Backend API URL** from the **Metro Bundler URL**:
 
-### Demo logins
+- **`EXPO_PUBLIC_API_URL` (Backend API)**:
+  - In Codespaces: `https://<codespace>-8000.app.github.dev`
+  - In Local Dev: `http://localhost:8000` (or `http://10.0.2.2:8000` for Android emulator)
+  - Automatically written to `apps/mobile/.env` when starting `npm run dev`.
+- **Metro Bundler URL**:
+  - In Codespaces: `https://<codespace>-8081.app.github.dev`
+  - In Local Dev: `http://localhost:8081`
+  - Managed via `REACT_NATIVE_PACKAGER_HOSTNAME` and `EXPO_PACKAGER_PROXY_URL`.
 
-Seeded by `python -m app.seed`. Every person is fictional.
+---
+
+## Demo Logins
+
+Seeded automatically by `python -m app.seed`. Every person is fictional.
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -51,96 +62,27 @@ Seeded by `python -m app.seed`. Every person is fictional.
 
 Trainer check-in PIN: `246813`
 
-`python -m app.seed --reset` wipes and regenerates demo rows. It only touches
-rows flagged `is_demo`, so it can never delete real SLAM data.
+`npm run seed:reset` wipes and regenerates demo rows. It only touches rows flagged `is_demo`, so it can never delete real SLAM data.
 
-## 3. Mobile app
+---
 
+## Android Physical Device Setup
+
+1. Install the GymFlow development build APK (built via `npm run build:android` on EAS).
+2. Run `npm run dev`.
+3. Open the app on the phone.
+4. Enter the Metro URL (printed in the terminal) or scan the terminal QR code.
+5. Edits to JavaScript/TypeScript reload automatically via Fast Refresh without reinstalling the APK.
+
+---
+
+## Troubleshooting & Diagnostics
+
+Run:
 ```bash
-cd apps/mobile
-npm install
-cp .env.example .env      # point EXPO_PUBLIC_API_URL at your API
-
-npm start                 # then press 'a' for Android, 'i' for iOS
+npm run dev:status
 ```
 
-### Which API URL
-
-| Running on | `EXPO_PUBLIC_API_URL` |
-| --- | --- |
-| Android emulator | `http://10.0.2.2:8000` |
-| iOS simulator | `http://localhost:8000` |
-| Physical device | `http://<your-lan-ip>:8000` |
-
-Unset, the app derives the host from Expo's dev-server URI, which is usually
-right for a physical device on the same network.
-
-## Checks
-
-```bash
-# Backend
-cd backend
-../.venv/bin/ruff check app ../tests
-../.venv/bin/ruff format --check app ../tests
-../.venv/bin/python -m pytest ../tests/backend
-
-# Mobile
-cd apps/mobile
-npm run typecheck
-npm test
-```
-
-## Android build
-
-Builds run on EAS, so no Android SDK is needed — see
-[ANDROID_BUILD.md](ANDROID_BUILD.md) for the full path including the GitHub
-Actions workflow.
-
-```bash
-cd apps/mobile
-
-# Verify the bundle first — fastest way to catch a broken import.
-npx expo export --platform android
-
-# Build on EAS (no local SDK)
-EXPO_PUBLIC_API_URL=https://your-api.example npx eas-cli build \
-  --platform android --profile preview
-```
-
-If you do have an Android SDK and want a local APK:
-
-```bash
-npm run prebuild:android            # writes android/, gitignored and regenerable
-cd android && ./gradlew assembleDebug
-# → android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-iOS is configured (`bundleIdentifier`, camera usage string, encryption
-declaration) and bundles cleanly. Producing an `.ipa` needs macOS or EAS.
-
-## Useful API calls
-
-```bash
-API=http://localhost:8000/api/v1
-
-TOKEN=$(curl -s -X POST $API/auth/login -H 'content-type: application/json' \
-  -d '{"email":"owner@slam.demo","password":"SlamDemo2026!"}' \
-  | python3 -c 'import sys,json;print(json.load(sys.stdin)["tokens"]["access_token"])')
-
-curl -s $API/reports/dashboard -H "authorization: Bearer $TOKEN" | python3 -m json.tool
-curl -s $API/branches/occupancy -H "authorization: Bearer $TOKEN" | python3 -m json.tool
-curl -s $API/incentives         -H "authorization: Bearer $TOKEN" | python3 -m json.tool
-```
-
-## Troubleshooting
-
-**"No connection to GymFlow" on a device.** The API is bound to `127.0.0.1`, or
-`EXPO_PUBLIC_API_URL` points at `localhost` from an emulator. Bind `0.0.0.0`
-and use `10.0.2.2` on Android.
-
-**Every trainer shows as absent.** A branch's day only materialises when the
-dashboard or `/attendance/day` is fetched. Hit `POST /attendance/settle` or open
-the owner dashboard.
-
-**Login returns 429.** The rate limiter is doing its job. Wait a minute, or set
-`RATE_LIMIT_ENABLED=false` for local work.
+- If backend is stopped: `npm run dev:backend` or `npm run dev`.
+- If Metro cache is corrupted: `npm run dev:clean`.
+- If ports are held: `npm run dev:stop`.

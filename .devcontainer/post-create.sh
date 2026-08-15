@@ -92,7 +92,9 @@ say "Database schema and demo data"
 say "Mobile dependencies"
 ( cd "$REPO_ROOT/apps/mobile" && npm ci --no-audit )
 
-say "Web demo dependencies"
-( cd "$REPO_ROOT/apps/web-demo" && npm ci --no-audit )
+# Configure Codespaces ports to public if running inside Codespaces
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  gh codespace ports visibility 8000:public 8081:public 2>/dev/null || true
+fi
 
-say "Ready — run 'npm run api' and 'npm run mobile'"
+say "Ready — run 'npm run dev' (or './dev.sh')"
