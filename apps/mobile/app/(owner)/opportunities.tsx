@@ -9,6 +9,7 @@
 import React from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { FollowUpTask, Journey } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -35,9 +36,15 @@ export default function OwnerOpportunitiesScreen() {
 
   if (ready.loading) return <Loading label="Loading PT opportunities" />;
   if (ready.error) {
+    const offline = ready.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={ready.error.message} onRetry={ready.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load PT opportunities'}
+          detail={offline ? undefined : ready.error?.message}
+          onRetry={ready.reload}
+        />
       </Screen>
     );
   }

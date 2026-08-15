@@ -9,7 +9,7 @@
 import React, { useCallback, useState } from 'react';
 import { Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AppSetting } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   Divider,
+  EmptyState,
   ErrorState,
   Eyebrow,
   Loading,
@@ -98,9 +99,15 @@ export default function OwnerSettingsScreen() {
 
   if (settings.loading) return <Loading label="Loading settings" />;
   if (settings.error) {
+    const offline = settings.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={settings.error.message} onRetry={settings.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load settings'}
+          detail={offline ? undefined : settings.error?.message}
+          onRetry={settings.reload}
+        />
       </Screen>
     );
   }
@@ -130,6 +137,20 @@ export default function OwnerSettingsScreen() {
           <Banner tone="info">
             You can see these rules. Only an owner or admin can change them.
           </Banner>
+        ) : null}
+
+        {/* Every group can filter to nothing, and a screen that renders only a
+            header over empty space reads as a failure rather than a state. */}
+        {GROUPS.every((group) => !rows.some((row) => row.key.startsWith(group.prefix))) ? (
+          <EmptyState
+            icon="options-outline"
+            title="No settings to show"
+            detail={
+              rows.length
+                ? 'This branch has settings recorded, but none in the groups shown here. Ask an admin which keys apply.'
+                : 'No business rules are configured yet. An admin sets these up for your branch.'
+            }
+          />
         ) : null}
 
         {GROUPS.map((group) => {

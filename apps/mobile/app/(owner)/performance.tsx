@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { BranchPerformanceResponse } from '../../src/api/types';
 import { DemoTag, SectionHeader, TrendStat } from '../../src/components/programme';
@@ -45,9 +46,15 @@ export default function OwnerPerformanceScreen() {
 
   if (performance.loading) return <Loading label="Comparing branches" />;
   if (performance.error || !performance.data) {
+    const offline = performance.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={performance.error?.message} onRetry={performance.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load performance'}
+          detail={offline ? undefined : performance.error?.message}
+          onRetry={performance.reload}
+        />
       </Screen>
     );
   }

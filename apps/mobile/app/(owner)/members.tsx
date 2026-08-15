@@ -15,6 +15,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Journey, PTPackage, WhoIsInside } from '../../src/api/types';
 import { LiveGym } from '../../src/components/livegym';
@@ -61,9 +62,15 @@ export default function OwnerMembersScreen() {
 
   if (journeys.loading && packages.loading) return <Loading label="Loading members" />;
   if (journeys.error && packages.error) {
+    const offline = journeys.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={journeys.error.message} onRetry={journeys.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load members'}
+          detail={offline ? undefined : journeys.error?.message}
+          onRetry={journeys.reload}
+        />
       </Screen>
     );
   }

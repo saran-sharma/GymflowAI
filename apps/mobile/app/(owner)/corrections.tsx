@@ -9,7 +9,7 @@
 import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AttendanceCorrection } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -64,9 +64,15 @@ export default function OwnerCorrectionsScreen() {
 
   if (corrections.loading) return <Loading label="Loading corrections" />;
   if (corrections.error) {
+    const offline = corrections.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={corrections.error.message} onRetry={corrections.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load corrections'}
+          detail={offline ? undefined : corrections.error?.message}
+          onRetry={corrections.reload}
+        />
       </Screen>
     );
   }

@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import React, { useCallback, useState } from 'react';
 import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '../../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
 import type { PTSplitView } from '../../../src/api/types';
 import { sessionMeta } from '../../../src/components/programme';
@@ -71,9 +71,15 @@ export default function PtSplitScreen() {
 
   if (view.loading) return <Loading label="Loading session" />;
   if (view.error || !view.data) {
+    const offline = view.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={view.error?.message} onRetry={view.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load this PT session'}
+          detail={offline ? undefined : view.error?.message}
+          onRetry={view.reload}
+        />
       </Screen>
     );
   }

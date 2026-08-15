@@ -41,6 +41,7 @@ import {
   Body,
   Card,
   Divider,
+  EmptyState,
   ErrorState,
   Eyebrow,
   LinkButton,
@@ -50,6 +51,7 @@ import {
   Screen,
   Section,
   Segmented,
+  SkeletonCard,
   Spacer,
   StatCard,
   StatRow,
@@ -279,13 +281,13 @@ export default function OwnerDashboardScreen() {
               </Text>
             </Card>
           ) : revenue.loading ? (
-            <Text variant="label" tone={color.textTertiary}>
-              Loading revenue…
-            </Text>
+            <SkeletonCard />
           ) : (
-            <Text variant="label" tone={color.textTertiary}>
-              No payments recorded yet. Charges raised at the front desk appear here.
-            </Text>
+            <EmptyState
+              icon="receipt-outline"
+              title="No payments recorded yet"
+              detail="Charges raised at the front desk appear here."
+            />
           )}
         </Section>
 
@@ -299,9 +301,7 @@ export default function OwnerDashboardScreen() {
           <Segmented options={PERIODS} value={period} onChange={setPeriod} testIDPrefix="period" />
 
           {performance.loading ? (
-            <Text variant="label" tone={color.textTertiary}>
-              Loading {period}…
-            </Text>
+            <SkeletonCard />
           ) : performance.error ? (
             <Text variant="label" tone={color.status.caution}>
               Performance did not load. Pull to refresh.
@@ -356,9 +356,11 @@ export default function OwnerDashboardScreen() {
           action={<Badge label="Rule-based" tone="neutral" />}
         >
           {observations.length === 0 && items.length === 0 ? (
-            <Text variant="label" tone={color.textTertiary}>
-              Nothing needs your attention right now.
-            </Text>
+            <EmptyState
+              icon="checkmark-circle-outline"
+              title="Nothing needs your attention"
+              detail="Late trainers, renewals and quiet periods show up here as the rules find them."
+            />
           ) : null}
 
           {observations.map((observation) => (

@@ -6,6 +6,7 @@
 import React from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AttendanceDay, IncentiveResult } from '../../src/api/types';
 import {
@@ -34,9 +35,15 @@ export default function TrainerAttendanceScreen() {
 
   if (history.loading || incentive.loading) return <Loading label="Loading your month" />;
   if (history.error && !history.data) {
+    const offline = history.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={history.error.message} onRetry={history.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your attendance'}
+          detail={offline ? undefined : history.error?.message}
+          onRetry={history.reload}
+        />
       </Screen>
     );
   }

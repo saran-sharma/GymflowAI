@@ -8,7 +8,7 @@
 import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
-import { ApiError } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ClassRosterEntry, GroupClass } from '../../src/api/types';
 import { SectionHeader } from '../../src/components/programme';
@@ -77,9 +77,15 @@ export default function TrainerClassesScreen() {
 
   if (classes.loading) return <Loading label="Loading classes" />;
   if (classes.error) {
+    const offline = classes.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={classes.error.message} onRetry={classes.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your classes'}
+          detail={offline ? undefined : classes.error?.message}
+          onRetry={classes.reload}
+        />
       </Screen>
     );
   }

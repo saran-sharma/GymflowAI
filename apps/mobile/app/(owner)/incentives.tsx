@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { IncentiveResult } from '../../src/api/types';
 import {
@@ -45,9 +46,15 @@ export default function OwnerIncentivesScreen() {
 
   if (results.loading) return <Loading label="Calculating eligibility" />;
   if (results.error) {
+    const offline = results.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={results.error.message} onRetry={results.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load incentives'}
+          detail={offline ? undefined : results.error?.message}
+          onRetry={results.reload}
+        />
       </Screen>
     );
   }
