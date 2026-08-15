@@ -521,3 +521,11 @@ export const listPayments = (
 
 export const myPayments = (token: string) =>
   request<import('./types').Payment[]>('/payments/me', { token });
+
+/* --------------------------------------------------------------- live gym */
+
+export const whoIsInside = (token: string, branchId?: number) =>
+  request<import('./types').WhoIsInside>(
+    `/attendance/inside${branchId ? `?branch_id=${branchId}` : ''}`,
+    { token },
+  );

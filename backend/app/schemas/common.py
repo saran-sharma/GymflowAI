@@ -443,6 +443,33 @@ class SettingUpdate(BaseModel):
     branch_id: int | None = None
 
 
+class MemberInsideOut(BaseModel):
+    """One member currently in the building."""
+
+    member_id: int
+    member_code: str
+    full_name: str
+    branch_id: int
+    checked_in_at: datetime
+    minutes_inside: int
+    method: str | None = None
+
+
+class WhoIsInsideOut(BaseModel):
+    """Live occupancy for one branch: the count, and who makes it up.
+
+    Both come from the same event-log rule — a person is inside when their most
+    recent event today is a check-in — so the number and the list cannot
+    disagree, and a duplicate scan still counts as one person.
+    """
+
+    branch_id: int
+    branch_name: str
+    count: int
+    capacity: int | None = None
+    members: list[MemberInsideOut]
+
+
 class MessageOut(BaseModel):
     message: str
 

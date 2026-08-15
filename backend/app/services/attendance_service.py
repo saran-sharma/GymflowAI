@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today, now_utc, to_branch_time
 from app.core.security import verify_pin
@@ -665,3 +665,68 @@ __all__ = [
     "trainer_check_out",
     "verify_branch_credential",
 ]
+
+
+def who_is_inside(db: Session, branch: Branch) -> list[dict]:
+    """The members currently in the building, and since when.
+
+    Uses the same definition as `branch_occupancy` — a person is inside when
+    their most recent event today is a check-in — so the list and the count can
+    never disagree. Deriving both from the event log rather than a presence
+    table is also what makes a duplicate scan harmless: the latest event wins,
+    and two check-ins in a row still mean one person inside.
+
+    The integration point for eSSL is upstream of this. Whatever writes
+    `AttendanceEvent` — QR, PIN, or a turnstile sync — this reads the same rows.
+    """
+    work_date = branch_today(branch.timezone)
+    latest = (
+        select(
+            AttendanceEvent.user_id.label("user_id"),
+            func.max(AttendanceEvent.occurred_at).label("last_at"),
+        )
+        .where(
+            AttendanceEvent.branch_id == branch.id,
+            AttendanceEvent.work_date == work_date,
+            AttendanceEvent.person_type == PersonType.MEMBER,
+        )
+        .group_by(AttendanceEvent.user_id)
+        .subquery()
+    )
+
+    rows = db.execute(
+        select(AttendanceEvent, Member)
+        .join(
+            latest,
+            and_(
+                AttendanceEvent.user_id == latest.c.user_id,
+                AttendanceEvent.occurred_at == latest.c.last_at,
+            ),
+        )
+        .join(Member, Member.user_id == AttendanceEvent.user_id)
+        .options(joinedload(Member.user))
+        .where(
+            AttendanceEvent.branch_id == branch.id,
+            AttendanceEvent.work_date == work_date,
+            AttendanceEvent.person_type == PersonType.MEMBER,
+            AttendanceEvent.event_type == EventType.CHECK_IN,
+        )
+        .order_by(AttendanceEvent.occurred_at)
+    ).all()
+
+    now = now_utc()
+    out = []
+    for event, member in rows:
+        minutes = max(0, int((now - event.occurred_at).total_seconds() // 60))
+        out.append(
+            {
+                "member_id": member.id,
+                "member_code": member.member_code,
+                "full_name": member.user.full_name,
+                "branch_id": branch.id,
+                "checked_in_at": event.occurred_at,
+                "minutes_inside": minutes,
+                "method": event.method,
+            }
+        )
+    return out

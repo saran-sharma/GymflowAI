@@ -4,11 +4,11 @@
  * One screen answering the three things a trainer checks between sessions:
  * what is on today, who am I coaching, and am I on track for the incentive.
  *
- * Two of the four summary figures the desk was asked for — revenue and pending
- * payments — are not here. GymFlow has no billing model at all: no invoice, no
- * payment, no ledger. A rupee figure on a trainer's home screen that no record
- * backs would be the most damaging kind of invented number, so the desk says
- * what it cannot tell them instead.
+ * Who is on the floor leads, because it is what a trainer actually looks up
+ * between sessions. The shift card that used to sit here is gone — checking in
+ * is a once-a-day act and does not deserve the top of a screen opened twenty
+ * times — but the route survives under More, since punctuality, late marks and
+ * the whole incentive calculation are computed from those check-ins.
  */
 
 import { useRouter } from 'expo-router';
@@ -17,7 +17,14 @@ import { RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { IncentiveResult, ScheduleItem, TrainerClient, TrainerToday } from '../../src/api/types';
+import type {
+  IncentiveResult,
+  ScheduleItem,
+  TrainerClient,
+  TrainerToday,
+  WhoIsInside,
+} from '../../src/api/types';
+import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
 import {
   Badge,
@@ -44,7 +51,6 @@ import {
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { statusMeta } from '../../src/theme';
 import { timeOfDay } from '../../src/utils/format';
 
 /** A scheduled item's badge, from the status the server gave it. */
@@ -76,13 +82,15 @@ export default function TrainerDeskScreen() {
   const schedule = useApi<ScheduleItem[]>((token) => api.myScheduleToday(token), []);
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
   const incentive = useApi<IncentiveResult>((token) => api.myIncentive(token), []);
+  const inside = useApi<WhoIsInside>((token) => api.whoIsInside(token), []);
 
   const refreshAll = useCallback(() => {
     void today.refresh();
     void schedule.refresh();
     void clients.refresh();
     void incentive.refresh();
-  }, [today, schedule, clients, incentive]);
+    void inside.refresh();
+  }, [today, schedule, clients, incentive, inside]);
 
   if (today.loading && schedule.loading) return <Loading label="Loading your desk" />;
 
@@ -104,7 +112,6 @@ export default function TrainerDeskScreen() {
   const items = schedule.data ?? [];
   const roster = clients.data ?? [];
   const pay = incentive.data;
-  const shiftStatus = today.data ? statusMeta[today.data.status] : null;
 
   const done = items.filter((item) => item.status === 'completed').length;
   const activeClients = roster.filter(
@@ -128,36 +135,26 @@ export default function TrainerDeskScreen() {
           </Text>
         </Stack>
 
-        {/* The shift, because a trainer who has not checked in is not on the clock. */}
-        {today.data ? (
-          <Card>
-            <Row gap="sm">
-              <Eyebrow>Your shift</Eyebrow>
-              <Spacer />
-              {shiftStatus ? (
-                <Badge label={shiftStatus.label} colorOverride={shiftStatus.color} />
-              ) : null}
-            </Row>
-            <Row gap="sm">
-              <Text variant="body" tone={color.textSecondary}>
-                {today.data.shift_label ?? 'No shift scheduled today'}
-              </Text>
-              <Spacer />
-              {today.data.check_in_at ? (
-                <Text variant="mono" tone={color.status.positive}>
-                  In {timeOfDay(today.data.check_in_at)}
-                </Text>
-              ) : null}
-            </Row>
-            {today.data.can_check_in || today.data.can_check_out ? (
-              <Button
-                title={today.data.can_check_in ? 'Check in' : 'Check out'}
-                icon="qr-code-outline"
-                onPress={() => router.push('/(trainer)/shift' as never)}
-              />
-            ) : null}
-          </Card>
-        ) : null}
+        {/* Who is on the floor right now — the first thing a trainer looks at. */}
+        <Section
+          title="Currently in gym"
+          action={<Badge label="Live" tone="critical" solid />}
+        >
+          {inside.loading ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Checking the floor…
+            </Text>
+          ) : inside.error ? (
+            <Text variant="label" tone={color.status.caution}>
+              The floor list did not load. Pull to refresh.
+            </Text>
+          ) : inside.data ? (
+            <LiveGym
+              data={inside.data}
+              emptyDetail="Members appear here the moment they scan in at your branch."
+            />
+          ) : null}
+        </Section>
 
         {/* What the desk can actually count. */}
         <StatRow>
