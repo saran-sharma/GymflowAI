@@ -181,6 +181,29 @@ class PackageStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class PaymentKind(str, enum.Enum):
+    MEMBERSHIP = "membership"
+    PT = "pt"
+    GROUP_CLASS = "group_class"
+    RENEWAL = "renewal"
+    ADDON = "addon"
+
+
+class PaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    UPI = "upi"
+    BANK_TRANSFER = "bank_transfer"
+    OTHER = "other"
+
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    REFUNDED = "refunded"
+    CANCELLED = "cancelled"
+
+
 class ClassStatus(str, enum.Enum):
     SCHEDULED = "scheduled"
     CANCELLED = "cancelled"
@@ -1204,6 +1227,73 @@ class TrainerAvailability(Base, TimestampMixin):
     note: Mapped[str | None] = mapped_column(String(160))
 
     trainer: Mapped[Trainer] = relationship()
+
+
+class Payment(Base, TimestampMixin, DemoMixin):
+    """Money SLAM has asked for, and whether it arrived.
+
+    One row per charge, not per instalment: a membership sold in March is one
+    payment that is either pending or paid, and a renewal in June is a
+    different row. That keeps "what is outstanding" a query over status rather
+    than a running balance nobody can reconcile.
+
+    `amount` is what the member owes after `discount` and including `tax` — the
+    figure on the receipt. The components are kept so a receipt can be
+    reprinted, not so anything recomputes the total from them.
+
+    `collected_by_user_id` is who took the money, which is the question asked
+    first whenever cash and a spreadsheet disagree.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[PaymentKind] = mapped_column(
+        Enum(PaymentKind, name="payment_kind"), nullable=False, index=True
+    )
+    status: Mapped[PaymentStatus] = mapped_column(
+        Enum(PaymentStatus, name="payment_status"),
+        default=PaymentStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+    method: Mapped[PaymentMethod | None] = mapped_column(Enum(PaymentMethod, name="payment_method"))
+
+    amount: Mapped[float] = mapped_column(Numeric(10, 2, asdecimal=False), nullable=False)
+    discount: Mapped[float] = mapped_column(
+        Numeric(10, 2, asdecimal=False), default=0, nullable=False
+    )
+    tax: Mapped[float] = mapped_column(Numeric(10, 2, asdecimal=False), default=0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+
+    # What the charge is for. Exactly one is set for a typed payment; an addon
+    # may carry none, which is why they are nullable rather than a polymorphic
+    # key that would need a join to know what it points at.
+    membership_id: Mapped[int | None] = mapped_column(
+        ForeignKey("memberships.id", ondelete="SET NULL"), index=True
+    )
+    pt_package_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pt_packages.id", ondelete="SET NULL"), index=True
+    )
+    group_class_id: Mapped[int | None] = mapped_column(
+        ForeignKey("group_classes.id", ondelete="SET NULL"), index=True
+    )
+    # Set for PT so a trainer's delivered revenue is answerable without
+    # inferring it from the package's trainer, which can change.
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id"), index=True)
+
+    due_on: Mapped[date | None] = mapped_column(Date, index=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    collected_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    receipt_no: Mapped[str | None] = mapped_column(String(32), unique=True)
+    notes: Mapped[str | None] = mapped_column(String(255))
+
+    member: Mapped[Member] = relationship()
+    branch: Mapped[Branch] = relationship()
 
 
 class Setting(Base, TimestampMixin):

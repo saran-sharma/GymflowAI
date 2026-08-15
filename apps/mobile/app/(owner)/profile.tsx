@@ -8,6 +8,7 @@ export default function OwnerMoreScreen() {
   return (
     <ProfilePanel
       links={[
+        { label: 'Payments', detail: 'Outstanding charges and what has come in', icon: 'card-outline', route: '/(owner)/payments' },
         { label: 'Incentives', detail: 'Who qualified this cycle', icon: 'ribbon-outline', route: '/(owner)/incentives' },
         { label: 'Branch performance', detail: 'Compare all three SLAM branches', icon: 'stats-chart-outline', route: '/(owner)/performance' },
         { label: 'PT opportunities', detail: 'Members who finished Day 45', icon: 'trophy-outline', route: '/(owner)/opportunities' },

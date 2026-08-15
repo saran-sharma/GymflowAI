@@ -499,3 +499,25 @@ export const renewalsDue = (token: string, days = 30, branchId?: number) =>
     `/reports/renewals?days=${days}${branchId ? `&branch_id=${branchId}` : ''}`,
     { token },
   );
+
+/* ---------------------------------------------------------------- payments */
+
+export const revenueSummary = (token: string, days = 30, branchId?: number) =>
+  request<import('./types').RevenueSummary>(
+    `/payments/summary?days=${days}${branchId ? `&branch_id=${branchId}` : ''}`,
+    { token },
+  );
+
+export const listPayments = (
+  token: string,
+  filters: { status?: import('./types').PaymentStatus; kind?: import('./types').PaymentKind } = {},
+) => {
+  const query = new URLSearchParams();
+  if (filters.status) query.set('status', filters.status);
+  if (filters.kind) query.set('kind', filters.kind);
+  const suffix = query.toString();
+  return request<import('./types').Payment[]>(`/payments${suffix ? `?${suffix}` : ''}`, { token });
+};
+
+export const myPayments = (token: string) =>
+  request<import('./types').Payment[]>('/payments/me', { token });

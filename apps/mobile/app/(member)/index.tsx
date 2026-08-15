@@ -16,7 +16,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { MemberHome } from '../../src/api/types';
+import type { MemberHome, Payment } from '../../src/api/types';
 import {
   JourneyBar,
   NotConnected,
@@ -44,7 +44,7 @@ import {
   color,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { dayLabel, timeOfDay } from '../../src/utils/format';
+import { dayLabel, money, timeOfDay } from '../../src/utils/format';
 
 /** Local midnight-to-midnight test, so "today" means the member's today. */
 function isToday(iso: string | null | undefined): boolean {
@@ -62,6 +62,7 @@ function isToday(iso: string | null | undefined): boolean {
 export default function MemberHomeScreen() {
   const router = useRouter();
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
+  const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
 
   if (home.loading) return <Loading label="Loading your day" />;
 
@@ -94,6 +95,8 @@ export default function MemberHomeScreen() {
   const journeyDone = journey?.status === 'completed';
   const expiringSoon = me.days_remaining !== null && me.days_remaining <= 30;
   const membershipExpired = me.membership_status !== null && me.membership_status !== 'active';
+  const owed = (payments.data ?? []).filter((row) => row.status === 'pending');
+  const outstanding = owed.reduce((total, row) => total + row.amount, 0);
 
   const kind: SessionKind = ptToday
     ? 'pt_session'
@@ -134,6 +137,20 @@ export default function MemberHomeScreen() {
             <Text variant="body" tone={color.textSecondary}>
               Your membership is not active. Speak to the front desk at {me.branch_name} to train
               again.
+            </Text>
+          </Card>
+        ) : null}
+
+        {outstanding > 0 ? (
+          <Card>
+            <Row gap="sm">
+              <Eyebrow>Payment due</Eyebrow>
+              <Spacer />
+              <Badge label={money(outstanding)} tone="caution" />
+            </Row>
+            <Text variant="body" tone={color.textSecondary}>
+              {owed.length === 1 ? 'One charge is' : `${owed.length} charges are`} outstanding on
+              your account. Settle at the front desk at {me.branch_name}.
             </Text>
           </Card>
         ) : null}

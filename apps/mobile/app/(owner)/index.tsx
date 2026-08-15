@@ -8,11 +8,13 @@
  * Conflating them is how a dashboard gets someone to phone a trainer about a
  * late mark from three weeks ago.
  *
- * Four tiles from the design are absent — revenue, PT revenue, and anything
- * denominated in rupees. GymFlow has no billing model: no invoice, no payment,
- * no ledger. InBody scans are absent for the same reason in a different shape:
- * the table exists and nothing writes to it. Those are named at the bottom of
- * the screen rather than filled with a number nobody could trace.
+ * Money is its own section rather than a tile among the operational ones,
+ * because collected and outstanding answer to different clocks: collected is
+ * bounded by the window, and outstanding never is — an invoice from March that
+ * is still unpaid is this month's problem.
+ *
+ * InBody scans are still absent: the table exists and nothing writes to it. It
+ * is named at the bottom rather than filled with a number nobody could trace.
  */
 
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -28,6 +30,7 @@ import type {
   NeedsAttention,
   Occupancy,
   Renewals,
+  RevenueSummary,
 } from '../../src/api/types';
 import { NotConnected } from '../../src/components/member';
 import {
@@ -54,7 +57,7 @@ import {
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { longDate, percent } from '../../src/utils/format';
+import { longDate, money, percent } from '../../src/utils/format';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -63,6 +66,15 @@ const PERIODS = [
   { value: 'week' as const, label: 'Week' },
   { value: 'month' as const, label: 'Month' },
 ];
+
+/** What each payment kind is called on screen. */
+const KIND_LABEL: Record<string, string> = {
+  membership: 'Membership',
+  pt: 'Personal training',
+  group_class: 'Group classes',
+  renewal: 'Renewals',
+  addon: 'Add-ons',
+};
 
 /** Insight severity → the tone vocabulary the design system already speaks. */
 const SEVERITY_TONE = {
@@ -86,6 +98,7 @@ export default function OwnerDashboardScreen() {
   // sees is the current state rather than the last sweep's leftovers.
   const attention = useApi<NeedsAttention>((token) => api.needsAttention(token), []);
   const insights = useApi<Insight[]>((token) => api.insights(token), []);
+  const revenue = useApi<RevenueSummary>((token) => api.revenueSummary(token, 30), []);
 
   const refreshAll = useCallback(() => {
     void dashboard.refresh();
@@ -94,7 +107,8 @@ export default function OwnerDashboardScreen() {
     void performance.refresh();
     void attention.refresh();
     void insights.refresh();
-  }, [dashboard, occupancy, renewals, performance, attention, insights]);
+    void revenue.refresh();
+  }, [dashboard, occupancy, renewals, performance, attention, insights, revenue]);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
   useFocusEffect(
@@ -213,6 +227,66 @@ export default function OwnerDashboardScreen() {
           />
         </Section>
 
+        {/* Money. Collected is bounded by the window; outstanding never is. */}
+        <Section
+          title="Money"
+          action={
+            <LinkButton title="Payments" onPress={() => router.push('/(owner)/payments' as never)} />
+          }
+        >
+          <StatRow>
+            <StatCard
+              label="Collected"
+              value={money(revenue.data?.collected_total, revenue.data?.currency)}
+              hint="last 30 days"
+              tone="positive"
+              icon="cash-outline"
+              onPress={() => router.push('/(owner)/payments' as never)}
+            />
+            <StatCard
+              label="Outstanding"
+              value={money(revenue.data?.pending_total, revenue.data?.currency)}
+              hint="all unpaid"
+              tone={(revenue.data?.pending_total ?? 0) > 0 ? 'caution' : 'neutral'}
+              icon="alert-circle-outline"
+              onPress={() => router.push('/(owner)/payments' as never)}
+            />
+          </StatRow>
+
+          {revenue.data && revenue.data.lines.length ? (
+            <Card>
+              <Eyebrow>By what was sold</Eyebrow>
+              <Divider />
+              {revenue.data.lines.map((line) => (
+                <Row key={line.kind} gap="sm">
+                  <Text variant="label" tone={color.textSecondary} style={styles.grow}>
+                    {KIND_LABEL[line.kind] ?? line.kind}
+                  </Text>
+                  <Text variant="mono" tone={color.status.positive}>
+                    {money(line.collected, revenue.data?.currency)}
+                  </Text>
+                  {line.pending > 0 ? (
+                    <Text variant="mono" tone={color.status.caution}>
+                      +{money(line.pending, revenue.data?.currency)}
+                    </Text>
+                  ) : null}
+                </Row>
+              ))}
+              <Text variant="label" tone={color.textTertiary}>
+                Collected in green, still owed in amber.
+              </Text>
+            </Card>
+          ) : revenue.loading ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Loading revenue…
+            </Text>
+          ) : (
+            <Text variant="label" tone={color.textTertiary}>
+              No payments recorded yet. Charges raised at the front desk appear here.
+            </Text>
+          )}
+        </Section>
+
         {/* Over a period. The only place a comparison is shown. */}
         <Section
           title="Performance"
@@ -322,11 +396,6 @@ export default function OwnerDashboardScreen() {
         {/* What this dashboard cannot tell you, said plainly. */}
         <Section title="Not available">
           <Stack gap="sm">
-            <NotConnected
-              icon="cash-outline"
-              title="Revenue and PT revenue"
-              detail="GymFlow has no billing model — no invoice, payment or ledger table — so there is no revenue figure to show, and no renewal value either."
-            />
             <NotConnected
               icon="body-outline"
               title="InBody scans"

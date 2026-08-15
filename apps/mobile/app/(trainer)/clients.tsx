@@ -5,8 +5,9 @@
  * not everyone who trains in the building. That is enforced server-side by
  * `/trainers/me/clients`, which this screen is the only consumer of.
  *
- * There is no payment column. GymFlow has no billing model, and a "Paid"
- * badge a trainer could act on would be describing nothing.
+ * There is still no payment column. Payments exist on the server now, but a
+ * trainer chasing a member's bill is a front-desk conversation, not a coaching
+ * one — the balance belongs on the owner's screen and the member's own.
  */
 
 import { useRouter } from 'expo-router';
@@ -16,7 +17,6 @@ import { Pressable, RefreshControl, StyleSheet } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { TrainerClient } from '../../src/api/types';
-import { NotConnected } from '../../src/components/member';
 import {
   Badge,
   Body,
@@ -26,7 +26,6 @@ import {
   ProgressBar,
   Row,
   Screen,
-  Section,
   Spacer,
   Stack,
   Text,
@@ -96,15 +95,6 @@ export default function TrainerClientsScreen() {
           ))
         )}
 
-        {rows.length ? (
-          <Section title="Not available">
-            <NotConnected
-              icon="card-outline"
-              title="Payment status is not tracked"
-              detail="GymFlow has no billing model, so whether a client has paid is not something this app can tell you. It needs an invoice or payment table on the server first."
-            />
-          </Section>
-        ) : null}
       </Body>
     </Screen>
   );
