@@ -45,10 +45,10 @@ import {
   ErrorState,
   Eyebrow,
   LinkButton,
-  Loading,
   MetricRow,
   Row,
   Screen,
+  SkeletonScreen,
   Section,
   Segmented,
   SkeletonCard,
@@ -123,7 +123,7 @@ export default function OwnerDashboardScreen() {
     }, []),
   );
 
-  if (dashboard.loading) return <Loading label="Loading SLAM" />;
+  if (dashboard.loading) return <SkeletonScreen cards={4} />;
 
   if (dashboard.error || !dashboard.data) {
     const offline = dashboard.error?.code === OFFLINE_CODE;

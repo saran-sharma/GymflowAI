@@ -16,18 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
+import { Avatar } from './brand';
 import { Badge, ProgressBar } from './controls';
 import { Card, Eyebrow, Row, Spacer, Stack, Text } from './primitives';
-import {
-  alpha,
-  color,
-  hairline,
-  motion,
-  radii,
-  space,
-  toneColor,
-  type Tone,
-} from './tokens';
+import { alpha, color, hairline, motion, radii, space, toneColor, type Tone } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -36,6 +28,10 @@ type IconName = keyof typeof Ionicons.glyphMap;
  *
  * Wrapping the press behaviour once means every card gets the same pressed
  * treatment and the same accessibility role, instead of each screen deciding.
+ *
+ * Exported as `TappableCard` for the screens whose content fits none of the
+ * four card shapes but which still need the press treatment — a `Pressable`
+ * wrapped round a `Card` gives no feedback at all, so the row reads as inert.
  */
 function Tappable({
   onPress,
@@ -70,7 +66,12 @@ function Tappable({
       testID={testID}
       style={({ pressed }) => [
         style,
-        pressed ? { backgroundColor: color.surfaceOverlay, borderColor: color.borderStrong } : null,
+        pressed
+          ? {
+              backgroundColor: color.surfaceOverlay,
+              borderColor: color.borderStrong,
+            }
+          : null,
       ]}
     >
       {children}
@@ -135,7 +136,11 @@ export function StatCard({
 
 /** A row of stat cards that share the available width evenly. */
 export function StatRow({ children }: { children: React.ReactNode }) {
-  return <Row gap="sm" align="stretch">{children}</Row>;
+  return (
+    <Row gap="sm" align="stretch">
+      {children}
+    </Row>
+  );
 }
 
 /* ----------------------------------------------------------- session card */
@@ -187,11 +192,7 @@ export function SessionCard({
             {kind ? <Eyebrow>{kind}</Eyebrow> : null}
             <Spacer />
             {status ? (
-              <Badge
-                label={status.label}
-                tone={status.tone}
-                colorOverride={status.colorOverride}
-              />
+              <Badge label={status.label} tone={status.tone} colorOverride={status.colorOverride} />
             ) : null}
           </Row>
         ) : null}
@@ -319,12 +320,7 @@ export function AlertCard({
 }: AlertCardProps) {
   const hue = toneColor[tone];
   return (
-    <Tappable
-      onPress={onPress}
-      accessibilityLabel={title}
-      style={styles.alertCard}
-      testID={testID}
-    >
+    <Tappable onPress={onPress} accessibilityLabel={title} style={styles.alertCard} testID={testID}>
       <View style={[styles.alertRule, { backgroundColor: hue }]} />
       <Stack gap="xxs" style={styles.grow}>
         <Text variant="body" numberOfLines={2}>
@@ -367,10 +363,7 @@ export function Banner({
     <View
       testID={testID}
       accessibilityRole={tone === 'critical' ? 'alert' : undefined}
-      style={[
-        styles.banner,
-        { borderColor: alpha(hue, 0.33), backgroundColor: alpha(hue, 0.08) },
-      ]}
+      style={[styles.banner, { borderColor: alpha(hue, 0.33), backgroundColor: alpha(hue, 0.08) }]}
     >
       {icon ? <Ionicons name={icon} size={18} color={hue} /> : null}
       {typeof children === 'string' ? (
@@ -385,6 +378,19 @@ export function Banner({
 }
 
 const styles = StyleSheet.create({
+  tappableCard: {
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radii.lg,
+    backgroundColor: color.surfaceRaised,
+    ...hairline,
+  },
+  personRow: {
+    padding: space.md,
+    borderRadius: radii.md,
+    backgroundColor: color.surfaceRaised,
+    ...hairline,
+  },
   grow: { flex: 1 },
   card: {
     backgroundColor: color.surfaceRaised,
@@ -401,7 +407,12 @@ const styles = StyleSheet.create({
     padding: space.md,
     gap: 2,
   },
-  statValue: { fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: -1 },
+  statValue: {
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
   sessionTime: { minWidth: 52 },
   alertCard: {
     flexDirection: 'row',
@@ -423,3 +434,74 @@ const styles = StyleSheet.create({
     padding: space.md,
   },
 });
+
+/* -------------------------------------------------------------- person row */
+
+export interface PersonRowProps {
+  name: string;
+  /** The one line of context that identifies this person on this screen. */
+  detail?: string | null;
+  /** Optional right-hand marker — a status badge, a count, a chevron's peer. */
+  trailing?: React.ReactNode;
+  onPress?: () => void;
+  testID?: string;
+}
+
+/**
+ * A person in a list: avatar, name, one line about them, a way in.
+ *
+ * Rosters appear on several owner and trainer screens and each had grown its
+ * own row with the same three parts and different style keys. Keeping it a row
+ * rather than a card is deliberate — a roster of twenty trainers as twenty
+ * cards is a scroll, not a list.
+ */
+export function PersonRow({ name, detail, trailing, onPress, testID }: PersonRowProps) {
+  return (
+    <Tappable
+      onPress={onPress}
+      accessibilityLabel={onPress ? `Open ${name}` : name}
+      style={styles.personRow}
+      testID={testID}
+    >
+      <Row gap="md">
+        <Avatar name={name} size={40} />
+        <Stack gap="xxs" style={styles.grow}>
+          <Text variant="body">{name}</Text>
+          {detail ? (
+            <Text variant="label" tone={color.textTertiary} numberOfLines={1}>
+              {detail}
+            </Text>
+          ) : null}
+        </Stack>
+        {trailing}
+        {onPress ? <Ionicons name="chevron-forward" size={18} color={color.textTertiary} /> : null}
+      </Row>
+    </Tappable>
+  );
+}
+
+/** The shared press treatment, for content that is not one of the four shapes. */
+export function TappableCard({
+  onPress,
+  accessibilityLabel,
+  style,
+  children,
+  testID,
+}: {
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  style?: ViewStyle | ViewStyle[];
+  children: React.ReactNode;
+  testID?: string;
+}) {
+  return (
+    <Tappable
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.tappableCard, ...(Array.isArray(style) ? style : style ? [style] : [])]}
+      testID={testID}
+    >
+      {children}
+    </Tappable>
+  );
+}

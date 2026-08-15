@@ -32,9 +32,9 @@ import {
   ErrorState,
   Eyebrow,
   LinkButton,
-  Loading,
   Row,
   Screen,
+  SkeletonScreen,
   Section,
   Spacer,
   StatCard,
@@ -64,7 +64,7 @@ export default function MemberHomeScreen() {
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
   const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
 
-  if (home.loading) return <Loading label="Loading your day" />;
+  if (home.loading) return <SkeletonScreen cards={3} />;
 
   if (home.error || !home.data) {
     const offline = home.error?.code === OFFLINE_CODE;

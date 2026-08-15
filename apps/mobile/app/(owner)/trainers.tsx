@@ -1,25 +1,16 @@
 /** Every trainer the signed-in role may see, grouped by branch. */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Trainer } from '../../src/api/types';
-import {
-  Body,
-  EmptyState,
-  ErrorState,
-  Eyebrow,
-  Loading,
-  Screen,
-  Txt,
-} from '../../src/components/ui';
+import { Body, EmptyState, ErrorState, Eyebrow, Screen, Txt } from '../../src/components/ui';
+import { PersonRow, SkeletonScreen } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, radius, spacing } from '../../src/theme';
-import { initials } from '../../src/utils/format';
+import { colors, spacing } from '../../src/theme';
 
 export default function OwnerTrainersScreen() {
   const router = useRouter();
@@ -35,7 +26,7 @@ export default function OwnerTrainersScreen() {
     return [...byBranch.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [trainers.data]);
 
-  if (trainers.loading) return <Loading label="Loading trainers" />;
+  if (trainers.loading) return <SkeletonScreen cards={5} stats={false} />;
   if (trainers.error) {
     const offline = trainers.error?.code === OFFLINE_CODE;
     return (
@@ -70,24 +61,13 @@ export default function OwnerTrainersScreen() {
             <View key={branchName} style={styles.group}>
               <Eyebrow>{branchName}</Eyebrow>
               {list.map((trainer) => (
-                <Pressable
+                <PersonRow
                   key={trainer.id}
+                  name={trainer.full_name}
+                  detail={trainer.specialty ?? trainer.designation ?? 'Trainer'}
                   onPress={() => router.push(`/(owner)/trainer/${trainer.id}` as never)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${trainer.full_name}`}
-                  style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-                >
-                  <View style={styles.avatar}>
-                    <Txt variant="label">{initials(trainer.full_name)}</Txt>
-                  </View>
-                  <View style={styles.text}>
-                    <Txt variant="body">{trainer.full_name}</Txt>
-                    <Txt variant="label" color={colors.textFaint}>
-                      {trainer.specialty ?? trainer.designation ?? 'Trainer'}
-                    </Txt>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-                </Pressable>
+                  testID={`trainer-row-${trainer.id}`}
+                />
               ))}
             </View>
           ))
@@ -99,24 +79,4 @@ export default function OwnerTrainersScreen() {
 
 const styles = StyleSheet.create({
   group: { gap: spacing.sm, marginTop: spacing.md },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  pressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.raised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: { flex: 1, gap: 2 },
 });

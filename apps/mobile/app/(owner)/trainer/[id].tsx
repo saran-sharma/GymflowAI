@@ -6,10 +6,9 @@
  * timestamps, the month's punctuality, and their incentive standing.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import * as api from '../../../src/api/endpoints';
 import type { AttendanceDay, TrainerDetail } from '../../../src/api/types';
@@ -29,6 +28,7 @@ import {
   StatTile,
   Txt,
 } from '../../../src/components/ui';
+import { BackLink } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { colors, incentiveMeta, spacing, statusMeta } from '../../../src/theme';
 import { dayLabel, duration, percent, timeOfDay } from '../../../src/utils/format';
@@ -81,12 +81,7 @@ export default function TrainerDetailScreen() {
           />
         }
       >
-        <Pressable onPress={() => router.back()} style={styles.back} accessibilityRole="button">
-          <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
-          <Txt variant="label" color={colors.textMuted}>
-            Back
-          </Txt>
-        </Pressable>
+        <BackLink onPress={() => router.back()} />
 
         <View style={styles.identity}>
           <Txt variant="title">{data.trainer.full_name}</Txt>
@@ -138,7 +133,11 @@ export default function TrainerDetailScreen() {
         </Card>
 
         <View style={styles.tiles}>
-          <StatTile label="Late count" value={data.late_count} accent={data.late_count ? colors.late : colors.textMuted} />
+          <StatTile
+            label="Late count"
+            value={data.late_count}
+            accent={data.late_count ? colors.late : colors.textMuted}
+          />
           <StatTile
             label="Early exits"
             value={data.early_exit_count}
@@ -165,7 +164,7 @@ export default function TrainerDetailScreen() {
                 color={check.passed ? colors.onTime : check.near_miss ? colors.late : colors.absent}
                 style={styles.checkLabel}
               >
-                {check.passed ? '✓' : check.near_miss ? '~' : '✕'}  {check.label}
+                {check.passed ? '✓' : check.near_miss ? '~' : '✕'} {check.label}
               </Txt>
               <Txt variant="mono" color={colors.textMuted}>
                 {check.actual}
@@ -210,7 +209,15 @@ export default function TrainerDetailScreen() {
   );
 }
 
-function Detail({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
+function Detail({
+  label,
+  value,
+  color = colors.text,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
   return (
     <Row style={styles.detail}>
       <Txt variant="label" color={colors.textMuted}>
@@ -224,7 +231,6 @@ function Detail({ label, value, color = colors.text }: { label: string; value: s
 }
 
 const styles = StyleSheet.create({
-  back: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: spacing.sm },
   identity: { gap: spacing.xs },
   identityMeta: { gap: spacing.xs },
   cardHead: { justifyContent: 'space-between' },

@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -25,16 +25,17 @@ import {
   Screen,
   Txt,
 } from '../../src/components/ui';
+import { Segmented } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, radius, spacing } from '../../src/theme';
+import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
 type Period = 'today' | 'week' | 'month';
 
-const PERIODS: { key: Period; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: 'week', label: 'This week' },
-  { key: 'month', label: 'This month' },
+const PERIODS: { value: Period; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'This week' },
+  { value: 'month', label: 'This month' },
 ];
 
 export default function OwnerPerformanceScreen() {
@@ -80,28 +81,12 @@ export default function OwnerPerformanceScreen() {
             : ''}
         </Txt>
 
-        <Row style={styles.periods}>
-          {PERIODS.map((option) => (
-            <Pressable
-              key={option.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: option.key === period }}
-              onPress={() => setPeriod(option.key)}
-              style={({ pressed }) => [
-                styles.period,
-                option.key === period && styles.periodSelected,
-                pressed && styles.periodPressed,
-              ]}
-            >
-              <Txt
-                variant="label"
-                color={option.key === period ? colors.text : colors.textFaint}
-              >
-                {option.label}
-              </Txt>
-            </Pressable>
-          ))}
-        </Row>
+        <Segmented
+          options={PERIODS}
+          value={period}
+          onChange={setPeriod}
+          testIDPrefix="performance-period"
+        />
 
         {data.note ? <Banner tone="info">{data.note}</Banner> : null}
 
@@ -144,9 +129,8 @@ export default function OwnerPerformanceScreen() {
         <Card>
           <Eyebrow>How they are counted</Eyebrow>
           <Txt variant="body" color={colors.textMuted}>
-            Every figure is a count of records GymFlow holds for the period shown. A comparison
-            only appears when the previous period actually has data — otherwise the trend reads
-            “—”.
+            Every figure is a count of records GymFlow holds for the period shown. A comparison only
+            appears when the previous period actually has data — otherwise the trend reads “—”.
           </Txt>
         </Card>
       </Body>
@@ -156,17 +140,5 @@ export default function OwnerPerformanceScreen() {
 
 const styles = StyleSheet.create({
   cardHead: { justifyContent: 'space-between' },
-  periods: { gap: spacing.sm, paddingVertical: spacing.sm },
-  period: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  periodSelected: { borderColor: colors.brand, backgroundColor: `${colors.brand}1F` },
-  periodPressed: { opacity: 0.8 },
   grid: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.sm },
 });

@@ -37,10 +37,10 @@ import {
   ErrorState,
   Eyebrow,
   LinkButton,
-  Loading,
   MetricRow,
   Row,
   Screen,
+  SkeletonScreen,
   Section,
   SessionCard,
   Spacer,
@@ -93,7 +93,7 @@ export default function TrainerDeskScreen() {
     void inside.refresh();
   }, [today, schedule, clients, incentive, inside]);
 
-  if (today.loading && schedule.loading) return <Loading label="Loading your desk" />;
+  if (today.loading && schedule.loading) return <SkeletonScreen cards={3} />;
 
   if (today.error && schedule.error) {
     const offline = today.error.code === OFFLINE_CODE;

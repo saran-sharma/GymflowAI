@@ -127,6 +127,15 @@ export function Segmented<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  back: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    minHeight: HIT_TARGET,
+    paddingRight: space.sm,
+  },
+  backPressed: { opacity: 0.6 },
   segmented: { flexDirection: 'row', gap: space.sm },
   segment: {
     flex: 1,
@@ -141,6 +150,45 @@ const styles = StyleSheet.create({
     borderColor: color.border,
     backgroundColor: color.surfaceRaised,
   },
-  segmentSelected: { borderColor: color.brand, backgroundColor: `${color.brand}1F` },
+  segmentSelected: {
+    borderColor: color.brand,
+    backgroundColor: `${color.brand}1F`,
+  },
   segmentPressed: { backgroundColor: color.surfaceOverlay },
 });
+
+/* ------------------------------------------------------------- back link */
+
+/**
+ * The "go back" affordance on pushed detail screens.
+ *
+ * Detail routes are pushed over a tab, so the tab bar stays visible and there
+ * is no header — which leaves the screen itself responsible for the way out.
+ * Two screens had grown their own version of this row; the target here is a
+ * full `HIT_TARGET`, which neither of theirs was.
+ */
+export function BackLink({
+  label = 'Back',
+  onPress,
+  testID,
+}: {
+  label?: string;
+  onPress: () => void;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      hitSlop={space.sm}
+      style={({ pressed }) => [styles.back, pressed ? styles.backPressed : null]}
+    >
+      <Ionicons name="chevron-back" size={20} color={color.textSecondary} />
+      <Text variant="label" tone={color.textSecondary}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}

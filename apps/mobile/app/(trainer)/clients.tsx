@@ -22,10 +22,10 @@ import {
   Body,
   EmptyState,
   ErrorState,
-  Loading,
   ProgressBar,
   Row,
   Screen,
+  SkeletonScreen,
   Spacer,
   Stack,
   Text,
@@ -41,7 +41,7 @@ export default function TrainerClientsScreen() {
   const router = useRouter();
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
 
-  if (clients.loading) return <Loading label="Loading your clients" />;
+  if (clients.loading) return <SkeletonScreen cards={4} stats={false} />;
 
   if (clients.error) {
     const offline = clients.error.code === OFFLINE_CODE;
@@ -94,7 +94,6 @@ export default function TrainerClientsScreen() {
             />
           ))
         )}
-
       </Body>
     </Screen>
   );
@@ -153,7 +152,8 @@ function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => 
           </Text>
           <Spacer />
           <Text variant="label" tone={color.textTertiary}>
-            {client.visits_last_30} visit{client.visits_last_30 === 1 ? '' : 's'} / 30d
+            {client.visits_last_30} visit
+            {client.visits_last_30 === 1 ? '' : 's'} / 30d
           </Text>
         </Row>
       </Stack>
@@ -169,5 +169,8 @@ const styles = StyleSheet.create({
     ...hairline,
     padding: space.lg,
   },
-  pressed: { backgroundColor: color.surfaceOverlay, borderColor: color.borderStrong },
+  pressed: {
+    backgroundColor: color.surfaceOverlay,
+    borderColor: color.borderStrong,
+  },
 });

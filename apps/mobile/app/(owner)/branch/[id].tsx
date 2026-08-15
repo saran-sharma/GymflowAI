@@ -3,10 +3,9 @@
  * with each trainer's current state. Tapping a trainer opens their record.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import * as api from '../../../src/api/endpoints';
 import type { Dashboard, Trainer } from '../../../src/api/types';
@@ -23,9 +22,10 @@ import {
   StatTile,
   Txt,
 } from '../../../src/components/ui';
+import { BackLink, PersonRow } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { colors, radius, spacing } from '../../../src/theme';
-import { initials, percent } from '../../../src/utils/format';
+import { percent } from '../../../src/utils/format';
 
 export default function BranchDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -71,12 +71,7 @@ export default function BranchDetailScreen() {
           />
         }
       >
-        <Pressable onPress={() => router.back()} style={styles.back} accessibilityRole="button">
-          <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
-          <Txt variant="label" color={colors.textMuted}>
-            All branches
-          </Txt>
-        </Pressable>
+        <BackLink label="All branches" onPress={() => router.back()} />
 
         <View>
           <Eyebrow>{branch.branch_code}</Eyebrow>
@@ -88,7 +83,11 @@ export default function BranchDetailScreen() {
           <StatTile label="Present" value={branch.present} accent={colors.onTime} />
         </View>
         <View style={styles.tiles}>
-          <StatTile label="Late" value={branch.late} accent={branch.late ? colors.late : colors.textMuted} />
+          <StatTile
+            label="Late"
+            value={branch.late}
+            accent={branch.late ? colors.late : colors.textMuted}
+          />
           <StatTile
             label="Absent"
             value={branch.absent}
@@ -125,7 +124,8 @@ export default function BranchDetailScreen() {
             </Row>
             <Meter value={occupancy.occupancy_pct} color={colors.brand} />
             <Txt variant="label" color={colors.textFaint}>
-              {occupancy.crowd_level} · {occupancy.entries_today} in, {occupancy.exits_today} out today
+              {occupancy.crowd_level} · {occupancy.entries_today} in, {occupancy.exits_today} out
+              today
             </Txt>
           </Card>
         ) : null}
@@ -148,25 +148,13 @@ export default function BranchDetailScreen() {
           />
         ) : (
           trainers.data?.map((trainer) => (
-            <Pressable
+            <PersonRow
               key={trainer.id}
+              name={trainer.full_name}
+              detail={`${trainer.designation ?? 'Trainer'} · ${trainer.employee_code}`}
               onPress={() => router.push(`/(owner)/trainer/${trainer.id}` as never)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${trainer.full_name}`}
-              style={({ pressed }) => [styles.trainerRow, pressed && styles.pressed]}
               testID={`trainer-row-${trainer.id}`}
-            >
-              <View style={styles.avatar}>
-                <Txt variant="label">{initials(trainer.full_name)}</Txt>
-              </View>
-              <View style={styles.trainerText}>
-                <Txt variant="body">{trainer.full_name}</Txt>
-                <Txt variant="label" color={colors.textFaint}>
-                  {trainer.designation ?? 'Trainer'} · {trainer.employee_code}
-                </Txt>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-            </Pressable>
+            />
           ))
         )}
       </Body>
@@ -175,28 +163,7 @@ export default function BranchDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  back: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: spacing.sm },
   tiles: { flexDirection: 'row', gap: spacing.sm },
   cardHead: { justifyContent: 'space-between' },
   sectionHead: { marginTop: spacing.lg },
-  trainerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  pressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.raised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trainerText: { flex: 1, gap: 2 },
 });
