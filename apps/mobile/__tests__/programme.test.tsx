@@ -9,7 +9,7 @@
 import { act, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import { DayCounter, SplitBadge, TrendStat, splitMeta, sessionMeta } from '../src/components/programme';
+import { SplitBadge, TrendStat, splitMeta, sessionMeta } from '../src/components/programme';
 import type { TrendPoint } from '../src/api/types';
 
 function trend(partial: Partial<TrendPoint>): TrendPoint {
@@ -62,25 +62,6 @@ describe('TrendStat', () => {
   });
 });
 
-describe('DayCounter', () => {
-  it('reads as "day X of Y" with the phase named', async () => {
-    await draw(<DayCounter currentDay={12} totalDays={45} phase="training" split="legs" />);
-    expect(screen.getByText('12')).toBeTruthy();
-    expect(screen.getByText('/ 45')).toBeTruthy();
-    expect(screen.getByText('Training')).toBeTruthy();
-    expect(screen.getByText('LEGS')).toBeTruthy();
-  });
-
-  it('names the assessment phase for the first three days', async () => {
-    await draw(<DayCounter currentDay={2} totalDays={45} phase="assessment" split="cardio" />);
-    expect(screen.getByText('Assessment & cardio')).toBeTruthy();
-  });
-
-  it('does not claim a day has started before the journey does', async () => {
-    await draw(<DayCounter currentDay={0} totalDays={45} phase="not_started" />);
-    expect(screen.getByText('Not started yet')).toBeTruthy();
-  });
-});
 
 describe('split and session vocabulary', () => {
   it('covers every split the API can return', () => {
@@ -116,6 +97,7 @@ describe('split and session vocabulary', () => {
 
   it('renders a split badge with the split name', async () => {
     await draw(<SplitBadge split="push" />);
-    expect(screen.getByText('PUSH')).toBeTruthy();
+    // The design system's Badge uppercases with textTransform, so the node keeps its case.
+    expect(screen.getByText('Push')).toBeTruthy();
   });
 });

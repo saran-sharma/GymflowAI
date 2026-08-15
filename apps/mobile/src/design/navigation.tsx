@@ -172,6 +172,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: -space.sm,
   },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: HIT_TARGET,
+    paddingVertical: space.sm,
+  },
+  navRowPressed: { opacity: 0.6 },
+  navRowText: { flex: 1, gap: 2 },
   headerTitle: { flex: 1, gap: 1 },
   headerCentre: { textAlign: 'center' },
   segmented: { flexDirection: 'row', gap: space.sm },
@@ -427,5 +436,54 @@ export function ScreenHeader({
       </View>
       <View style={[styles.headerSide, styles.headerTrailing]}>{action}</View>
     </Row>
+  );
+}
+
+/* -------------------------------------------------------------- nav row */
+
+/**
+ * A row that goes somewhere: icon, label, one line of context, chevron.
+ *
+ * The "More" tabs are lists of these, and each role had been building them
+ * inline. Keeping it here is what guarantees the 48pt target — the hand-rolled
+ * versions relied on padding adding up to roughly that, which it did not
+ * always do once a row had no detail line.
+ */
+export function NavRow({
+  label,
+  detail,
+  icon,
+  onPress,
+  trailing,
+  testID,
+}: {
+  label: string;
+  detail?: string;
+  icon?: IconName;
+  onPress: () => void;
+  /** Replaces the chevron — a badge or a count. */
+  trailing?: React.ReactNode;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={detail}
+      testID={testID}
+      style={({ pressed }) => [styles.navRow, pressed ? styles.navRowPressed : null]}
+    >
+      {icon ? <Ionicons name={icon} size={20} color={color.textSecondary} /> : null}
+      <View style={styles.navRowText}>
+        <Text variant="body">{label}</Text>
+        {detail ? (
+          <Text variant="label" tone={color.textTertiary} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+      {trailing ?? <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />}
+    </Pressable>
   );
 }

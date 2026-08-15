@@ -3,12 +3,11 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Branch, GroupClass } from '../../src/api/types';
-import { SectionHeader } from '../../src/components/programme';
 import {
   Badge,
   Banner,
@@ -19,15 +18,19 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  Input,
   Loading,
-  Meter,
+  ProgressBar,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Text,
+  color,
+  radii,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, radius, spacing, typography } from '../../src/theme';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 export default function OwnerClassesScreen() {
@@ -96,142 +99,131 @@ export default function OwnerClassesScreen() {
           <RefreshControl
             refreshing={classes.refreshing}
             onRefresh={() => void classes.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Group classes</Txt>
-        <Button
-          title="ANNOUNCE A CLASS"
-          icon="megaphone-outline"
-          onPress={() => setOpen(true)}
-        />
+        <Text variant="title">Group classes</Text>
+        <Button title="ANNOUNCE A CLASS" icon="megaphone-outline" onPress={() => setOpen(true)} />
 
-        {error && !open ? <Banner tone="danger">{error}</Banner> : null}
+        {error && !open ? <Banner tone="critical">{error}</Banner> : null}
 
-        <SectionHeader title="Scheduled" />
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No classes scheduled"
-            detail="Announce a class and every member at that branch is told in-app."
-          />
-        ) : (
-          rows.map((row) => (
-            <Card key={row.id}>
-              <Row style={styles.cardHead}>
-                <Txt variant="heading">{row.name}</Txt>
-                <Badge
-                  label={row.status}
-                  color={row.status === 'cancelled' ? colors.absent : colors.onTime}
-                />
-              </Row>
-              <Txt variant="label" color={colors.textMuted}>
-                {row.branch_name} · {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
-                {row.trainer_name ? ` · ${row.trainer_name}` : ''}
-              </Txt>
-
-              <Divider />
-              <Row style={styles.counts}>
-                <Txt variant="mono" color={colors.onTime}>
-                  {row.yes_count} Yes
-                </Txt>
-                <Txt variant="mono" color={colors.textMuted}>
-                  {row.no_count} No
-                </Txt>
-                <Txt variant="mono" color={colors.textFaint}>
-                  {row.pending_count} Pending
-                </Txt>
-              </Row>
-              <Txt variant="label" color={colors.textFaint}>
-                {row.available} of {row.capacity} places available
-              </Txt>
-
-              {row.attended_count > 0 || row.status === 'completed' ? (
-                <>
-                  <Divider />
-                  <Row style={styles.counts}>
-                    <Txt variant="label" color={colors.textMuted}>
-                      Attended
-                    </Txt>
-                    <Txt variant="mono">
-                      {row.attended_count} of {row.yes_count} ({row.show_up_pct}%)
-                    </Txt>
-                  </Row>
-                  <Meter
-                    value={row.show_up_pct}
-                    color={row.show_up_pct >= 50 ? colors.onTime : colors.late}
+        <Section title="Scheduled">
+          {rows.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No classes scheduled"
+              detail="Announce a class and every member at that branch is told in-app."
+            />
+          ) : (
+            rows.map((row) => (
+              <Card key={row.id}>
+                <Row style={styles.cardHead}>
+                  <Text variant="heading">{row.name}</Text>
+                  <Badge
+                    label={row.status}
+                    colorOverride={
+                      row.status === 'cancelled' ? color.status.critical : color.status.positive
+                    }
                   />
-                </>
-              ) : null}
-            </Card>
-          ))
-        )}
+                </Row>
+                <Text variant="label" tone={color.textSecondary}>
+                  {row.branch_name} · {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
+                  {row.trainer_name ? ` · ${row.trainer_name}` : ''}
+                </Text>
 
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
+                <Divider />
+                <Row style={styles.counts}>
+                  <Text variant="mono" tone={color.status.positive}>
+                    {row.yes_count} Yes
+                  </Text>
+                  <Text variant="mono" tone={color.textSecondary}>
+                    {row.no_count} No
+                  </Text>
+                  <Text variant="mono" tone={color.textTertiary}>
+                    {row.pending_count} Pending
+                  </Text>
+                </Row>
+                <Text variant="label" tone={color.textTertiary}>
+                  {row.available} of {row.capacity} places available
+                </Text>
+
+                {row.attended_count > 0 || row.status === 'completed' ? (
+                  <>
+                    <Divider />
+                    <Row style={styles.counts}>
+                      <Text variant="label" tone={color.textSecondary}>
+                        Attended
+                      </Text>
+                      <Text variant="mono">
+                        {row.attended_count} of {row.yes_count} ({row.show_up_pct}%)
+                      </Text>
+                    </Row>
+                    <ProgressBar
+                      value={row.show_up_pct}
+                      colorOverride={
+                        row.show_up_pct >= 50 ? color.status.positive : color.status.caution
+                      }
+                    />
+                  </>
+                ) : null}
+              </Card>
+            ))
+          )}
+        </Section>
+
+        <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
           Saying yes is an RSVP. Attendance is recorded separately by the trainer after the class.
-        </Txt>
+        </Text>
       </Body>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <Card style={styles.modalCard}>
-            <Txt variant="heading">Announce a class</Txt>
+            <Text variant="heading">Announce a class</Text>
 
             <Eyebrow>Branch</Eyebrow>
             <Row style={styles.branchRow}>
               {(branches.data ?? []).map((branch) => {
                 const selected = (branchId ?? branches.data?.[0]?.id) === branch.id;
                 return (
-                  <Txt
+                  <Text
                     key={branch.id}
                     variant="label"
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    color={selected ? colors.text : colors.textFaint}
+                    tone={selected ? color.text : color.textTertiary}
                     onPress={() => setBranchId(branch.id)}
                     style={[styles.chip, selected && styles.chipSelected]}
                   >
                     {branch.name.replace(/^SLAM\s+/i, '')}
-                  </Txt>
+                  </Text>
                 );
               })}
             </Row>
 
-            <Eyebrow>Class name</Eyebrow>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Zumba"
-              placeholderTextColor={colors.textFaint}
-              style={styles.input}
-              accessibilityLabel="Class name"
-            />
+            <Input label="Class name" value={name} onChangeText={setName} placeholder="Zumba" />
 
             <Row style={styles.timeRow}>
               <View style={styles.grow}>
-                <Eyebrow>Days from today</Eyebrow>
-                <TextInput
+                <Input
+                  label="Days from today"
                   value={daysAhead}
                   onChangeText={(v) => setDaysAhead(v.replace(/\D/g, '').slice(0, 2))}
                   keyboardType="number-pad"
-                  style={styles.input}
-                  accessibilityLabel="Days from today"
                 />
               </View>
               <View style={styles.grow}>
-                <Eyebrow>Hour (24h)</Eyebrow>
-                <TextInput
+                <Input
+                  label="Hour (24h)"
                   value={hour}
                   onChangeText={(v) => setHour(v.replace(/\D/g, '').slice(0, 2))}
                   keyboardType="number-pad"
-                  style={styles.input}
-                  accessibilityLabel="Hour"
                 />
               </View>
             </Row>
 
-            {error ? <Banner tone="danger">{error}</Banner> : null}
+            {error ? <Banner tone="critical">{error}</Banner> : null}
 
             <Button
               title="ANNOUNCE"
@@ -251,34 +243,24 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   counts: { justifyContent: 'space-between' },
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.lg },
+  footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.82)',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: space.lg,
   },
-  modalCard: { gap: spacing.sm },
-  branchRow: { gap: spacing.sm, flexWrap: 'wrap' },
+  modalCard: { gap: space.sm },
+  branchRow: { gap: space.sm, flexWrap: 'wrap' },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.raised,
+    borderColor: color.border,
+    backgroundColor: color.surfaceOverlay,
     overflow: 'hidden',
   },
-  chipSelected: { borderColor: colors.brand, backgroundColor: `${colors.brand}22` },
-  timeRow: { gap: spacing.sm, alignItems: 'flex-start' },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    height: 52,
-  },
+  chipSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
+  timeRow: { gap: space.sm, alignItems: 'flex-start' },
 });

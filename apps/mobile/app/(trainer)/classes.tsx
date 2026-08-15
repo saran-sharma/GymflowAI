@@ -11,7 +11,6 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ClassRosterEntry, GroupClass } from '../../src/api/types';
-import { SectionHeader } from '../../src/components/programme';
 import {
   Badge,
   Banner,
@@ -25,11 +24,13 @@ import {
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 export default function TrainerClassesScreen() {
@@ -99,100 +100,108 @@ export default function TrainerClassesScreen() {
           <RefreshControl
             refreshing={classes.refreshing}
             onRefresh={() => void classes.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        {error ? <Banner tone="danger">{error}</Banner> : null}
-        <SectionHeader title="Classes at your branch" />
+        {error ? <Banner tone="critical">{error}</Banner> : null}
+        <Section title="Classes at your branch">
+          {rows.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No classes scheduled"
+              detail="Classes created at your branch appear here."
+            />
+          ) : (
+            rows.map((row) => (
+              <Card key={row.id}>
+                <Row style={styles.cardHead}>
+                  <Text variant="heading">{row.name}</Text>
+                  <Badge
+                    label={row.status}
+                    colorOverride={
+                      row.status === 'cancelled' ? color.status.critical : color.status.positive
+                    }
+                  />
+                </Row>
+                <Text variant="label" tone={color.textSecondary}>
+                  {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
+                </Text>
 
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No classes scheduled"
-            detail="Classes created at your branch appear here."
-          />
-        ) : (
-          rows.map((row) => (
-            <Card key={row.id}>
-              <Row style={styles.cardHead}>
-                <Txt variant="heading">{row.name}</Txt>
-                <Badge
-                  label={row.status}
-                  color={row.status === 'cancelled' ? colors.absent : colors.onTime}
+                <Divider />
+                <Row style={styles.counts}>
+                  <Text variant="mono" tone={color.status.positive}>
+                    {row.yes_count} Yes
+                  </Text>
+                  <Text variant="mono" tone={color.textSecondary}>
+                    {row.no_count} No
+                  </Text>
+                  <Text variant="mono" tone={color.textTertiary}>
+                    {row.available} left
+                  </Text>
+                </Row>
+                {row.attended_count > 0 ? (
+                  <Text variant="label" tone={color.textTertiary}>
+                    {row.attended_count} attended ({row.show_up_pct}% of those who said yes)
+                  </Text>
+                ) : null}
+
+                <Button
+                  title={openId === row.id ? 'Hide roster' : 'Attendance'}
+                  variant="secondary"
+                  icon="list-outline"
+                  loading={busy && openId === row.id}
+                  onPress={() => (openId === row.id ? setOpenId(null) : void openRoster(row.id))}
                 />
-              </Row>
-              <Txt variant="label" color={colors.textMuted}>
-                {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
-              </Txt>
 
-              <Divider />
-              <Row style={styles.counts}>
-                <Txt variant="mono" color={colors.onTime}>
-                  {row.yes_count} Yes
-                </Txt>
-                <Txt variant="mono" color={colors.textMuted}>
-                  {row.no_count} No
-                </Txt>
-                <Txt variant="mono" color={colors.textFaint}>
-                  {row.available} left
-                </Txt>
-              </Row>
-              {row.attended_count > 0 ? (
-                <Txt variant="label" color={colors.textFaint}>
-                  {row.attended_count} attended ({row.show_up_pct}% of those who said yes)
-                </Txt>
-              ) : null}
-
-              <Button
-                title={openId === row.id ? 'Hide roster' : 'Attendance'}
-                variant="secondary"
-                icon="list-outline"
-                loading={busy && openId === row.id}
-                onPress={() => (openId === row.id ? setOpenId(null) : void openRoster(row.id))}
-              />
-
-              {openId === row.id ? (
-                <View style={styles.roster}>
-                  <Eyebrow>Who said yes</Eyebrow>
-                  {roster.filter((r) => r.response === 'yes').length === 0 ? (
-                    <Txt variant="label" color={colors.textFaint}>
-                      Nobody has confirmed yet.
-                    </Txt>
-                  ) : (
-                    roster
-                      .filter((r) => r.response === 'yes')
-                      .map((entry) => (
-                        <Row key={entry.member_id} style={styles.rosterRow}>
-                          <Txt variant="body" style={styles.grow}>
-                            {entry.member_name}
-                          </Txt>
-                          <Txt
-                            variant="label"
-                            accessibilityRole="button"
-                            color={entry.attended === true ? colors.onTime : colors.textFaint}
-                            onPress={() => void mark(row.id, entry.member_id, true)}
-                            style={styles.rosterAction}
-                          >
-                            Present
-                          </Txt>
-                          <Txt
-                            variant="label"
-                            accessibilityRole="button"
-                            color={entry.attended === false ? colors.absent : colors.textFaint}
-                            onPress={() => void mark(row.id, entry.member_id, false)}
-                            style={styles.rosterAction}
-                          >
-                            Absent
-                          </Txt>
-                        </Row>
-                      ))
-                  )}
-                </View>
-              ) : null}
-            </Card>
-          ))
-        )}
+                {openId === row.id ? (
+                  <View style={styles.roster}>
+                    <Eyebrow>Who said yes</Eyebrow>
+                    {roster.filter((r) => r.response === 'yes').length === 0 ? (
+                      <Text variant="label" tone={color.textTertiary}>
+                        Nobody has confirmed yet.
+                      </Text>
+                    ) : (
+                      roster
+                        .filter((r) => r.response === 'yes')
+                        .map((entry) => (
+                          <Row key={entry.member_id} style={styles.rosterRow}>
+                            <Text variant="body" style={styles.grow}>
+                              {entry.member_name}
+                            </Text>
+                            <Text
+                              variant="label"
+                              accessibilityRole="button"
+                              tone={
+                                entry.attended === true ? color.status.positive : color.textTertiary
+                              }
+                              onPress={() => void mark(row.id, entry.member_id, true)}
+                              style={styles.rosterAction}
+                            >
+                              Present
+                            </Text>
+                            <Text
+                              variant="label"
+                              accessibilityRole="button"
+                              tone={
+                                entry.attended === false
+                                  ? color.status.critical
+                                  : color.textTertiary
+                              }
+                              onPress={() => void mark(row.id, entry.member_id, false)}
+                              style={styles.rosterAction}
+                            >
+                              Absent
+                            </Text>
+                          </Row>
+                        ))
+                    )}
+                  </View>
+                ) : null}
+              </Card>
+            ))
+          )}
+        </Section>
       </Body>
     </Screen>
   );
@@ -202,12 +211,12 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   counts: { justifyContent: 'space-between' },
-  roster: { gap: spacing.sm, paddingTop: spacing.sm },
+  roster: { gap: space.sm, paddingTop: space.sm },
   rosterRow: {
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space.md,
+    paddingVertical: space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: color.border,
   },
-  rosterAction: { paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  rosterAction: { paddingHorizontal: space.sm, paddingVertical: 4 },
 });

@@ -10,23 +10,38 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 
-import { ApiError } from '../api/client';
+import { ApiError, OFFLINE_CODE } from '../api/client';
 import * as api from '../api/endpoints';
 import type { AppAlert } from '../api/types';
-import { AlertRow, SectionHeader } from './programme';
 import {
+  AlertCard,
   Banner,
   Body,
   EmptyState,
   ErrorState,
-  Loading,
   Screen,
-  Txt,
-} from './ui';
+  Section,
+  SkeletonScreen,
+  Text,
+  color,
+  space,
+} from '../design';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../store/AuthContext';
-import { colors, spacing } from '../theme';
 import { dayLabel } from '../utils/format';
+
+/**
+ * Severity as a design-system tone.
+ *
+ * The server's three severities are not the system's seven tones, and mapping
+ * them here rather than passing a raw colour is what keeps an alert's rule the
+ * same hue as every other critical thing in the app.
+ */
+const SEVERITY_TONE = {
+  info: 'info',
+  warning: 'caution',
+  critical: 'critical',
+} as const;
 
 /**
  * Map the server's action route onto an app route.
@@ -70,11 +85,17 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
     [withToken, alerts],
   );
 
-  if (alerts.loading) return <Loading label="Loading updates" />;
+  if (alerts.loading) return <SkeletonScreen cards={4} stats={false} />;
   if (alerts.error) {
+    const offline = alerts.error.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ErrorState detail={alerts.error.message} onRetry={alerts.reload} />
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'We could not load your updates'}
+          detail={offline ? undefined : alerts.error.message}
+          onRetry={alerts.reload}
+        />
       </Screen>
     );
   }
@@ -88,46 +109,48 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
           <RefreshControl
             refreshing={alerts.refreshing}
             onRefresh={() => void alerts.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <SectionHeader title={title} />
-        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
 
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="notifications-off-outline"
-            title="Nothing needs you"
-            detail="Alerts appear here as they happen."
-          />
-        ) : (
-          rows.map((alert) => {
-            const target = routeFor(alert);
-            return (
-              <AlertRow
-                key={alert.id}
-                severity={alert.severity}
-                title={alert.title}
-                body={`${alert.body}  ·  ${dayLabel(alert.created_at)}`}
-                onPress={
-                  target
-                    ? () => router.push(target as never)
-                    : () => void dismiss(alert)
-                }
-              />
-            );
-          })
-        )}
+        <Section title={title}>
+          {rows.length === 0 ? (
+            <EmptyState
+              icon="notifications-off-outline"
+              title="Nothing needs you"
+              detail="Alerts appear here as they happen."
+            />
+          ) : (
+            rows.map((alert) => {
+              const target = routeFor(alert);
+              return (
+                <AlertCard
+                  key={alert.id}
+                  tone={SEVERITY_TONE[alert.severity] ?? 'info'}
+                  title={alert.title}
+                  body={alert.body}
+                  meta={dayLabel(alert.created_at)}
+                  onPress={target ? () => router.push(target as never) : () => void dismiss(alert)}
+                />
+              );
+            })
+          )}
+        </Section>
 
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
+        <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
           GymFlow shows alerts inside the app. Push and WhatsApp are not enabled.
-        </Txt>
+        </Text>
       </Body>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.lg },
+  footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
 });

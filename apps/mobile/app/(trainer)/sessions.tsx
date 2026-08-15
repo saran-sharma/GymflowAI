@@ -15,20 +15,25 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ScheduleItem } from '../../src/api/types';
-import { SectionHeader, sessionMeta } from '../../src/components/programme';
+import { sessionMeta } from '../../src/components/programme';
 import {
   Banner,
   Body,
   EmptyState,
   ErrorState,
+  LinkButton,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
-import { LinkButton, SessionCard, SkeletonScreen, TimelineRow } from '../../src/design';
+  Section,
+  SessionCard,
+  SkeletonScreen,
+  StatCard,
+  Text,
+  TimelineRow,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, spacing } from '../../src/theme';
 import { timeOfDay } from '../../src/utils/format';
 
 const KIND_LABEL: Record<ScheduleItem['kind'], string> = {
@@ -99,84 +104,84 @@ export default function TrainerSessionsScreen() {
           <RefreshControl
             refreshing={schedule.refreshing}
             onRefresh={() => void schedule.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {error ? <Banner tone="critical">{error}</Banner> : null}
 
         <View style={styles.tiles}>
-          <StatTile label="Today" value={items.length} hint="sessions" />
-          <StatTile label="Completed" value={completed} accent={colors.onTime} />
-          <StatTile
+          <StatCard label="Today" value={items.length} hint="sessions" />
+          <StatCard label="Completed" value={completed} colorOverride={color.status.positive} />
+          <StatCard
             label="Missed"
             value={missed}
-            accent={missed ? colors.late : colors.textFaint}
+            colorOverride={missed ? color.status.caution : color.textTertiary}
           />
         </View>
 
-        <SectionHeader title="Today's schedule" />
+        <Section title="Today's schedule">
+          {items.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="Nothing scheduled"
+              detail="PT sessions and classes you are taking today will appear here."
+            />
+          ) : (
+            items.map((item, index) => (
+              <TimelineRow
+                key={`${item.kind}-${item.reference_id}`}
+                time={item.starts_at ? timeOfDay(item.starts_at) : '—'}
+                endTime={item.ends_at ? timeOfDay(item.ends_at) : undefined}
+                live={item.status === 'in_progress'}
+                connected={index < items.length - 1}
+                tone={item.status === 'in_progress' ? 'caution' : 'brand'}
+              >
+                <SessionCard
+                  testID={`session-${item.reference_id}`}
+                  kind={KIND_LABEL[item.kind]}
+                  kindIcon={KIND_ICON[item.kind]}
+                  title={item.title}
+                  subtitle={item.subtitle ?? undefined}
+                  status={{
+                    label: sessionMeta[item.status].label,
+                    colorOverride: sessionMeta[item.status].color,
+                  }}
+                  onPress={
+                    item.kind === 'pt'
+                      ? () => router.push(`/(trainer)/pt/${item.reference_id}` as never)
+                      : undefined
+                  }
+                  footer={
+                    item.can_complete && item.kind === 'own_workout_support' ? (
+                      <LinkButton
+                        title={busyId === item.reference_id ? 'Marking…' : 'Mark completed'}
+                        disabled={busyId !== null}
+                        onPress={() => void completeSupport(item)}
+                      />
+                    ) : item.can_complete && item.kind === 'group_class' ? (
+                      <LinkButton
+                        title="Take attendance"
+                        onPress={() => router.push('/(trainer)/classes' as never)}
+                      />
+                    ) : undefined
+                  }
+                />
+              </TimelineRow>
+            ))
+          )}
 
-        {items.length === 0 ? (
-          <EmptyState
-            icon="calendar-outline"
-            title="Nothing scheduled"
-            detail="PT sessions and classes you are taking today will appear here."
-          />
-        ) : (
-          items.map((item, index) => (
-            <TimelineRow
-              key={`${item.kind}-${item.reference_id}`}
-              time={item.starts_at ? timeOfDay(item.starts_at) : '—'}
-              endTime={item.ends_at ? timeOfDay(item.ends_at) : undefined}
-              live={item.status === 'in_progress'}
-              connected={index < items.length - 1}
-              tone={item.status === 'in_progress' ? 'caution' : 'brand'}
-            >
-              <SessionCard
-                testID={`session-${item.reference_id}`}
-                kind={KIND_LABEL[item.kind]}
-                kindIcon={KIND_ICON[item.kind]}
-                title={item.title}
-                subtitle={item.subtitle ?? undefined}
-                status={{
-                  label: sessionMeta[item.status].label,
-                  colorOverride: sessionMeta[item.status].color,
-                }}
-                onPress={
-                  item.kind === 'pt'
-                    ? () => router.push(`/(trainer)/pt/${item.reference_id}` as never)
-                    : undefined
-                }
-                footer={
-                  item.can_complete && item.kind === 'own_workout_support' ? (
-                    <LinkButton
-                      title={busyId === item.reference_id ? 'Marking…' : 'Mark completed'}
-                      disabled={busyId !== null}
-                      onPress={() => void completeSupport(item)}
-                    />
-                  ) : item.can_complete && item.kind === 'group_class' ? (
-                    <LinkButton
-                      title="Take attendance"
-                      onPress={() => router.push('/(trainer)/classes' as never)}
-                    />
-                  ) : undefined
-                }
-              />
-            </TimelineRow>
-          ))
-        )}
-
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
-          Session times come from the GymFlow server. You can record what happened; you cannot
-          change a recorded time — ask your manager for a correction.
-        </Txt>
+          <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
+            Session times come from the GymFlow server. You can record what happened; you cannot
+            change a recorded time — ask your manager for a correction.
+          </Text>
+        </Section>
       </Body>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.lg },
+  tiles: { flexDirection: 'row', gap: space.sm },
+  footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
 });

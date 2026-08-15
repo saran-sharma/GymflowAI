@@ -12,7 +12,6 @@ import { RefreshControl, StyleSheet } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { FollowUpTask, Journey } from '../../src/api/types';
-import { SectionHeader } from '../../src/components/programme';
 import {
   Badge,
   Body,
@@ -24,10 +23,12 @@ import {
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
 export default function OwnerOpportunitiesScreen() {
@@ -62,67 +63,67 @@ export default function OwnerOpportunitiesScreen() {
               void ready.refresh();
               void tasks.refresh();
             }}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">PT opportunities</Txt>
-        <Txt variant="label" color={colors.textMuted}>
+        <Text variant="title">PT opportunities</Text>
+        <Text variant="label" tone={color.textSecondary}>
           Members who finished the 45-day journey and have no PT package.
-        </Txt>
+        </Text>
 
-        <SectionHeader title={`Ready for PT (${rows.length})`} />
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="trophy-outline"
-            title="Nobody waiting"
-            detail="Members appear here the day they complete the 45-day journey."
-          />
-        ) : (
-          rows.map((journey) => (
-            <Card key={journey.id}>
-              <Row style={styles.cardHead}>
-                <Txt variant="heading">{journey.member_name}</Txt>
-                <Badge label="Day 45" color={colors.brand} filled />
-              </Row>
-              <Txt variant="label" color={colors.textMuted}>
-                Completed {dayLabel(journey.completed_on ?? journey.end_date)}
-                {journey.assigned_trainer_name ? ` · ${journey.assigned_trainer_name}` : ''}
-              </Txt>
-              <Divider />
-              <Row style={styles.stat}>
-                <Txt variant="label" color={colors.textMuted}>
-                  Workouts completed
-                </Txt>
-                <Txt variant="mono">{journey.workouts_completed}</Txt>
-              </Row>
-              <Row style={styles.stat}>
-                <Txt variant="label" color={colors.textMuted}>
-                  Days completed
-                </Txt>
-                <Txt variant="mono">
-                  {journey.days_completed} / {journey.duration_days}
-                </Txt>
-              </Row>
-            </Card>
-          ))
-        )}
+        <Section title={`Ready for PT (${rows.length})`}>
+          {rows.length === 0 ? (
+            <EmptyState
+              icon="trophy-outline"
+              title="Nobody waiting"
+              detail="Members appear here the day they complete the 45-day journey."
+            />
+          ) : (
+            rows.map((journey) => (
+              <Card key={journey.id}>
+                <Row style={styles.cardHead}>
+                  <Text variant="heading">{journey.member_name}</Text>
+                  <Badge label="Day 45" colorOverride={color.brand} solid />
+                </Row>
+                <Text variant="label" tone={color.textSecondary}>
+                  Completed {dayLabel(journey.completed_on ?? journey.end_date)}
+                  {journey.assigned_trainer_name ? ` · ${journey.assigned_trainer_name}` : ''}
+                </Text>
+                <Divider />
+                <Row style={styles.stat}>
+                  <Text variant="label" tone={color.textSecondary}>
+                    Workouts completed
+                  </Text>
+                  <Text variant="mono">{journey.workouts_completed}</Text>
+                </Row>
+                <Row style={styles.stat}>
+                  <Text variant="label" tone={color.textSecondary}>
+                    Days completed
+                  </Text>
+                  <Text variant="mono">
+                    {journey.days_completed} / {journey.duration_days}
+                  </Text>
+                </Row>
+              </Card>
+            ))
+          )}
+        </Section>
 
         {followUps.length ? (
-          <>
-            <SectionHeader title="Follow-up tasks" />
+          <Section title="Follow-up tasks">
             {followUps.map((task) => (
               <Card key={task.id}>
                 <Eyebrow>{task.due_on ? `Due ${dayLabel(task.due_on)}` : 'Open'}</Eyebrow>
-                <Txt variant="body">{task.title}</Txt>
+                <Text variant="body">{task.title}</Text>
                 {task.detail ? (
-                  <Txt variant="label" color={colors.textFaint}>
+                  <Text variant="label" tone={color.textTertiary}>
                     {task.detail}
-                  </Txt>
+                  </Text>
                 ) : null}
               </Card>
             ))}
-          </>
+          </Section>
         ) : null}
       </Body>
     </Screen>
