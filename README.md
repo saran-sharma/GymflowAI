@@ -202,3 +202,41 @@ two read as one product.
 ---
 
 **SLAM × GymFlow AI** — Trainer accountability, first.
+
+## Demo data
+
+Demo data is temporary. It exists only so the mobile app's screens, charts and
+workflows can be evaluated before the eSSL X990, YoActiv and InBody
+integrations are connected, and it is written through the same models and APIs
+those integrations will eventually populate — there is no separate demo
+endpoint anywhere.
+
+Every seeded row carries `is_demo = true`. Seeded payments also carry a
+`DEMO-` receipt prefix, so they are identifiable in a payment report by someone
+who cannot see the column.
+
+```bash
+npm run seed          # idempotent — safe to run repeatedly
+npm run seed:reset    # wipe demo rows, then seed
+
+python -m app.seed                      # same as npm run seed
+python -m app.seed --reset              # wipe demo rows, then seed
+python -m app.seed --clear-demo         # wipe demo rows and stop
+
+python -m app.scripts.clear_demo_data --dry-run   # report, delete nothing
+python -m app.scripts.clear_demo_data --yes       # delete demo rows only
+```
+
+Idempotence is enforced by seeding each entity's randomness from its own
+identity — a trainer's published hours come from `availability:<id>:<date>`, a
+member's charges from `payments:<id>` — so a second run makes exactly the same
+choices and the existence checks match. Re-running the seed three times leaves
+the row counts unchanged.
+
+Cleanup deletes on the `is_demo` flag and nothing else, so a member who signed
+up at the front desk is never in scope. It refuses to run without `--yes`, and
+it is deliberately not wired into application startup — nothing should drop
+rows because a process restarted.
+
+When the integrations land: stop seeding, run the cleanup, confirm only real
+data remains, then remove the demo-only code.
