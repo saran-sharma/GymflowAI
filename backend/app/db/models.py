@@ -1189,8 +1189,12 @@ class BodyComposition(Base, TimestampMixin):
     body_water_pct: Mapped[float | None] = mapped_column(Pct())
 
 
-class TrainerAvailability(Base, TimestampMixin):
+class TrainerAvailability(Base, TimestampMixin, DemoMixin):
     """A slot a trainer has published as bookable.
+
+    Carries ``is_demo`` like every other seeded entity, so slots created for UI
+    evaluation can be removed without touching a trainer's real published
+    hours.
 
     Stored as an explicit date plus a local start/end time rather than a
     recurring rule: SLAM trainers publish a week at a time and change it often,

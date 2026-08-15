@@ -45,6 +45,10 @@ from app.db.models import (
     Membership,
     MembershipStatus,
     Notification,
+    Payment,
+    PaymentKind,
+    PaymentMethod,
+    PaymentStatus,
     PersonType,
     PTPackage,
     PTSession,
@@ -59,6 +63,7 @@ from app.db.models import (
     Task,
     Trainer,
     TrainerAttendance,
+    TrainerAvailability,
     User,
     WorkoutPlan,
     WorkoutPlanItem,
@@ -67,6 +72,7 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.services import (
+    attendance_service,
     automation_service,
     class_service,
     journey_service,
@@ -246,6 +252,8 @@ def wipe_demo(db: Session) -> None:
     db.execute(delete(IncentiveResult))
     db.execute(delete(AttendanceCorrection))
     db.execute(delete(TrainerAttendance))
+    db.execute(delete(TrainerAvailability).where(TrainerAvailability.is_demo.is_(True)))
+    db.execute(delete(Payment).where(Payment.is_demo.is_(True)))
     db.execute(delete(Shift).where(Shift.is_demo.is_(True)))
     # Programme rows, deleted child-first so no foreign key is left dangling.
     db.execute(delete(WorkoutSessionItem))
@@ -777,6 +785,181 @@ def seed_classes(
     db.flush()
 
 
+def seed_members_currently_inside(
+    db: Session, branches: dict[str, Branch], rng: random.Random
+) -> int:
+    """Leave a handful of members checked in but not checked out, per branch.
+
+    Live occupancy is derived from the event log — a person is inside when
+    their most recent event today is a check-in — so "currently inside" is
+    produced by writing an arrival with no departure, exactly as the eSSL sync
+    will. No separate presence table and no fake live-gym endpoint.
+
+    Idempotent: a member already inside is left alone rather than given a
+    second arrival.
+    """
+    created = 0
+    for branch in branches.values():
+        members = list(
+            db.scalars(
+                select(Member)
+                .where(Member.branch_id == branch.id, Member.is_active.is_(True))
+                .limit(12)
+            ).all()
+        )
+        if not members:
+            continue
+
+        work_date = branch_today(branch.timezone)
+        wanted = min(len(members), rng.randint(3, 5))
+        for index, member in enumerate(members[:wanted]):
+            if attendance_service.is_inside(db, member.user_id, branch.id, work_date):
+                continue
+            # Staggered arrivals so the duration column has a range in it.
+            minutes_ago = 25 + index * 27 + rng.randint(0, 15)
+            db.add(
+                AttendanceEvent(
+                    branch_id=branch.id,
+                    person_type=PersonType.MEMBER,
+                    user_id=member.user_id,
+                    event_type=EventType.CHECK_IN,
+                    method="qr",
+                    occurred_at=now_utc() - timedelta(minutes=minutes_ago),
+                    work_date=work_date,
+                    device_info="DEMO seed",
+                )
+            )
+            created += 1
+    db.commit()
+    return created
+
+
+def seed_availability(db: Session, trainers: list[Trainer], rng: random.Random) -> int:
+    """Published PT hours for the next fortnight.
+
+    Idempotent by the same key the table is unique on — trainer, date, start —
+    so re-seeding tops up rather than duplicating. Roughly one slot in five is
+    marked booked by pointing it at a scheduled PT session, because a grid
+    where nothing is taken does not show what a booked hour looks like.
+    """
+    created = 0
+    for trainer in trainers:
+        booked_sessions = list(
+            db.scalars(
+                select(PTSession)
+                .where(
+                    PTSession.trainer_id == trainer.id,
+                    PTSession.status == SessionStatus.SCHEDULED,
+                )
+                .limit(4)
+            ).all()
+        )
+        today = branch_today(None)
+        for offset in range(0, 14):
+            slot_date = today + timedelta(days=offset)
+            # Sunday is closed for PT at SLAM.
+            if slot_date.weekday() == 6:
+                continue
+            hours = rng.sample([6, 7, 8, 17, 18, 19, 20], k=rng.randint(2, 4))
+            for hour in sorted(hours):
+                exists = db.scalar(
+                    select(TrainerAvailability).where(
+                        TrainerAvailability.trainer_id == trainer.id,
+                        TrainerAvailability.slot_date == slot_date,
+                        TrainerAvailability.start_time == time(hour, 0),
+                    )
+                )
+                if exists is not None:
+                    continue
+                booked = booked_sessions.pop() if booked_sessions and rng.random() < 0.2 else None
+                db.add(
+                    TrainerAvailability(
+                        trainer_id=trainer.id,
+                        branch_id=trainer.branch_id,
+                        slot_date=slot_date,
+                        start_time=time(hour, 0),
+                        end_time=time(hour + 1, 0),
+                        booked_session_id=booked.id if booked else None,
+                        is_demo=True,
+                    )
+                )
+                created += 1
+    db.commit()
+    return created
+
+
+def seed_payments(db: Session, members: list[Member], rng: random.Random) -> int:
+    """Charges across the last quarter, settled and outstanding.
+
+    Receipt numbers are prefixed ``DEMO-`` so a row is identifiable in a
+    payment report even by someone who cannot see the ``is_demo`` column.
+    """
+    created = 0
+
+    for member in members:
+        membership = db.scalar(
+            select(Membership)
+            .where(Membership.member_id == member.id)
+            .order_by(Membership.ends_on.desc())
+            .limit(1)
+        )
+        package = db.scalar(select(PTPackage).where(PTPackage.member_id == member.id).limit(1))
+
+        charges: list[tuple[PaymentKind, float, int, bool]] = []
+        # (kind, amount, days_ago, settled)
+        # Spread across the quarter so a 30-day report is neither empty nor
+        # everything — the window has to be visibly doing something.
+        charges.append(
+            (
+                PaymentKind.MEMBERSHIP,
+                rng.choice([4500, 12000, 38000]),
+                rng.choice([8, 19, 26, 75]),
+                True,
+            )
+        )
+        if rng.random() < 0.5:
+            charges.append(
+                (PaymentKind.RENEWAL, rng.choice([4500, 12000]), rng.choice([3, 12, 24]), True)
+            )
+        if package is not None:
+            charges.append(
+                (PaymentKind.PT, rng.choice([12000, 18000, 24000]), 30, rng.random() < 0.7)
+            )
+        if rng.random() < 0.25:
+            charges.append((PaymentKind.GROUP_CLASS, rng.choice([500, 800]), 8, False))
+
+        for index, (kind, amount, days_ago, settled) in enumerate(charges):
+            receipt = f"DEMO-{member.member_code}-{index}"
+            if db.scalar(select(Payment).where(Payment.receipt_no == receipt)) is not None:
+                continue
+            raised = now_utc() - timedelta(days=days_ago)
+            db.add(
+                Payment(
+                    branch_id=member.branch_id,
+                    member_id=member.id,
+                    kind=kind,
+                    status=PaymentStatus.PAID if settled else PaymentStatus.PENDING,
+                    method=rng.choice(list(PaymentMethod)) if settled else None,
+                    amount=float(amount),
+                    discount=0.0,
+                    tax=0.0,
+                    membership_id=membership.id
+                    if membership and kind is not PaymentKind.PT
+                    else None,
+                    pt_package_id=package.id if package and kind is PaymentKind.PT else None,
+                    trainer_id=member.assigned_trainer_id if kind is PaymentKind.PT else None,
+                    due_on=(raised + timedelta(days=7)).date() if not settled else None,
+                    paid_at=raised if settled else None,
+                    receipt_no=receipt,
+                    notes="Demo record — remove before go-live",
+                    is_demo=True,
+                )
+            )
+            created += 1
+    db.commit()
+    return created
+
+
 def seed(db: Session, *, reset: bool = False) -> None:
     if reset:
         wipe_demo(db)
@@ -964,6 +1147,14 @@ def seed(db: Session, *, reset: bool = False) -> None:
             )
 
     seed_classes(db, branches, trainers_by_name, members_by_branch, rng)
+
+    # Published PT hours and the money ledger. Both are seeded after members and
+    # PT exist, because each hangs off those rows.
+    all_trainers = list(db.scalars(select(Trainer).where(Trainer.is_demo.is_(True))).all())
+    all_members = list(db.scalars(select(Member).where(Member.is_demo.is_(True))).all())
+    seed_availability(db, all_trainers, rng)
+    seed_payments(db, all_members, rng)
+    seed_members_currently_inside(db, branches, rng)
 
     # Finish the way production does: run the real automations rather than
     # writing alerts by hand, so the demo shows exactly what the rules produce.
