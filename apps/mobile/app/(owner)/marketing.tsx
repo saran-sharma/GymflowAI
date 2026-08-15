@@ -12,7 +12,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { MarketingDashboard } from '../../src/api/types';
-import { BarChart, SectionHeader } from '../../src/components/programme';
+import { BarChart } from '../../src/components/programme';
 import {
   Badge,
   Body,
@@ -22,14 +22,16 @@ import {
   ErrorState,
   Eyebrow,
   Loading,
-  Meter,
+  ProgressBar,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  StatCard,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
 export default function OwnerMarketingScreen() {
@@ -60,14 +62,14 @@ export default function OwnerMarketingScreen() {
           <RefreshControl
             refreshing={marketing.refreshing}
             onRefresh={() => void marketing.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Marketing activity</Txt>
-        <Txt variant="label" color={colors.textMuted}>
+        <Text variant="title">Marketing activity</Text>
+        <Text variant="label" tone={color.textSecondary}>
           {dayLabel(data.period_start)} – {dayLabel(data.period_end)}
-        </Txt>
+        </Text>
 
         {!data.has_data ? (
           <EmptyState
@@ -78,9 +80,13 @@ export default function OwnerMarketingScreen() {
         ) : (
           <>
             <View style={styles.tiles}>
-              <StatTile label="New members" value={data.new_members} accent={colors.brand} />
-              <StatTile label="Referrals" value={data.total_referrals} accent={colors.onTime} />
-              <StatTile
+              <StatCard label="New members" value={data.new_members} colorOverride={color.brand} />
+              <StatCard
+                label="Referrals"
+                value={data.total_referrals}
+                colorOverride={color.status.positive}
+              />
+              <StatCard
                 label="Top source"
                 value={topSource ? topSource.joined : 0}
                 hint={topSource?.source_label}
@@ -97,134 +103,138 @@ export default function OwnerMarketingScreen() {
               />
             </Card>
 
-            <SectionHeader title="Source → members → Day 45 → PT" />
-            {data.sources.map((source) => (
-              <Card key={source.source_key}>
-                <Row style={styles.cardHead}>
-                  <Txt variant="heading">{source.source_label}</Txt>
-                  <Badge label={`${source.joined} joined`} color={colors.brand} />
-                </Row>
+            <Section title="Source → members → Day 45 → PT">
+              {data.sources.map((source) => (
+                <Card key={source.source_key}>
+                  <Row style={styles.cardHead}>
+                    <Text variant="heading">{source.source_label}</Text>
+                    <Badge label={`${source.joined} joined`} colorOverride={color.brand} />
+                  </Row>
 
-                <Row style={styles.funnel}>
-                  <FunnelStep label="Joined" value={source.joined} color={colors.brand} />
-                  <FunnelStep
-                    label="Reached Day 45"
-                    value={source.reached_day_45}
-                    color={colors.info}
+                  <Row style={styles.funnel}>
+                    <FunnelStep label="Joined" value={source.joined} tint={color.brand} />
+                    <FunnelStep
+                      label="Reached Day 45"
+                      value={source.reached_day_45}
+                      tint={color.status.info}
+                    />
+                    <FunnelStep
+                      label="PT conversions"
+                      value={source.pt_conversions}
+                      tint={color.status.positive}
+                    />
+                  </Row>
+
+                  <Divider />
+                  <Row style={styles.rate}>
+                    <Text variant="label" tone={color.textSecondary}>
+                      PT conversion
+                    </Text>
+                    <Text variant="mono" tone={color.status.positive}>
+                      {source.pt_conversion_pct}%
+                    </Text>
+                  </Row>
+                  <ProgressBar
+                    value={source.pt_conversion_pct}
+                    colorOverride={color.status.positive}
                   />
-                  <FunnelStep
-                    label="PT conversions"
-                    value={source.pt_conversions}
-                    color={colors.onTime}
-                  />
-                </Row>
 
-                <Divider />
-                <Row style={styles.rate}>
-                  <Txt variant="label" color={colors.textMuted}>
-                    PT conversion
-                  </Txt>
-                  <Txt variant="mono" color={colors.onTime}>
-                    {source.pt_conversion_pct}%
-                  </Txt>
-                </Row>
-                <Meter value={source.pt_conversion_pct} color={colors.onTime} />
-
-                {source.campaigns.length ? (
-                  <Txt variant="label" color={colors.textFaint}>
-                    Campaigns: {source.campaigns.join(', ')}
-                  </Txt>
-                ) : null}
-              </Card>
-            ))}
+                  {source.campaigns.length ? (
+                    <Text variant="label" tone={color.textTertiary}>
+                      Campaigns: {source.campaigns.join(', ')}
+                    </Text>
+                  ) : null}
+                </Card>
+              ))}
+            </Section>
 
             {data.campaigns.length ? (
-              <>
-                <SectionHeader title="Campaigns" />
+              <Section title="Campaigns">
                 {data.campaigns.map((campaign, index) => (
                   <Card key={String(campaign.campaign_id ?? index)}>
                     <Row style={styles.cardHead}>
-                      <Txt variant="body">{String(campaign.name)}</Txt>
+                      <Text variant="body">{String(campaign.name)}</Text>
                       <Badge
                         label={campaign.is_active ? 'Active' : 'Ended'}
-                        color={campaign.is_active ? colors.onTime : colors.textFaint}
+                        colorOverride={
+                          campaign.is_active ? color.status.positive : color.textTertiary
+                        }
                       />
                     </Row>
                     <Row style={styles.rate}>
-                      <Txt variant="label" color={colors.textMuted}>
+                      <Text variant="label" tone={color.textSecondary}>
                         Members
-                      </Txt>
-                      <Txt variant="mono">{String(campaign.members)}</Txt>
+                      </Text>
+                      <Text variant="mono">{String(campaign.members)}</Text>
                     </Row>
                     <Row style={styles.rate}>
-                      <Txt variant="label" color={colors.textMuted}>
+                      <Text variant="label" tone={color.textSecondary}>
                         Reached Day 45
-                      </Txt>
-                      <Txt variant="mono">{String(campaign.reached_day_45)}</Txt>
+                      </Text>
+                      <Text variant="mono">{String(campaign.reached_day_45)}</Text>
                     </Row>
                     <Row style={styles.rate}>
-                      <Txt variant="label" color={colors.textMuted}>
+                      <Text variant="label" tone={color.textSecondary}>
                         PT conversions
-                      </Txt>
-                      <Txt variant="mono" color={colors.onTime}>
+                      </Text>
+                      <Text variant="mono" tone={color.status.positive}>
                         {String(campaign.pt_conversions)}
-                      </Txt>
+                      </Text>
                     </Row>
                   </Card>
                 ))}
-              </>
+              </Section>
             ) : null}
 
             {data.referrals.length ? (
-              <>
-                <SectionHeader title="Who is referring" />
+              <Section title="Who is referring">
                 {data.referrals.map((entry, index) => (
                   <Row key={String(entry.member_id ?? index)} style={styles.referral}>
-                    <Txt variant="body" style={styles.grow}>
+                    <Text variant="body" style={styles.grow}>
                       {String(entry.member_name)}
-                    </Txt>
-                    <Badge label={`${entry.referrals}`} color={colors.brand} />
+                    </Text>
+                    <Badge label={`${entry.referrals}`} colorOverride={color.brand} />
                   </Row>
                 ))}
-              </>
+              </Section>
             ) : null}
           </>
         )}
 
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
+        <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
           Counted from member records only. Nothing here is estimated, and referral rewards are not
           set until SLAM confirms a policy.
-        </Txt>
+        </Text>
       </Body>
     </Screen>
   );
 }
 
-function FunnelStep({ label, value, color }: { label: string; value: number; color: string }) {
+function FunnelStep({ label, value, tint }: { label: string; value: number; tint: string }) {
   return (
     <View style={styles.step}>
-      <Txt variant="title" color={color}>
+      <Text variant="title" tone={tint}>
         {value}
-      </Txt>
-      <Txt variant="caption" color={colors.textFaint}>
+      </Text>
+      <Text variant="caption" tone={color.textTertiary}>
         {label.toUpperCase()}
-      </Txt>
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  tiles: { flexDirection: 'row', gap: spacing.sm },
+  tiles: { flexDirection: 'row', gap: space.sm },
   cardHead: { justifyContent: 'space-between' },
-  funnel: { justifyContent: 'space-between', paddingVertical: spacing.sm },
+  funnel: { justifyContent: 'space-between', paddingVertical: space.sm },
   step: { alignItems: 'flex-start', gap: 2, flex: 1 },
   rate: { justifyContent: 'space-between', paddingVertical: 2 },
   referral: {
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space.md,
+    paddingVertical: space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: color.border,
   },
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.lg },
+  footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
 });

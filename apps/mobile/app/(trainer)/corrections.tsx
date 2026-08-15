@@ -7,12 +7,11 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Modal, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AttendanceCorrection, AttendanceDay, CorrectionKind } from '../../src/api/types';
-import { SectionHeader } from '../../src/components/programme';
 import {
   Badge,
   Banner,
@@ -23,14 +22,19 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  Input,
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Text,
+  color,
+  radii,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, radius, spacing, statusMeta, typography } from '../../src/theme';
+import { statusMeta } from '../../src/theme';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 const KINDS: { key: CorrectionKind; label: string }[] = [
@@ -42,10 +46,10 @@ const KINDS: { key: CorrectionKind; label: string }[] = [
 ];
 
 const STATUS_COLOR: Record<AttendanceCorrection['status'], string> = {
-  pending: colors.late,
-  approved: colors.onTime,
-  rejected: colors.absent,
-  withdrawn: colors.textFaint,
+  pending: color.status.caution,
+  approved: color.status.positive,
+  rejected: color.status.critical,
+  withdrawn: color.textTertiary,
 };
 
 /** Days worth appealing. A clean shift has nothing to correct. */
@@ -82,8 +86,7 @@ export default function TrainerCorrectionsScreen() {
             reason: reason.trim(),
             // A "forgot check-out" asks for the rostered shift end. The
             // trainer never types a time of their own choosing.
-            requested_check_out_at:
-              kind === 'missing_checkout' ? target.scheduled_end : null,
+            requested_check_out_at: kind === 'missing_checkout' ? target.scheduled_end : null,
           },
           token,
         ),
@@ -128,104 +131,102 @@ export default function TrainerCorrectionsScreen() {
               void history.refresh();
               void corrections.refresh();
             }}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        {sent ? (
-          <Banner tone="success">
-            Request sent. Your manager will review it.
-          </Banner>
-        ) : null}
-        {error && !target ? <Banner tone="danger">{error}</Banner> : null}
+        {sent ? <Banner tone="positive">Request sent. Your manager will review it.</Banner> : null}
+        {error && !target ? <Banner tone="critical">{error}</Banner> : null}
 
         {pending.length ? (
-          <Banner tone="warning">
+          <Banner tone="caution">
             {pending.length} request{pending.length === 1 ? '' : 's'} waiting for review.
           </Banner>
         ) : null}
 
-        <SectionHeader title="Days you can appeal" />
-        {days.length === 0 ? (
-          <EmptyState
-            icon="checkmark-circle-outline"
-            title="Nothing to correct"
-            detail="Only late marks, early exits, absences and missing check-outs can be appealed."
-          />
-        ) : (
-          days.map((day) => {
-            const meta = statusMeta[day.status];
-            return (
-              <Card key={day.id}>
+        <Section title="Days you can appeal">
+          {days.length === 0 ? (
+            <EmptyState
+              icon="checkmark-circle-outline"
+              title="Nothing to correct"
+              detail="Only late marks, early exits, absences and missing check-outs can be appealed."
+            />
+          ) : (
+            days.map((day) => {
+              const meta = statusMeta[day.status];
+              return (
+                <Card key={day.id}>
+                  <Row style={styles.cardHead}>
+                    <Text variant="body">{dayLabel(day.work_date)}</Text>
+                    <Badge label={meta.label} colorOverride={meta.color} />
+                  </Row>
+                  <Row style={styles.detail}>
+                    <Text variant="label" tone={color.textSecondary}>
+                      In / out
+                    </Text>
+                    <Text variant="mono">
+                      {timeOfDay(day.check_in_at)} — {timeOfDay(day.check_out_at)}
+                    </Text>
+                  </Row>
+                  <Button
+                    title="Request a correction"
+                    variant="secondary"
+                    icon="create-outline"
+                    onPress={() => {
+                      setTarget(day);
+                      setSent(false);
+                      setKind(
+                        day.status === 'missing_checkout'
+                          ? 'missing_checkout'
+                          : day.status === 'absent'
+                            ? 'wrong_check_in'
+                            : day.status === 'early_exit'
+                              ? 'early_exit_reason'
+                              : 'late_reason',
+                      );
+                    }}
+                  />
+                </Card>
+              );
+            })
+          )}
+        </Section>
+
+        <Section title="Your requests">
+          {requests.length === 0 ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Nothing requested yet.
+            </Text>
+          ) : (
+            requests.map((row) => (
+              <Card key={row.id}>
                 <Row style={styles.cardHead}>
-                  <Txt variant="body">{dayLabel(day.work_date)}</Txt>
-                  <Badge label={meta.label} color={meta.color} />
+                  <Text variant="body">{dayLabel(row.work_date)}</Text>
+                  <Badge label={row.status} colorOverride={STATUS_COLOR[row.status]} />
                 </Row>
-                <Row style={styles.detail}>
-                  <Txt variant="label" color={colors.textMuted}>
-                    In / out
-                  </Txt>
-                  <Txt variant="mono">
-                    {timeOfDay(day.check_in_at)} — {timeOfDay(day.check_out_at)}
-                  </Txt>
-                </Row>
-                <Button
-                  title="Request a correction"
-                  variant="secondary"
-                  icon="create-outline"
-                  onPress={() => {
-                    setTarget(day);
-                    setSent(false);
-                    setKind(
-                      day.status === 'missing_checkout'
-                        ? 'missing_checkout'
-                        : day.status === 'absent'
-                          ? 'wrong_check_in'
-                          : day.status === 'early_exit'
-                            ? 'early_exit_reason'
-                            : 'late_reason',
-                    );
-                  }}
-                />
+                <Text variant="label" tone={color.textSecondary}>
+                  {KINDS.find((k) => k.key === row.correction_type)?.label ?? row.correction_type}
+                </Text>
+                <Text variant="body" tone={color.textSecondary}>
+                  {row.reason}
+                </Text>
+                {row.review_note ? (
+                  <>
+                    <Divider />
+                    <Text variant="label" tone={color.textTertiary}>
+                      Manager: {row.review_note}
+                    </Text>
+                  </>
+                ) : null}
               </Card>
-            );
-          })
-        )}
+            ))
+          )}
 
-        <SectionHeader title="Your requests" />
-        {requests.length === 0 ? (
-          <Txt variant="label" color={colors.textFaint}>
-            Nothing requested yet.
-          </Txt>
-        ) : (
-          requests.map((row) => (
-            <Card key={row.id}>
-              <Row style={styles.cardHead}>
-                <Txt variant="body">{dayLabel(row.work_date)}</Txt>
-                <Badge label={row.status} color={STATUS_COLOR[row.status]} />
-              </Row>
-              <Txt variant="label" color={colors.textMuted}>
-                {KINDS.find((k) => k.key === row.correction_type)?.label ?? row.correction_type}
-              </Txt>
-              <Txt variant="body" color={colors.textMuted}>
-                {row.reason}
-              </Txt>
-              {row.review_note ? (
-                <>
-                  <Divider />
-                  <Txt variant="label" color={colors.textFaint}>
-                    Manager: {row.review_note}
-                  </Txt>
-                </>
-              ) : null}
-            </Card>
-          ))
-        )}
-
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
-          Signed in as {user?.full_name}. Corrections are reviewed by your branch manager and
-          recorded in the audit trail.
-        </Txt>
+          <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
+            Signed in as {user?.full_name}. Corrections are reviewed by your branch manager and
+            recorded in the audit trail.
+          </Text>
+        </Section>
       </Body>
 
       <Modal
@@ -236,46 +237,44 @@ export default function TrainerCorrectionsScreen() {
       >
         <View style={styles.backdrop}>
           <Card style={styles.modalCard}>
-            <Txt variant="heading">Request a correction</Txt>
+            <Text variant="heading">Request a correction</Text>
             {target ? (
-              <Txt variant="label" color={colors.textMuted}>
+              <Text variant="label" tone={color.textSecondary}>
                 {dayLabel(target.work_date)} · {statusMeta[target.status].label}
-              </Txt>
+              </Text>
             ) : null}
 
             <Eyebrow>What happened</Eyebrow>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kinds}>
               <Row style={styles.kindRow}>
                 {KINDS.map((option) => (
-                  <Txt
+                  <Text
                     key={option.key}
                     variant="label"
                     accessibilityRole="button"
                     accessibilityState={{ selected: kind === option.key }}
-                    color={kind === option.key ? colors.text : colors.textFaint}
+                    tone={kind === option.key ? color.text : color.textTertiary}
                     onPress={() => setKind(option.key)}
                     style={[styles.kind, kind === option.key && styles.kindSelected]}
                   >
                     {option.label}
-                  </Txt>
+                  </Text>
                 ))}
               </Row>
             </ScrollView>
 
-            <Eyebrow>Reason</Eyebrow>
-            <TextInput
+            <Input
+              label="Reason"
               value={reason}
               onChangeText={setReason}
               placeholder="Tell your manager what happened."
-              placeholderTextColor={colors.textFaint}
               multiline
               numberOfLines={3}
-              style={styles.input}
               accessibilityLabel="Reason for the correction"
               testID="correction-reason"
             />
 
-            {error && target ? <Banner tone="danger">{error}</Banner> : null}
+            {error && target ? <Banner tone="critical">{error}</Banner> : null}
 
             <Button
               title="SEND REQUEST"
@@ -294,35 +293,24 @@ export default function TrainerCorrectionsScreen() {
 const styles = StyleSheet.create({
   cardHead: { justifyContent: 'space-between' },
   detail: { justifyContent: 'space-between', paddingVertical: 3 },
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.lg },
+  footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.82)',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: space.lg,
   },
-  modalCard: { gap: spacing.md },
+  modalCard: { gap: space.md },
   kinds: { maxHeight: 44 },
-  kindRow: { gap: spacing.sm },
+  kindRow: { gap: space.sm },
   kind: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.raised,
+    borderColor: color.border,
+    backgroundColor: color.surfaceOverlay,
     overflow: 'hidden',
   },
-  kindSelected: { borderColor: colors.brand, backgroundColor: `${colors.brand}22` },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    minHeight: 90,
-    textAlignVertical: 'top',
-  },
+  kindSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
 });

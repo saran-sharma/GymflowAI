@@ -7,12 +7,11 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { AppSetting } from '../../src/api/types';
-import { SectionHeader } from '../../src/components/programme';
 import {
   Banner,
   Body,
@@ -22,14 +21,18 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  Input,
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Text,
+  color,
+  radii,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, radius, spacing, typography } from '../../src/theme';
 
 /** Group the flat key list into something an owner can navigate. */
 const GROUPS: { title: string; prefix: string }[] = [
@@ -121,18 +124,18 @@ export default function OwnerSettingsScreen() {
           <RefreshControl
             refreshing={settings.refreshing}
             onRefresh={() => void settings.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Settings</Txt>
-        <Txt variant="label" color={colors.textMuted}>
-          These are the rules GymFlow runs on. Changing one takes effect immediately and is
-          recorded in the audit trail.
-        </Txt>
+        <Text variant="title">Settings</Text>
+        <Text variant="label" tone={color.textSecondary}>
+          These are the rules GymFlow runs on. Changing one takes effect immediately and is recorded
+          in the audit trail.
+        </Text>
 
-        {saved ? <Banner tone="success">{saved} updated.</Banner> : null}
-        {error && !editing ? <Banner tone="danger">{error}</Banner> : null}
+        {saved ? <Banner tone="positive">{saved} updated.</Banner> : null}
+        {error && !editing ? <Banner tone="critical">{error}</Banner> : null}
         {readOnly ? (
           <Banner tone="info">
             You can see these rules. Only an owner or admin can change them.
@@ -158,73 +161,75 @@ export default function OwnerSettingsScreen() {
           if (!groupRows.length) return null;
           return (
             <React.Fragment key={group.prefix}>
-              <SectionHeader title={group.title} />
-              <Card>
-                {groupRows.map((row, index) => (
-                  <React.Fragment key={row.key}>
-                    {index > 0 ? <Divider /> : null}
-                    <Row style={styles.setting}>
-                      <View style={styles.grow}>
-                        <Txt variant="body">{row.key.split('.').slice(1).join('.')}</Txt>
-                        {row.description ? (
-                          <Txt variant="label" color={colors.textFaint}>
-                            {row.description}
-                          </Txt>
-                        ) : null}
-                      </View>
-                      <Txt
-                        variant="mono"
-                        color={readOnly ? colors.textMuted : colors.brandSoft}
-                        accessibilityRole={readOnly ? undefined : 'button'}
-                        onPress={
-                          readOnly
-                            ? undefined
-                            : () => {
-                                setEditing(row);
-                                setDraft(displayValue(row.value));
-                                setSaved(null);
-                              }
-                        }
-                        style={styles.value}
-                      >
-                        {displayValue(row.value)}
-                      </Txt>
-                    </Row>
-                  </React.Fragment>
-                ))}
-              </Card>
+              <Section title={group.title}>
+                <Card>
+                  {groupRows.map((row, index) => (
+                    <React.Fragment key={row.key}>
+                      {index > 0 ? <Divider /> : null}
+                      <Row style={styles.setting}>
+                        <View style={styles.grow}>
+                          <Text variant="body">{row.key.split('.').slice(1).join('.')}</Text>
+                          {row.description ? (
+                            <Text variant="label" tone={color.textTertiary}>
+                              {row.description}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text
+                          variant="mono"
+                          tone={readOnly ? color.textSecondary : color.brandAccent}
+                          accessibilityRole={readOnly ? undefined : 'button'}
+                          onPress={
+                            readOnly
+                              ? undefined
+                              : () => {
+                                  setEditing(row);
+                                  setDraft(displayValue(row.value));
+                                  setSaved(null);
+                                }
+                          }
+                          style={styles.value}
+                        >
+                          {displayValue(row.value)}
+                        </Text>
+                      </Row>
+                    </React.Fragment>
+                  ))}
+                </Card>
+              </Section>
             </React.Fragment>
           );
         })}
 
-        <SectionHeader title="Automations" />
-        <Card>
-          <Eyebrow>Run now</Eyebrow>
-          <Txt variant="body" color={colors.textMuted}>
-            Journey completion, attendance settlement, PT package status and alerts all run on the
-            server on their own. This forces a pass immediately.
-          </Txt>
-          <Button
-            title="RUN AUTOMATIONS"
-            variant="secondary"
-            icon="refresh"
-            loading={busy}
-            onPress={() =>
-              void (async () => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await withToken((token) => api.runAutomations(token));
-                  setSaved('Automations');
-                } catch (caught) {
-                  setError(caught instanceof ApiError ? caught.message : 'Could not run those.');
-                } finally {
-                  setBusy(false);
-                }
-              })()
-            }
-          />
-        </Card>
+        <Section title="Automations">
+          <Card>
+            <Eyebrow>Run now</Eyebrow>
+            <Text variant="body" tone={color.textSecondary}>
+              Journey completion, attendance settlement, PT package status and alerts all run on the
+              server on their own. This forces a pass immediately.
+            </Text>
+            <Button
+              title="RUN AUTOMATIONS"
+              variant="secondary"
+              icon="refresh"
+              loading={busy}
+              onPress={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await withToken((token) => api.runAutomations(token));
+                    setSaved('Automations');
+                  } catch (caught) {
+                    setError(caught instanceof ApiError ? caught.message : 'Could not run those.');
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            />
+          </Card>
+        </Section>
       </Body>
 
       <Modal
@@ -235,29 +240,29 @@ export default function OwnerSettingsScreen() {
       >
         <View style={styles.backdrop}>
           <Card style={styles.modalCard}>
-            <Txt variant="heading">{editing?.key}</Txt>
+            <Text variant="heading">{editing?.key}</Text>
             {editing?.description ? (
-              <Txt variant="label" color={colors.textMuted}>
+              <Text variant="label" tone={color.textSecondary}>
                 {editing.description}
-              </Txt>
+              </Text>
             ) : null}
             {Array.isArray(editing?.value) ? (
-              <Txt variant="label" color={colors.textFaint}>
+              <Text variant="label" tone={color.textTertiary}>
                 Separate values with commas.
-              </Txt>
+              </Text>
             ) : null}
 
-            <TextInput
+            <Input
+              label="Value"
               value={draft}
               onChangeText={setDraft}
               autoCapitalize="none"
               autoCorrect={false}
-              style={styles.input}
               accessibilityLabel={`Value for ${editing?.key ?? 'setting'}`}
               testID="setting-value"
             />
 
-            {error ? <Banner tone="danger">{error}</Banner> : null}
+            {error ? <Banner tone="critical">{error}</Banner> : null}
 
             <Button title="SAVE" loading={busy} onPress={save} />
             <Button title="Cancel" variant="ghost" onPress={() => setEditing(null)} />
@@ -270,23 +275,13 @@ export default function OwnerSettingsScreen() {
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  setting: { gap: spacing.md, paddingVertical: spacing.sm, alignItems: 'flex-start' },
+  setting: { gap: space.md, paddingVertical: space.sm, alignItems: 'flex-start' },
   value: { textAlign: 'right', flexShrink: 1, maxWidth: '45%', paddingVertical: 4 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.82)',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: space.lg,
   },
-  modalCard: { gap: spacing.md },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    height: 52,
-  },
+  modalCard: { gap: space.md },
 });

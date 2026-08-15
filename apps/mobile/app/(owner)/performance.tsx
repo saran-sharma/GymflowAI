@@ -12,22 +12,25 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { BranchPerformanceResponse } from '../../src/api/types';
-import { DemoTag, SectionHeader, TrendStat } from '../../src/components/programme';
+import { TrendStat } from '../../src/components/programme';
 import {
   Banner,
   Body,
   Card,
+  DemoTag,
   EmptyState,
   ErrorState,
   Eyebrow,
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
-import { Segmented } from '../../src/design';
+  Section,
+  Segmented,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel } from '../../src/utils/format';
 
 type Period = 'today' | 'week' | 'month';
@@ -69,17 +72,17 @@ export default function OwnerPerformanceScreen() {
           <RefreshControl
             refreshing={performance.refreshing}
             onRefresh={() => void performance.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Branch performance</Txt>
-        <Txt variant="label" color={colors.textMuted}>
+        <Text variant="title">Branch performance</Text>
+        <Text variant="label" tone={color.textSecondary}>
           {dayLabel(data.period_start)} – {dayLabel(data.period_end)}
           {data.has_comparison && data.comparison_start
             ? ` vs ${dayLabel(data.comparison_start)} – ${dayLabel(data.comparison_end ?? '')}`
             : ''}
-        </Txt>
+        </Text>
 
         <Segmented
           options={PERIODS}
@@ -96,14 +99,14 @@ export default function OwnerPerformanceScreen() {
           data.branches.map((branch) => (
             <Card key={branch.branch_id}>
               <Row style={styles.cardHead}>
-                <Txt variant="heading">
+                <Text variant="heading">
                   {branch.branch_name.replace(/^SLAM\s+/i, '').toUpperCase()}
-                </Txt>
+                </Text>
                 {branch.is_demo ? <DemoTag /> : null}
               </Row>
-              <Txt variant="label" color={colors.textFaint}>
+              <Text variant="label" tone={color.textTertiary}>
                 {branch.members_inside} members inside now
-              </Txt>
+              </Text>
 
               <View style={styles.grid}>
                 <TrendStat label="Punctuality" point={branch.punctuality} />
@@ -125,14 +128,16 @@ export default function OwnerPerformanceScreen() {
           ))
         )}
 
-        <SectionHeader title="About these numbers" />
-        <Card>
-          <Eyebrow>How they are counted</Eyebrow>
-          <Txt variant="body" color={colors.textMuted}>
-            Every figure is a count of records GymFlow holds for the period shown. A comparison only
-            appears when the previous period actually has data — otherwise the trend reads “—”.
-          </Txt>
-        </Card>
+        <Section title="About these numbers">
+          <Card>
+            <Eyebrow>How they are counted</Eyebrow>
+            <Text variant="body" tone={color.textSecondary}>
+              Every figure is a count of records GymFlow holds for the period shown. A comparison
+              only appears when the previous period actually has data — otherwise the trend reads
+              “—”.
+            </Text>
+          </Card>
+        </Section>
       </Body>
     </Screen>
   );
@@ -140,5 +145,5 @@ export default function OwnerPerformanceScreen() {
 
 const styles = StyleSheet.create({
   cardHead: { justifyContent: 'space-between' },
-  grid: { flexDirection: 'row', gap: spacing.md, paddingTop: spacing.sm },
+  grid: { flexDirection: 'row', gap: space.md, paddingTop: space.sm },
 });
