@@ -12,6 +12,7 @@
  *   controls    Button, Badge, Input, ProgressBar, MetricRow
  *   cards       StatCard, SessionCard, ProgressCard, AlertCard, Banner
  *   feedback    Loading, Skeleton, EmptyState, ErrorState, OfflineNotice
+ *   motion      press springs, staggered entrances, counting numbers
  *   navigation  tab bar options, Segmented
  *   brand       SlamLogo, SlamMark, BrandHeader, Avatar, DemoTag
  *
@@ -28,6 +29,7 @@ export * from './primitives';
 export * from './controls';
 export * from './cards';
 export * from './feedback';
+export * from './motion';
 export * from './navigation';
 export * from './brand';
 

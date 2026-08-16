@@ -284,11 +284,12 @@ export default function TrainerDeskScreen() {
               detail="PT sessions and classes assigned to you appear here as your branch books them."
             />
           ) : (
-            items.map((item) => {
+            items.map((item, index) => {
               const badge = itemStatus(item);
               return (
                 <SessionCard
                   key={`${item.kind}-${item.reference_id}`}
+                  index={index}
                   kind={KIND_LABEL[item.kind]}
                   kindIcon={item.kind === 'group_class' ? 'people' : 'barbell'}
                   time={item.starts_at ? timeOfDay(item.starts_at) : undefined}

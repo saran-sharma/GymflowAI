@@ -17,6 +17,7 @@ import React from 'react';
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { Avatar } from './brand';
+import { Motion, entrance, usePressMotion } from './motion';
 import { Badge, ProgressBar, ProgressRing } from './controls';
 import { Card, Eyebrow, Row, Spacer, Stack, Text } from './primitives';
 import { alpha, color, hairline, motion, radii, space, toneColor, type Tone } from './tokens';
@@ -39,43 +40,58 @@ function Tappable({
   style,
   children,
   testID,
+  index,
 }: {
   onPress?: () => void;
   accessibilityLabel?: string;
   style?: ViewStyle | ViewStyle[];
   children: React.ReactNode;
   testID?: string;
+  /** Position in a list. Supplying it staggers the card's entrance. */
+  index?: number;
 }) {
+  const press = usePressMotion(Boolean(onPress));
+  const entering = index === undefined ? undefined : entrance(index);
+
   if (!onPress) {
     return (
-      <View
+      <Motion.View
+        entering={entering}
         style={style}
         testID={testID}
         accessible={accessibilityLabel !== undefined}
         accessibilityLabel={accessibilityLabel}
       >
         {children}
-      </View>
+      </Motion.View>
     );
   }
+
+  // The spring rides on the wrapper and the surface change stays on the
+  // Pressable: scale is then driven on the UI thread, while the colour still
+  // reacts on the very first frame of the touch.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      testID={testID}
-      style={({ pressed }) => [
-        style,
-        pressed
-          ? {
-              backgroundColor: color.surfaceOverlay,
-              borderColor: color.borderStrong,
-            }
-          : null,
-      ]}
-    >
-      {children}
-    </Pressable>
+    <Motion.View entering={entering} style={press.style}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
+        style={({ pressed }) => [
+          style,
+          pressed
+            ? {
+                backgroundColor: color.surfaceOverlay,
+                borderColor: color.borderStrong,
+              }
+            : null,
+        ]}
+      >
+        {children}
+      </Pressable>
+    </Motion.View>
   );
 }
 
@@ -91,6 +107,8 @@ export interface StatCardProps {
   icon?: IconName;
   onPress?: () => void;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -108,6 +126,7 @@ export function StatCard({
   icon,
   onPress,
   testID,
+  index,
 }: StatCardProps) {
   const valueColor = colorOverride ?? (tone ? toneColor[tone] : color.text);
   return (
@@ -116,6 +135,7 @@ export function StatCard({
       accessibilityLabel={`${label}: ${value}`}
       style={styles.statCard}
       testID={testID}
+      index={index}
     >
       <Row gap="xs">
         <Eyebrow>{label}</Eyebrow>
@@ -159,6 +179,8 @@ export interface SessionCardProps {
   /** A tertiary action rendered under the row. */
   footer?: React.ReactNode;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -177,6 +199,7 @@ export function SessionCard({
   onPress,
   footer,
   testID,
+  index,
 }: SessionCardProps) {
   return (
     <Tappable
@@ -184,6 +207,7 @@ export function SessionCard({
       accessibilityLabel={kind ? `${kind}: ${title}` : title}
       style={styles.card}
       testID={testID}
+      index={index}
     >
       <Stack gap="sm">
         {kind || status ? (
@@ -238,6 +262,8 @@ export interface ProgressCardProps {
   trailing?: React.ReactNode;
   onPress?: () => void;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -258,6 +284,7 @@ export function ProgressCard({
   trailing,
   onPress,
   testID,
+  index,
 }: ProgressCardProps) {
   return (
     <Tappable onPress={onPress} accessibilityLabel={label} style={styles.card} testID={testID}>
@@ -300,6 +327,8 @@ export interface AlertCardProps {
   onPress?: () => void;
   action?: React.ReactNode;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -317,6 +346,7 @@ export function AlertCard({
   onPress,
   action,
   testID,
+  index,
 }: AlertCardProps) {
   const hue = toneColor[tone];
   return (
@@ -494,6 +524,8 @@ export interface PersonRowProps {
   trailing?: React.ReactNode;
   onPress?: () => void;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -504,13 +536,14 @@ export interface PersonRowProps {
  * rather than a card is deliberate — a roster of twenty trainers as twenty
  * cards is a scroll, not a list.
  */
-export function PersonRow({ name, detail, trailing, onPress, testID }: PersonRowProps) {
+export function PersonRow({ name, detail, trailing, onPress, testID, index }: PersonRowProps) {
   return (
     <Tappable
       onPress={onPress}
       accessibilityLabel={onPress ? `Open ${name}` : name}
       style={styles.personRow}
       testID={testID}
+      index={index}
     >
       <Row gap="md">
         <Avatar name={name} size={40} />
@@ -536,12 +569,15 @@ export function TappableCard({
   style,
   children,
   testID,
+  index,
 }: {
   onPress?: () => void;
   accessibilityLabel?: string;
   style?: ViewStyle | ViewStyle[];
   children: React.ReactNode;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }) {
   return (
     <Tappable
@@ -549,6 +585,7 @@ export function TappableCard({
       accessibilityLabel={accessibilityLabel}
       style={[styles.tappableCard, ...(Array.isArray(style) ? style : style ? [style] : [])]}
       testID={testID}
+      index={index}
     >
       {children}
     </Tappable>
@@ -681,6 +718,8 @@ export interface MetricTileProps {
   colorOverride?: string;
   onPress?: () => void;
   testID?: string;
+  /** Position in a list. Supplying it staggers this card's entrance. */
+  index?: number;
 }
 
 /**
@@ -699,6 +738,7 @@ export function MetricTile({
   colorOverride,
   onPress,
   testID,
+  index,
 }: MetricTileProps) {
   const hue = colorOverride ?? (tone ? toneColor[tone] : color.text);
   return (
@@ -707,6 +747,7 @@ export function MetricTile({
       accessibilityLabel={`${label}: ${value}${unit ? ` ${unit}` : ''}`}
       style={styles.metricTile}
       testID={testID}
+      index={index}
     >
       {icon ? (
         <View style={styles.metricIcon}>
@@ -742,6 +783,8 @@ export interface TimelineRowProps {
   /** True for every row but the last, which has nothing below to connect to. */
   connected?: boolean;
   tone?: Tone;
+  /** Position in the day. Staggers the whole row — rail and card together. */
+  index?: number;
   children: React.ReactNode;
 }
 
@@ -758,30 +801,33 @@ export function TimelineRow({
   live = false,
   connected = true,
   tone = 'brand',
+  index,
   children,
 }: TimelineRowProps) {
   const hue = toneColor[tone];
   return (
-    <Row gap="md" align="stretch">
-      <Stack gap="xxs" style={styles.timelineRail}>
-        <Text variant="mono" tone={live ? color.text : color.textSecondary}>
-          {time}
-        </Text>
-        {endTime ? (
-          <Text variant="label" tone={color.textTertiary}>
-            {endTime}
+    <Motion.View entering={index === undefined ? undefined : entrance(index)}>
+      <Row gap="md" align="stretch">
+        <Stack gap="xxs" style={styles.timelineRail}>
+          <Text variant="mono" tone={live ? color.text : color.textSecondary}>
+            {time}
           </Text>
-        ) : null}
-        <View
-          style={[
-            styles.timelineDot,
-            { backgroundColor: live ? hue : color.borderStrong },
-            live ? { borderColor: alpha(hue, 0.3) } : null,
-          ]}
-        />
-        {connected ? <View style={styles.timelineLine} /> : null}
-      </Stack>
-      <View style={styles.grow}>{children}</View>
-    </Row>
+          {endTime ? (
+            <Text variant="label" tone={color.textTertiary}>
+              {endTime}
+            </Text>
+          ) : null}
+          <View
+            style={[
+              styles.timelineDot,
+              { backgroundColor: live ? hue : color.borderStrong },
+              live ? { borderColor: alpha(hue, 0.3) } : null,
+            ]}
+          />
+          {connected ? <View style={styles.timelineLine} /> : null}
+        </Stack>
+        <View style={styles.grow}>{children}</View>
+      </Row>
+    </Motion.View>
   );
 }

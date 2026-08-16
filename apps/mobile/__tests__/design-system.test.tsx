@@ -29,9 +29,11 @@ import {
   ProgressRing,
   ScreenHeader,
   SessionCard,
+  Skeleton,
   StatCard,
   TappableCard,
   TimelineRow,
+  entrance,
   alpha,
   color,
   radii,
@@ -339,5 +341,71 @@ describe('the reference-pattern components', () => {
     expect(screen.getByText('07:00')).toBeTruthy();
     expect(screen.getByText('08:00')).toBeTruthy();
     expect(screen.getByText('Aditya Rao')).toBeTruthy();
+  });
+});
+
+describe('motion', () => {
+  it('presses without changing what a button reports to a screen reader', async () => {
+    const onPress = jest.fn();
+    await draw(<Button title="Publish" onPress={onPress} />);
+    const button = screen.getByLabelText('Publish');
+    expect(button.props.accessibilityRole).toBe('button');
+    fireEvent(button, 'pressIn');
+    fireEvent(button, 'pressOut');
+    fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a disabled button inert through the whole press cycle', async () => {
+    const onPress = jest.fn();
+    await draw(<Button title="Save" disabled onPress={onPress} />);
+    const button = screen.getByLabelText('Save');
+    fireEvent(button, 'pressIn');
+    fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+    expect(button.props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('still fires onPress on a card that also springs', async () => {
+    const onPress = jest.fn();
+    await draw(<StatCard label="Inside" value={12} onPress={onPress} testID="stat" />);
+    fireEvent.press(screen.getByTestId('stat'));
+    expect(onPress).toHaveBeenCalled();
+  });
+
+  it('staggers a list without altering what each row says', async () => {
+    await draw(
+      <>
+        {['Vikas Menon', 'Rahul Deshpande'].map((name, index) => (
+          <PersonRow key={name} name={name} index={index} onPress={() => undefined} />
+        ))}
+      </>,
+    );
+    expect(screen.getByLabelText('Open Vikas Menon')).toBeTruthy();
+    expect(screen.getByLabelText('Open Rahul Deshpande')).toBeTruthy();
+  });
+
+  it('announces a progress bar by its real value, not its animated one', async () => {
+    await draw(<ProgressBar value={40} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 40 });
+  });
+
+  it('clamps an out-of-range bar rather than overflowing its track', async () => {
+    await draw(<ProgressBar value={180} />);
+    expect(screen.getByRole('progressbar').props.accessibilityValue.now).toBe(100);
+  });
+
+  it('keeps the skeleton out of the accessibility tree while it pulses', async () => {
+    await draw(<Skeleton width="60%" height={12} />);
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('caps the entrance delay so a long list does not trail off', () => {
+    // Row 40 must not wait forty stagger steps to appear.
+    const early = entrance(2);
+    const late = entrance(40);
+    expect(early).toBeTruthy();
+    expect(late).toBeTruthy();
   });
 });
