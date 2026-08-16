@@ -769,7 +769,405 @@ The workout data flow must actually work end-to-end.
 
 ---
 
-# 22. Final Principle
+
+
+# 23. General Training → PT Conversion Flow (PHASE 1)
+
+This flow is part of **Phase 1** and must be implemented together with the
+core Member workout experience.
+
+## Product Rule
+
+Members who choose **General Training** should NOT see an explicit "45-day
+plan" or countdown as the primary Member experience.
+
+The Member should simply see and follow the weekly:
+
+```text
+PUSH
+PULL
+LEGS
+```
+
+training routine.
+
+The 45-day period is an internal program lifecycle used by GymFlow to
+determine when the Member becomes eligible for PT conversion.
+
+### Member-facing principle
+
+The Member experience should feel like:
+
+```text
+YOUR TRAINING
+
+Push
+Pull
+Legs
+
+This week's progress
+Today's workout
+Next workout
+```
+
+NOT:
+
+```text
+Day 1 of 45
+Day 2 of 45
+...
+Day 45 of 45
+```
+
+The 45-day lifecycle should remain mostly behind the scenes.
+
+---
+
+## 24. General Training Lifecycle
+
+The intended lifecycle is:
+
+```text
+MEMBER JOINS
+     ↓
+Selects General Training
+     ↓
+GymFlow assigns Push / Pull / Legs routine
+     ↓
+Member completes weekly workouts
+     ↓
+GymFlow tracks progress
+     ↓
+Approaching 45-day eligibility
+     ↓
+Trainer receives alert
+     ↓
+Trainer reviews Member
+     ↓
+Member completes / approaches General Training period
+     ↓
+Trainer converts Member to PT
+     ↓
+Member becomes eligible for 3-day PT trial
+     ↓
+Owner receives update
+```
+
+### Important
+
+Do not expose the internal 45-day program structure unnecessarily to the
+Member.
+
+The Member should primarily experience the workout routine and progress.
+
+---
+
+# 25. Push / Pull / Legs Member Experience
+
+For a General Training Member, the Member workout area should provide:
+
+### Weekly overview
+
+```text
+THIS WEEK
+
+PUSH       ✓
+PULL       ✓
+LEGS       ○
+```
+
+or, depending on the current schedule:
+
+```text
+TODAY
+
+PUSH
+
+Chest
+Shoulders
+Triceps
+
+[ START WORKOUT ]
+```
+
+The exact exercise selection should come from the existing workout/program
+data rather than being hard-coded into the UI.
+
+### Requirements
+
+- Show the current week's Push/Pull/Legs sessions.
+- Clearly identify today's workout.
+- Show completed/upcoming state.
+- Allow the Member to enter the workout execution experience.
+- Preserve previous-performance data.
+- Preserve set logging.
+- Preserve rest timer.
+- Preserve workout completion.
+- Do not display "45-day plan" as the Member's main navigation or workout
+  structure.
+- Do not hard-code exercises if the backend already provides workout data.
+
+---
+
+# 26. Trainer Alerts for General Training
+
+Trainers need visibility before and at the point where a General Training
+Member becomes ready for PT conversion.
+
+The system should identify Members who are:
+
+### Approaching eligibility
+
+For example:
+
+```text
+PT CONVERSION APPROACHING
+
+Member: John
+
+General Training progress:
+~40+ days
+
+Review this Member before PT eligibility.
+```
+
+### Eligible / ready
+
+```text
+READY FOR PT REVIEW
+
+Member: John
+
+General Training completed / eligible
+
+Suggested action:
+Review for 3-day PT trial
+```
+
+The exact threshold and alert timing should be based on the existing backend
+business rules if they already exist.
+
+If no such rule exists, implement the 45-day eligibility rule explicitly and
+make the alert timing configurable rather than scattering `45` throughout
+the codebase.
+
+---
+
+# 27. Trainer Conversion Action
+
+The Trainer should have an explicit conversion action.
+
+Example:
+
+```text
+MEMBER
+
+General Training
+Eligible for PT
+
+[ CONVERT TO PT ]
+```
+
+Before conversion, the Trainer should be able to review relevant information,
+such as:
+
+- Attendance
+- Workout completion
+- Recent workout performance
+- Progress
+- PRs
+- RPE where available
+- General Training status
+
+The Trainer remains the decision-maker.
+
+AI may provide supporting information, but must not silently convert a Member.
+
+---
+
+# 28. PT Conversion State
+
+Once the Trainer converts the Member:
+
+```text
+General Training
+        ↓
+PT Trial
+```
+
+The system should create/update the appropriate Member training state using
+the existing domain model if one exists.
+
+The Member should then be presented with the PT onboarding/trial experience.
+
+The requested initial PT experience is:
+
+```text
+3-DAY PT TRIAL
+```
+
+Do not create an entirely new PT architecture if the repository already has
+PT package/session models and APIs. Reuse those existing capabilities.
+
+---
+
+# 29. Owner Notification
+
+After Trainer conversion to PT, the Owner should receive an update.
+
+Example:
+
+```text
+PT CONVERSION
+
+John was converted from General Training
+to PT by Trainer Sarah.
+
+Next:
+3-day PT trial
+```
+
+The Owner notification should be based on the existing Owner notification,
+alert, activity, or dashboard architecture where possible.
+
+Do not introduce a separate notification system if an existing one can be
+extended.
+
+The Owner should be able to see at least:
+
+- Member
+- Trainer
+- Previous training mode
+- New training mode
+- Conversion timestamp
+- PT trial status
+
+---
+
+# 30. State Model
+
+Prefer an explicit lifecycle/state model over scattered boolean flags.
+
+Conceptually:
+
+```text
+GENERAL_TRAINING
+       ↓
+PT_ELIGIBLE
+       ↓
+PT_TRIAL
+       ↓
+PT_ACTIVE
+```
+
+The exact names should follow existing GymFlow domain terminology.
+
+If the existing backend already has equivalent states, extend/reuse them
+rather than introducing duplicate concepts.
+
+### Important
+
+A Member being close to 45 days should NOT automatically mean they have been
+converted to PT.
+
+The state transition must be:
+
+```text
+Eligibility detected
+        ↓
+Trainer review
+        ↓
+Trainer explicitly converts
+        ↓
+PT trial created
+        ↓
+Owner notified
+```
+
+---
+
+# 31. Phase 1 Acceptance Criteria — General Training / PT Flow
+
+Phase 1 is complete only when:
+
+### Member
+
+- General Training Member sees Push/Pull/Legs.
+- Member does not need to navigate a visible 45-day plan.
+- Member can see this week's training progress.
+- Member can identify today's workout.
+- Member can execute the workout.
+- Member can log sets/reps/weight.
+- Member can complete the workout.
+- Member's progress is persisted.
+
+### Trainer
+
+- Trainer can see General Training Members approaching PT eligibility.
+- Trainer receives an alert/attention item before or at eligibility.
+- Trainer can review relevant Member performance.
+- Trainer can explicitly convert the Member to PT.
+- Conversion cannot happen silently.
+
+### PT
+
+- Conversion creates the correct PT trial state.
+- The initial PT experience is a 3-day PT trial.
+- Existing PT/session functionality is reused where possible.
+
+### Owner
+
+- Owner receives an update after Trainer conversion.
+- Owner can identify the Member and Trainer involved.
+- Owner can see the conversion and PT-trial status.
+
+### Data integrity
+
+- No fake Member data.
+- No fake conversion events.
+- No UI-only state pretending that conversion happened.
+- API/database state must reflect the actual transition.
+
+---
+
+# 32. Implementation Guidance for the Coding Agent
+
+When implementing this flow, first inspect the repository for existing:
+
+- General Training models
+- Workout/program models
+- Push/Pull/Legs definitions
+- Member training status
+- PT package/session models
+- Trainer alerts
+- Owner notifications
+- Activity/audit events
+- Member progress APIs
+- Existing conversion logic
+
+Do not create duplicate models if equivalent domain objects already exist.
+
+Search before implementing.
+
+The coding agent should specifically answer during inspection:
+
+```text
+1. Where is General Training currently represented?
+2. Where are workout programs stored?
+3. How are exercises assigned to Members?
+4. Is Push/Pull/Legs already supported?
+5. Is there already a 45-day eligibility rule?
+6. How are Trainer alerts currently implemented?
+7. How are Owner notifications currently implemented?
+8. How is PT represented?
+9. Is PT conversion already partially implemented?
+10. What existing APIs can support this flow?
+```
+
+Only add missing backend/database functionality after confirming that the
+existing architecture cannot support the requirement.
+
+# 33. Final Principle
 
 > **Make the next workout better, not merely the last workout better documented.**
 
