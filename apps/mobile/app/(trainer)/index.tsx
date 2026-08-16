@@ -159,7 +159,7 @@ export default function TrainerDeskScreen() {
         {/* A number nobody can act on is a number in the wrong place. */}
         {lowBalance ? (
           <Banner tone="caution" icon="alert-circle-outline">
-            {lowBalance === 1 ? 'One client is' : `${lowBalance} clients are`} low on sessions.
+            {`${lowBalance === 1 ? 'One client is' : `${lowBalance} clients are`} low on sessions.`}
           </Banner>
         ) : null}
 

@@ -3,7 +3,7 @@
 /**
  * GymFlow AI - Diagnostic Status Check
  *
- * Checks health of Backend (:8000), Database, Metro (:8081),
+ * Checks health of Backend (:8000), Database, Metro (:8082),
  * Codespaces port visibility, and Expo mobile configuration.
  */
 
@@ -29,7 +29,7 @@ const c = {
 };
 
 const backendPort = 8000;
-const metroPort = 8081;
+const metroPort = 8082;
 
 const codespaceName = process.env.CODESPACE_NAME;
 const portDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN || 'app.github.dev';
@@ -143,7 +143,7 @@ function checkCodespaces() {
     if (out.includes('8000') && out.includes('private')) {
       portsPublic = false;
     }
-    if (out.includes('8081') && out.includes('private')) {
+    if (out.includes('8082') && out.includes('private')) {
       portsPublic = false;
     }
   } catch {
@@ -183,19 +183,19 @@ async function main() {
 
   // 3. Metro Status
   if (metro.ok) {
-    console.log(`Metro   : 8081         ${c.green}✓ RUNNING${c.reset}`);
+    console.log(`Metro   : 8082         ${c.green}✓ RUNNING${c.reset}`);
   } else {
-    console.log(`Metro   : 8081         ${c.red}✗ STOPPED${c.reset}`);
+    console.log(`Metro   : 8082         ${c.red}✗ STOPPED${c.reset}`);
     fixes.push('Start Metro with: npm run dev (or npm run dev:mobile)');
   }
 
   // 4. Codespaces port
   if (cs.isCodespaces) {
     if (cs.portsPublic) {
-      console.log(`Codespaces Ports       ${c.green}✓ PUBLIC (8000, 8081)${c.reset}`);
+      console.log(`Codespaces Ports       ${c.green}✓ PUBLIC (8000, 8082)${c.reset}`);
     } else {
       console.log(`Codespaces Ports       ${c.red}✗ PRIVATE${c.reset}`);
-      fixes.push('Make ports public: gh codespace ports visibility 8000:public 8081:public');
+      fixes.push('Make ports public: gh codespace ports visibility 8000:public 8082:public');
     }
   } else {
     console.log(`Environment            ${c.green}✓ LOCAL DEV${c.reset}`);

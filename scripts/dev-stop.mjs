@@ -79,9 +79,9 @@ function main() {
     }
   }
 
-  // 2. Kill by port bindings to ensure ports 8000 and 8081 are free
+  // 2. Kill by port bindings to ensure ports 8000 and 8082 are free
   killPort(8000);
-  killPort(8081);
+  killPort(8082);
 
   console.log(`${c.green}✓ All GymFlow AI development services have been stopped.${c.reset}\n`);
 }

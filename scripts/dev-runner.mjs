@@ -3,7 +3,7 @@
 /**
  * GymFlow AI - Unified Development Orchestrator
  *
- * Runs and manages the FastAPI backend (port 8000) and Expo/Metro (port 8081).
+ * Runs and manages the FastAPI backend (port 8000) and Expo/Metro (port 8082).
  * Automatically detects GitHub Codespaces vs Local environment, validates health,
  * configures port forwarding, and handles clean process lifecycles.
  */
@@ -50,7 +50,7 @@ const portDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN || 'app.
 const isCodespaces = Boolean(codespaceName);
 
 const backendPort = 8000;
-const metroPort = 8081;
+const metroPort = 8082;
 
 const backendPublicUrl = isCodespaces
   ? `https://${codespaceName}-${backendPort}.${portDomain}`
@@ -145,7 +145,7 @@ function findPython() {
   const candidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
   for (const cmd of candidates) {
     try {
-      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      execSync(`gh codespace ports visibility 8000:public ${metroPort}:public`, { stdio: 'ignore' });
       return cmd;
     } catch {}
   }
@@ -189,7 +189,7 @@ EXPO_PUBLIC_PUSH_ENABLED=false
 function configureCodespacesPorts() {
   if (!isCodespaces) return;
   try {
-    execSync(`gh codespace ports visibility 8000:public 8081:public`, { stdio: 'ignore' });
+    execSync(`gh codespace ports visibility 8000:public 8082:public`, { stdio: 'ignore' });
   } catch {
     // Non-fatal if gh is not logged in or in devcontainer
   }
@@ -381,7 +381,8 @@ async function main() {
     console.log(`\n${c.bold}Mobile App (apps/mobile):${c.reset}`);
     console.log(`  Custom Scheme:    ${c.magenta}gymflow://${c.reset}`);
     console.log(`  Dev Client URL:   ${c.cyan}${metroPublicUrl}${c.reset}`);
-    console.log(`  Deep Link:        ${c.dim}gymflow://expo-development-client/?url=${encodeURIComponent(metroPublicUrl)}${c.reset}`);
+    console.log(`  Note:              Enter this URL in the Android development build.`);
+
 
     console.log(`\n${c.bold}${c.white}========================================${c.reset}`);
     console.log(`${c.bold} Connecting your Android Dev Build:${c.reset}`);
