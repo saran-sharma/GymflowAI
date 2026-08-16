@@ -135,6 +135,7 @@ export default function TrainerSessionsScreen() {
                 endTime={item.ends_at ? timeOfDay(item.ends_at) : undefined}
                 live={item.status === 'in_progress'}
                 connected={index < items.length - 1}
+                index={index}
                 tone={item.status === 'in_progress' ? 'caution' : 'brand'}
               >
                 <SessionCard

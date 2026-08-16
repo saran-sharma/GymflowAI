@@ -14,6 +14,7 @@ import React from 'react';
 
 import {
   AlertCard,
+  AnimatedTabBar,
   Badge,
   Button,
   Chips,
@@ -29,9 +30,11 @@ import {
   ProgressRing,
   ScreenHeader,
   SessionCard,
+  Skeleton,
   StatCard,
   TappableCard,
   TimelineRow,
+  entrance,
   alpha,
   color,
   radii,
@@ -339,5 +342,119 @@ describe('the reference-pattern components', () => {
     expect(screen.getByText('07:00')).toBeTruthy();
     expect(screen.getByText('08:00')).toBeTruthy();
     expect(screen.getByText('Aditya Rao')).toBeTruthy();
+  });
+});
+
+describe('motion', () => {
+  it('presses without changing what a button reports to a screen reader', async () => {
+    const onPress = jest.fn();
+    await draw(<Button title="Publish" onPress={onPress} />);
+    const button = screen.getByLabelText('Publish');
+    expect(button.props.accessibilityRole).toBe('button');
+    fireEvent(button, 'pressIn');
+    fireEvent(button, 'pressOut');
+    fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a disabled button inert through the whole press cycle', async () => {
+    const onPress = jest.fn();
+    await draw(<Button title="Save" disabled onPress={onPress} />);
+    const button = screen.getByLabelText('Save');
+    fireEvent(button, 'pressIn');
+    fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+    expect(button.props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('still fires onPress on a card that also springs', async () => {
+    const onPress = jest.fn();
+    await draw(<StatCard label="Inside" value={12} onPress={onPress} testID="stat" />);
+    fireEvent.press(screen.getByTestId('stat'));
+    expect(onPress).toHaveBeenCalled();
+  });
+
+  it('staggers a list without altering what each row says', async () => {
+    await draw(
+      <>
+        {['Vikas Menon', 'Rahul Deshpande'].map((name, index) => (
+          <PersonRow key={name} name={name} index={index} onPress={() => undefined} />
+        ))}
+      </>,
+    );
+    expect(screen.getByLabelText('Open Vikas Menon')).toBeTruthy();
+    expect(screen.getByLabelText('Open Rahul Deshpande')).toBeTruthy();
+  });
+
+  it('announces a progress bar by its real value, not its animated one', async () => {
+    await draw(<ProgressBar value={40} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 40 });
+  });
+
+  it('clamps an out-of-range bar rather than overflowing its track', async () => {
+    await draw(<ProgressBar value={180} />);
+    expect(screen.getByRole('progressbar').props.accessibilityValue.now).toBe(100);
+  });
+
+  it('keeps the skeleton out of the accessibility tree while it pulses', async () => {
+    await draw(<Skeleton width="60%" height={12} />);
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('caps the entrance delay so a long list does not trail off', () => {
+    // Row 40 must not wait forty stagger steps to appear.
+    const early = entrance(2);
+    const late = entrance(40);
+    expect(early).toBeTruthy();
+    expect(late).toBeTruthy();
+  });
+});
+
+describe('the animated tab bar', () => {
+  /**
+   * The shape expo-router hands a custom tabBar, trimmed to what we read.
+   *
+   * Typed loosely on purpose: BottomTabBarProps carries a full navigation
+   * object, and reconstructing it faithfully would test react-navigation
+   * rather than this bar.
+   */
+  function tabProps(activeIndex: number): Parameters<typeof AnimatedTabBar>[0] {
+    const routes = [
+      { key: 'home-1', name: 'index', params: undefined },
+      { key: 'account-1', name: 'profile', params: undefined },
+    ];
+    return {
+      state: { index: activeIndex, routes },
+      descriptors: {
+        'home-1': { options: { title: 'Home', tabBarIcon: () => null } },
+        'account-1': { options: { title: 'Account', tabBarIcon: () => null } },
+      },
+      navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
+      insets: { top: 0, bottom: 16, left: 0, right: 0 },
+    } as unknown as Parameters<typeof AnimatedTabBar>[0];
+  }
+
+  it('marks exactly the active tab as selected', async () => {
+    await draw(<AnimatedTabBar {...tabProps(1)} />);
+    expect(screen.getByTestId('tab-index').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByTestId('tab-profile').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('gives every tab the tab role and its title as a label', async () => {
+    await draw(<AnimatedTabBar {...tabProps(0)} />);
+    const home = screen.getByTestId('tab-index');
+    expect(home.props.accessibilityRole).toBe('tab');
+    expect(home.props.accessibilityLabel).toBe('Home');
+    expect(screen.getByTestId('tab-profile').props.accessibilityLabel).toBe('Account');
+  });
+
+  it('navigates on pressing an inactive tab, and not the active one', async () => {
+    const props = tabProps(0);
+    await draw(<AnimatedTabBar {...props} />);
+    fireEvent.press(screen.getByTestId('tab-profile'));
+    const navigate = (props as unknown as { navigation: { navigate: jest.Mock } }).navigation
+      .navigate;
+    expect(navigate).toHaveBeenCalledWith('profile', undefined);
   });
 });

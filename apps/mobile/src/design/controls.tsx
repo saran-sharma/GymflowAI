@@ -8,6 +8,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { forwardRef, useState } from 'react';
+import { useAnimatedProps, useAnimatedStyle } from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Pressable,
@@ -20,6 +21,7 @@ import {
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { Motion, usePressMotion, useTravel } from './motion';
 import { Row, Spacer, Stack, Text } from './primitives';
 import {
   alpha,
@@ -36,6 +38,9 @@ import {
 } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+/** Reanimated drives SVG attributes only through a wrapped component. */
+const AnimatedCircle = Motion.createAnimatedComponent(Circle);
 
 /* ----------------------------------------------------------------- button */
 
@@ -96,46 +101,50 @@ export function Button({
 
   const tone = palette[variant];
   const dimension = sizing[size];
+  const press = usePressMotion(!isDisabled);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      accessibilityState={{ disabled: !!isDisabled, busy: loading }}
-      disabled={isDisabled}
-      style={({ pressed }) => [
-        styles.button,
-        {
-          height: dimension.height,
-          borderRadius: dimension.radius,
-          backgroundColor: tone.bg,
-          borderColor: tone.border,
-          alignSelf: block ? 'stretch' : 'flex-start',
-          opacity: isDisabled ? motion.disabledOpacity : pressed ? motion.pressOpacity : 1,
-          transform: [{ scale: pressed && !isDisabled ? motion.pressScale : 1 }],
-        },
-        style,
-      ]}
-      {...rest}
-    >
-      {loading ? (
-        <ActivityIndicator color={tone.fg} />
-      ) : (
-        <Row gap="sm" justify="center">
-          {icon ? <Ionicons name={icon} size={dimension.font + 4} color={tone.fg} /> : null}
-          <Text
-            style={{
-              color: tone.fg,
-              fontSize: dimension.font,
-              fontWeight: '800',
-              letterSpacing: dimension.tracking,
-            }}
-          >
-            {title}
-          </Text>
-        </Row>
-      )}
-    </Pressable>
+    <Motion.View style={[press.style, { alignSelf: block ? 'stretch' : 'flex-start' }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ disabled: !!isDisabled, busy: loading }}
+        disabled={isDisabled}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        style={[
+          styles.button,
+          {
+            height: dimension.height,
+            borderRadius: dimension.radius,
+            backgroundColor: tone.bg,
+            borderColor: tone.border,
+            alignSelf: 'stretch',
+            opacity: isDisabled ? motion.disabledOpacity : 1,
+          },
+          style,
+        ]}
+        {...rest}
+      >
+        {loading ? (
+          <ActivityIndicator color={tone.fg} />
+        ) : (
+          <Row gap="sm" justify="center">
+            {icon ? <Ionicons name={icon} size={dimension.font + 4} color={tone.fg} /> : null}
+            <Text
+              style={{
+                color: tone.fg,
+                fontSize: dimension.font,
+                fontWeight: '800',
+                letterSpacing: dimension.tracking,
+              }}
+            >
+              {title}
+            </Text>
+          </Row>
+        )}
+      </Pressable>
+    </Motion.View>
   );
 }
 
@@ -309,20 +318,27 @@ export function ProgressBar({
   height = 6,
 }: ProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  const travelled = useTravel(clamped);
+  const fill = useAnimatedStyle(() => ({ width: `${travelled.value}%` }));
+
   return (
     <View
       style={[styles.track, { height, borderRadius: height / 2 }]}
       accessible
       accessibilityRole="progressbar"
+      /* The announced value is the real one. A screen reader narrating a bar
+         sweeping up to 40% would be worse than useless. */
       accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped) }}
     >
-      <View
-        style={{
-          width: `${clamped}%`,
-          height: '100%',
-          borderRadius: height / 2,
-          backgroundColor: colorOverride ?? toneColor[tone],
-        }}
+      <Motion.View
+        style={[
+          fill,
+          {
+            height: '100%',
+            borderRadius: height / 2,
+            backgroundColor: colorOverride ?? toneColor[tone],
+          },
+        ]}
       />
     </View>
   );
@@ -443,6 +459,13 @@ export function ProgressRing({
   const circumference = 2 * Math.PI * radius;
   const hue = colorOverride ?? toneColor[tone];
 
+  // Moving the dash offset is what makes the arc fill round the circle rather
+  // than appear already complete.
+  const travelled = useTravel(clamped);
+  const sweep = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - travelled.value / 100),
+  }));
+
   return (
     <View
       style={{ width: size, height: size }}
@@ -460,7 +483,7 @@ export function ProgressRing({
           strokeWidth={thickness}
           fill="none"
         />
-        <Circle
+        <AnimatedCircle
           cx={size / 2}
           cy={size / 2}
           r={radius}
@@ -469,7 +492,7 @@ export function ProgressRing({
           strokeLinecap="round"
           fill="none"
           strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={circumference * (1 - clamped / 100)}
+          animatedProps={sweep}
           /* Start at twelve o'clock rather than three. */
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />

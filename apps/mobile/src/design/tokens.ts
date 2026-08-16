@@ -209,6 +209,24 @@ export const motion = {
   pressScale: 0.985,
   pressOpacity: 0.82,
   disabledOpacity: 0.45,
+
+  /**
+   * The one spring the whole app presses with.
+   *
+   * Critically damped on purpose: an overshoot on a card that reports how many
+   * members are in the building reads as a toy. The bounce belongs in a
+   * consumer app, not in software someone uses forty times a shift.
+   */
+  press: { damping: 18, stiffness: 320, mass: 0.6 },
+
+  /**
+   * Entrance. `stagger` is per-item delay in a list — six items is 90ms of
+   * total lead-in, which is felt rather than waited for.
+   */
+  enter: { duration: 260, stagger: 15, distance: 8 },
+
+  /** How long a figure takes to count to its value. */
+  count: 420,
 } as const;
 
 /* ------------------------------------------------------------ interaction */

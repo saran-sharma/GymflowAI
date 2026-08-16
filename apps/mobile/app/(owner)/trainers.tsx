@@ -60,9 +60,10 @@ export default function OwnerTrainersScreen() {
           grouped.map(([branchName, list]) => (
             <View key={branchName} style={styles.group}>
               <Eyebrow>{branchName}</Eyebrow>
-              {list.map((trainer) => (
+              {list.map((trainer, index) => (
                 <PersonRow
                   key={trainer.id}
+                  index={index}
                   name={trainer.full_name}
                   detail={trainer.specialty ?? trainer.designation ?? 'Trainer'}
                   onPress={() => router.push(`/(owner)/trainer/${trainer.id}` as never)}

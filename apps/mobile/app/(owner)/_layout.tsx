@@ -27,7 +27,7 @@ export default function OwnerLayout() {
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'More', tabBarIcon: tabIcon('ellipsis-horizontal') }}
+        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
       />
       {/* Pushed on top of the tabs. */}
       <Tabs.Screen name="branch/[id]" options={{ href: null }} />

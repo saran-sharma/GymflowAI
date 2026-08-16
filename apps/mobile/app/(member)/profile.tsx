@@ -1,16 +1,18 @@
 /**
- * More — everything a member needs occasionally.
+ * Account — the member's personal area.
  *
- * Only routes that exist are listed. Diet, medical notes, challenges, rewards
- * and wearables have no data source in GymFlow yet, and a menu row that opens
- * an apology is worse than no row at all.
+ * `ProfilePanel` owns identity, preferences, security and support; the rows
+ * below are the Activity section, and they are only the ones a member can
+ * actually reach. Diet, medical notes, challenges, rewards and wearables have
+ * no data source in GymFlow yet, and a row that opens an apology is worse than
+ * no row at all.
  */
 
 import React from 'react';
 
 import { ProfilePanel } from '../../src/components/ProfilePanel';
 
-export default function MemberMoreScreen() {
+export default function MemberAccountScreen() {
   return (
     <ProfilePanel
       links={[
@@ -19,6 +21,18 @@ export default function MemberMoreScreen() {
           detail: 'Your check-ins, streak and time in the gym',
           icon: 'footsteps-outline',
           route: '/(member)/visits',
+        },
+        {
+          label: 'My membership and PT',
+          detail: 'Plan, sessions remaining and your trainer',
+          icon: 'card-outline',
+          route: '/(member)/pt',
+        },
+        {
+          label: 'Progress',
+          detail: 'The 45 days, workouts and measurements',
+          icon: 'stats-chart-outline',
+          route: '/(member)/progress',
         },
         {
           label: 'Group classes',

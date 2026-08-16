@@ -9,10 +9,11 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, Animated, StyleSheet, View, type ViewStyle } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { Button } from './controls';
+import { Motion, usePulse } from './motion';
 import { Card, Row, Screen, Stack, Text } from './primitives';
 import { color, radii, space } from './tokens';
 
@@ -54,39 +55,19 @@ export function Skeleton({
   radius?: number;
   style?: ViewStyle;
 }) {
-  const pulse = useRef(new Animated.Value(0.4)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.4,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
+  // The pulse runs on the UI thread. A placeholder driven from JS stops
+  // animating exactly when the app is busiest — parsing the response it stands
+  // in for — so the one animation whose entire job is to say "something is
+  // happening" was the one guaranteed to freeze.
+  const pulse = usePulse();
 
   return (
-    <Animated.View
+    <Motion.View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        {
-          width,
-          height,
-          borderRadius: radius,
-          backgroundColor: color.surfaceOverlay,
-        },
-        { opacity: pulse },
+        { width, height, borderRadius: radius, backgroundColor: color.surfaceOverlay },
+        pulse,
         style,
       ]}
     />

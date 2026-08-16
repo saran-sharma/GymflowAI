@@ -48,6 +48,21 @@ export const setPin = (currentPassword: string, pin: string, token: string) =>
     token,
   });
 
+/**
+ * Change the signed-in user's password.
+ *
+ * The server revokes every other refresh token on success, so the caller must
+ * tell the person their other devices are now signed out — a password change is
+ * usually a response to a suspected compromise, and silently leaving other
+ * sessions alive would defeat it. Minimum length is 10, set server-side.
+ */
+export const changePassword = (currentPassword: string, newPassword: string, token: string) =>
+  request<{ message: string }>('/auth/password', {
+    method: 'POST',
+    body: { current_password: currentPassword, new_password: newPassword },
+    token,
+  });
+
 export const registerPushToken = (pushToken: string, token: string) =>
   request<{ message: string }>('/auth/push-token', {
     method: 'POST',
@@ -78,8 +93,7 @@ export const trainerAttendance = (trainerId: number, token: string) =>
 
 /* --------------------------------------------------------------- attendance */
 
-export const myToday = (token: string) =>
-  request<TrainerToday>('/attendance/me/today', { token });
+export const myToday = (token: string) => request<TrainerToday>('/attendance/me/today', { token });
 
 export const myAttendanceHistory = (token: string) =>
   request<AttendanceDay[]>('/attendance/me/history', { token });
@@ -120,8 +134,7 @@ export const checkOut = (payload: CheckPayload, token: string) =>
 
 /* --------------------------------------------------------------- incentives */
 
-export const myIncentive = (token: string) =>
-  request<IncentiveResult>('/incentives/me', { token });
+export const myIncentive = (token: string) => request<IncentiveResult>('/incentives/me', { token });
 
 export const listIncentives = (token: string, branchId?: number) =>
   request<IncentiveResult[]>(`/incentives${branchId ? `?branch_id=${branchId}` : ''}`, { token });
@@ -265,12 +278,7 @@ export const startWorkout = (token: string, split?: WorkoutSplit) =>
     token,
   });
 
-export const setWorkoutItem = (
-  sessionId: number,
-  itemId: number,
-  done: boolean,
-  token: string,
-) =>
+export const setWorkoutItem = (sessionId: number, itemId: number, done: boolean, token: string) =>
   request<WorkoutItem>(`/journeys/workouts/${sessionId}/items/${itemId}`, {
     method: 'PATCH',
     body: { done },
@@ -439,10 +447,9 @@ export const occupancyForecast = (branchId: number, token: string) =>
   request<OccupancyForecast>(`/performance/occupancy/${branchId}/forecast`, { token });
 
 export const marketingDashboard = (token: string, branchId?: number) =>
-  request<MarketingDashboard>(
-    `/marketing/dashboard${branchId ? `?branch_id=${branchId}` : ''}`,
-    { token },
-  );
+  request<MarketingDashboard>(`/marketing/dashboard${branchId ? `?branch_id=${branchId}` : ''}`, {
+    token,
+  });
 
 export const marketingSources = (token: string) =>
   request<import('./types').MarketingSource[]>('/marketing/sources', { token });

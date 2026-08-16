@@ -1,10 +1,10 @@
-/** More: the trainer's identity, check-in PIN, and the screens that are not tabs. */
+/** Account — the trainer's identity, check-in PIN, and everything not a tab. */
 
 import React from 'react';
 
 import { ProfilePanel } from '../../src/components/ProfilePanel';
 
-export default function TrainerMoreScreen() {
+export default function TrainerAccountScreen() {
   return (
     <ProfilePanel
       showPin

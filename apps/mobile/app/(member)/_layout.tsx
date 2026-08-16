@@ -33,7 +33,7 @@ export default function MemberLayout() {
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'More', tabBarIcon: tabIcon('ellipsis-horizontal') }}
+        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
       />
       {/* Reached from home and from More, not tabs of their own. */}
       <Tabs.Screen name="classes" options={{ href: null }} />

@@ -34,6 +34,7 @@ import type {
   Renewals,
   RevenueSummary,
 } from '../../src/api/types';
+import { AccountAvatar } from '../../src/components/account';
 import { NotConnected } from '../../src/components/member';
 import {
   AlertCard,
@@ -170,6 +171,11 @@ export default function OwnerDashboardScreen() {
           starts at "Today" below, and the "Live" badge is what keeps the two
           from being read as one number.
         */}
+        <Row gap="md">
+          <AccountAvatar size={40} />
+          <Spacer />
+        </Row>
+
         <HeroCard
           testID="owner-hero"
           eyebrow="Right now"
