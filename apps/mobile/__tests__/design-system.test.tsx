@@ -14,6 +14,7 @@ import React from 'react';
 
 import {
   AlertCard,
+  AnimatedTabBar,
   Badge,
   Button,
   Chips,
@@ -407,5 +408,53 @@ describe('motion', () => {
     const late = entrance(40);
     expect(early).toBeTruthy();
     expect(late).toBeTruthy();
+  });
+});
+
+describe('the animated tab bar', () => {
+  /**
+   * The shape expo-router hands a custom tabBar, trimmed to what we read.
+   *
+   * Typed loosely on purpose: BottomTabBarProps carries a full navigation
+   * object, and reconstructing it faithfully would test react-navigation
+   * rather than this bar.
+   */
+  function tabProps(activeIndex: number): Parameters<typeof AnimatedTabBar>[0] {
+    const routes = [
+      { key: 'home-1', name: 'index', params: undefined },
+      { key: 'account-1', name: 'profile', params: undefined },
+    ];
+    return {
+      state: { index: activeIndex, routes },
+      descriptors: {
+        'home-1': { options: { title: 'Home', tabBarIcon: () => null } },
+        'account-1': { options: { title: 'Account', tabBarIcon: () => null } },
+      },
+      navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
+      insets: { top: 0, bottom: 16, left: 0, right: 0 },
+    } as unknown as Parameters<typeof AnimatedTabBar>[0];
+  }
+
+  it('marks exactly the active tab as selected', async () => {
+    await draw(<AnimatedTabBar {...tabProps(1)} />);
+    expect(screen.getByTestId('tab-index').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByTestId('tab-profile').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('gives every tab the tab role and its title as a label', async () => {
+    await draw(<AnimatedTabBar {...tabProps(0)} />);
+    const home = screen.getByTestId('tab-index');
+    expect(home.props.accessibilityRole).toBe('tab');
+    expect(home.props.accessibilityLabel).toBe('Home');
+    expect(screen.getByTestId('tab-profile').props.accessibilityLabel).toBe('Account');
+  });
+
+  it('navigates on pressing an inactive tab, and not the active one', async () => {
+    const props = tabProps(0);
+    await draw(<AnimatedTabBar {...props} />);
+    fireEvent.press(screen.getByTestId('tab-profile'));
+    const navigate = (props as unknown as { navigation: { navigate: jest.Mock } }).navigation
+      .navigate;
+    expect(navigate).toHaveBeenCalledWith('profile', undefined);
   });
 });

@@ -24,6 +24,7 @@ import type {
   TrainerToday,
   WhoIsInside,
 } from '../../src/api/types';
+import { AccountAvatar } from '../../src/components/account';
 import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
 import {
@@ -133,6 +134,11 @@ export default function TrainerDeskScreen() {
           />
         }
       >
+        <Row gap="md">
+          <AccountAvatar size={40} />
+          <Spacer />
+        </Row>
+
         <HeroCard
           testID="trainer-hero"
           eyebrow="Today"

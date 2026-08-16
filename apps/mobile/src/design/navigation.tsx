@@ -8,11 +8,15 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
+import React, { useState } from 'react';
+import { useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Motion } from './motion';
 import { Row, Text } from './primitives';
-import { alpha, color, hairline, HIT_TARGET, radii, space } from './tokens';
+import { alpha, color, hairline, HIT_TARGET, motion, radii, space } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -28,6 +32,9 @@ export const TAB_BAR_HEIGHT = 64;
 export function tabScreenOptions({ compact = false }: { compact?: boolean } = {}) {
   return {
     headerShown: false as const,
+    // All three role layouts already call this factory, so wiring the animated
+    // bar here rather than per layout is what keeps them from drifting apart.
+    tabBar: (props: BottomTabBarProps) => <AnimatedTabBar {...props} />,
     tabBarActiveTintColor: color.brand,
     tabBarInactiveTintColor: color.textTertiary,
     tabBarStyle: {
@@ -172,6 +179,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: -space.sm,
   },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingTop: space.sm,
+    backgroundColor: color.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.border,
+  },
+  pill: { position: 'absolute', top: 0, left: 0, bottom: 0, alignItems: 'center' },
+  pillInner: {
+    width: 34,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: color.brand,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    minHeight: HIT_TARGET,
+    paddingTop: space.xs,
+  },
+  tabLabel: { fontSize: 10 },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -485,5 +516,96 @@ export function NavRow({
       </View>
       {trailing ?? <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />}
     </Pressable>
+  );
+}
+
+/* ------------------------------------------------------------ animated bar */
+
+/**
+ * The bottom bar, with the selection animated.
+ *
+ * A pill slides between tabs on the UI thread and the chosen icon lifts
+ * slightly. That is the whole effect — a bar someone taps forty times a shift
+ * is the wrong place for anything that has to finish before the next tap can
+ * land, so the pill is short and nothing waits on it.
+ *
+ * What it must not lose, and does not: the 48pt targets, the safe-area inset
+ * that keeps the bar clear of the Android navigation bar, and the tab
+ * accessibility roles a screen reader navigates by.
+ */
+export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const [width, setWidth] = useState(0);
+
+  const visible = state.routes.filter(
+    (route) => descriptors[route.key]?.options.tabBarButton !== null,
+  );
+  const activeIndex = visible.findIndex((route) => route.key === state.routes[state.index]?.key);
+  const slot = visible.length ? width / visible.length : 0;
+
+  const pill = useAnimatedStyle(() => ({
+    width: slot,
+    transform: [{ translateX: withSpring(Math.max(0, activeIndex) * slot, motion.press) }],
+  }));
+
+  return (
+    <View
+      style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    >
+      {/* Decorative: the selected state is announced by each tab, not by this. */}
+      {slot > 0 ? (
+        <Motion.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.pill, pill]}
+        >
+          <View style={styles.pillInner} />
+        </Motion.View>
+      ) : null}
+
+      {visible.map((route, index) => {
+        const { options } = descriptors[route.key];
+        const label = (options.title ?? route.name) as string;
+        const focused = index === activeIndex;
+
+        return (
+          <Pressable
+            key={route.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={label}
+            testID={`tab-${route.name}`}
+            onPress={() => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            }}
+            style={styles.tab}
+          >
+            {options.tabBarIcon?.({
+              focused,
+              color: focused ? color.brand : color.textTertiary,
+              size: 22,
+            })}
+            <Text
+              variant="caption"
+              caps
+              tone={focused ? color.brand : color.textTertiary}
+              numberOfLines={1}
+              style={styles.tabLabel}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }

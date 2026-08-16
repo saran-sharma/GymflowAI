@@ -49,6 +49,26 @@ jest.mock('expo-camera', () => ({
   useCameraPermissions: () => [{ granted: true }, jest.fn()],
 }));
 
+/**
+ * Safe-area insets.
+ *
+ * `useSafeAreaInsets` throws outside a `SafeAreaProvider`, which every test
+ * rendering a Sheet or the tab bar would otherwise have to wrap for. The values
+ * are a plausible Android device rather than zeroes, so a component that forgets
+ * the inset still looks wrong in a snapshot.
+ */
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const insets = { top: 24, bottom: 16, left: 0, right: 0 };
+  return {
+    SafeAreaProvider: ({ children }) => children,
+    SafeAreaView: ({ children }) => React.createElement(require('react-native').View, null, children),
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => ({ x: 0, y: 0, width: 400, height: 800 }),
+    initialWindowMetrics: { insets, frame: { x: 0, y: 0, width: 400, height: 800 } },
+  };
+});
+
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(async () => undefined),
   hideAsync: jest.fn(async () => undefined),

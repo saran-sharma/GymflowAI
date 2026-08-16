@@ -17,6 +17,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { MemberHome, Payment } from '../../src/api/types';
+import { AccountAvatar } from '../../src/components/account';
 import {
   JourneyBar,
   NotConnected,
@@ -25,7 +26,6 @@ import {
   type SessionKind,
 } from '../../src/components/member';
 import {
-  Avatar,
   Badge,
   Body,
   Card,
@@ -114,7 +114,7 @@ export default function MemberHomeScreen() {
       >
         {/* Who and where. Quiet — the member knows their own name. */}
         <Row gap="md">
-          <Avatar name={me.full_name} size={44} />
+          <AccountAvatar size={44} />
           <Stack gap="xxs" style={styles.grow}>
             <Text variant="heading">{me.full_name}</Text>
             <Text variant="label" tone={color.textTertiary}>

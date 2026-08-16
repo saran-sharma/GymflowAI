@@ -31,7 +31,7 @@ export default function TrainerLayout() {
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'More', tabBarIcon: tabIcon('ellipsis-horizontal') }}
+        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
       />
       {/* Reached from the desk and from More, not tabs of their own. */}
       <Tabs.Screen name="shift" options={{ href: null }} />
