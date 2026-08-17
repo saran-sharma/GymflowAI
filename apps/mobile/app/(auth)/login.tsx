@@ -1,14 +1,25 @@
 /**
  * Sign in.
  *
- * The role selector is a convenience only — it pre-fills nothing the server
- * trusts. Authorization comes from the account, and after a successful login
- * the app routes on the *server's* role, not the chip the person tapped. If
- * those disagree, the server wins and the screen says so.
+ * The screen answers one question — how do I get into GymFlow, quickly and
+ * confidently — so it is built as two halves. The top is atmosphere: the
+ * wordmark and one editorial line, in Fraunces, doing the job a hero image
+ * would do if this product had photography. The bottom is a panel that rises
+ * over it holding everything a person actually touches, which puts the fields
+ * and the primary action inside thumb reach on a tall phone.
  *
- * Built from the design system rather than hand-rolled inputs, so the field
- * borders, error text and disabled button behave exactly as they do on every
- * other screen. Nothing about authentication changed here.
+ * **There is no role selector.** There used to be four chips above the form,
+ * and they were always a lie: `signIn` never sent the role, and routing has
+ * always used the role the *server* returned. Asking someone to declare who
+ * they are before proving who they are is a question the app cannot act on —
+ * and one human can be a member at one branch and a trainer at another. The
+ * role is now determined after authentication, which is what already happened.
+ *
+ * Passkey, Apple, Google and Create account are drawn because the design calls
+ * for them and then say plainly that they are not wired up. GymFlow has no
+ * WebAuthn endpoint, no OAuth client, and no self-signup — members are created
+ * by their branch. A button that looks live and does nothing is worse than one
+ * that explains itself.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -22,42 +33,46 @@ import {
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import { ApiError, OFFLINE_CODE, UNCONFIGURED_CODE } from '../../src/api/client';
-import type { Role } from '../../src/api/types';
 import {
   Banner,
   Button,
-  Eyebrow,
   Input,
-  LinkButton,
   OfflineNotice,
+  Row,
   Screen,
   SlamLogo,
-  Spacer,
   Stack,
-  Row,
   Text,
   alpha,
   color,
+  font,
   radii,
+  roleAccent,
   space,
 } from '../../src/design';
 import { homeRouteForRole, useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
 
-/** The four ways into SLAM. `admin` maps onto the platform's super-admin role. */
-const ROLES: { key: Role; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'owner', label: 'OWNER', icon: 'business-outline' },
-  { key: 'trainer', label: 'TRAINER', icon: 'barbell-outline' },
-  { key: 'member', label: 'MEMBER', icon: 'person-outline' },
-  { key: 'super_admin', label: 'ADMIN', icon: 'shield-checkmark-outline' },
-];
+/** Auth wears gold: it belongs to no role until the server names one. */
+const GOLD = roleAccent.auth;
 
 const HELP_TEXT =
   'Ask your SLAM branch manager to reset your password or check your account. ' +
   'Nagalkeni, Boganhalli and Alandur can all help.';
+
+/** Why each of the alternative sign-in routes cannot run yet. */
+const UNAVAILABLE = {
+  passkey:
+    'Passkeys need a WebAuthn endpoint GymFlow does not have yet. Sign in with your password.',
+  social: 'GymFlow has no OAuth client configured, and no way to link a Google or Apple account.',
+  signup:
+    'Accounts are created by your SLAM branch, not from the app. ' +
+    'Nagalkeni, Boganhalli and Alandur can all set one up.',
+} as const;
 
 /**
  * Turn a failure into something the person holding the phone can act on.
@@ -97,8 +112,8 @@ export default function LoginScreen() {
   const { signIn } = useAuth();
   const { isOnline } = useNetwork();
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
 
-  const [role, setRole] = useState<Role>('owner');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -112,6 +127,10 @@ export default function LoginScreen() {
   const passwordValid = password.length >= 8;
   const canSubmit = identifierValid && passwordValid && !busy;
   const errorText = useMemo(() => messageFor(error, isOnline), [error, isOnline]);
+
+  // A 320pt phone in landscape, or a small device with the keyboard up, has no
+  // room for a 44pt headline. The lockup stays; the editorial line steps down.
+  const compact = width < 360 || height < 700;
 
   // Validation speaks only once the person has left the field, so the form does
   // not scold someone halfway through typing their own email address.
@@ -131,12 +150,8 @@ export default function LoginScreen() {
     setError(null);
     setNotice(null);
     try {
+      // The server decides the role. Nothing on this screen influences it.
       const user = await signIn(identifier, password);
-      if (user.role !== role) {
-        // The selector was only ever a shortcut. Say what actually happened
-        // rather than silently landing somewhere unexpected.
-        setNotice(`Signed in as ${user.role.replace('_', ' ')}.`);
-      }
       router.replace(homeRouteForRole(user.role) as never);
     } catch (caught) {
       setError(
@@ -156,138 +171,182 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <Stack gap="sm" style={styles.header}>
-            <SlamLogo width={196} />
-            <Text variant="display" style={styles.headline}>
-              GymFlow AI
-            </Text>
-            <Text variant="body" tone={color.textSecondary}>
-              Smart operations across every SLAM branch.
-            </Text>
-          </Stack>
-
-          {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
-
-          <Stack gap="sm">
-            <Eyebrow>I am a</Eyebrow>
-            <Row gap="sm" align="stretch">
-              {ROLES.map((option) => {
-                const selected = option.key === role;
-                return (
-                  <Pressable
-                    key={option.key}
-                    onPress={() => setRole(option.key)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={option.label}
-                    testID={`role-${option.key}`}
-                    style={({ pressed }) => [
-                      styles.roleChip,
-                      selected ? styles.roleChipSelected : null,
-                      pressed ? styles.roleChipPressed : null,
-                    ]}
-                  >
-                    <Ionicons
-                      name={option.icon}
-                      size={18}
-                      color={selected ? color.brand : color.textTertiary}
-                    />
-                    <Text
-                      variant="caption"
-                      tone={selected ? color.text : color.textTertiary}
-                      style={styles.roleLabel}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+          {/* ------------------------------------------------ atmosphere */}
+          <View style={[styles.hero, compact ? styles.heroCompact : null]}>
+            <Row gap="md" align="center">
+              <SlamLogo width={112} />
+              <Text style={styles.wordmark}>GymFlow AI</Text>
             </Row>
-          </Stack>
 
-          <Stack gap="lg">
-            <Input
-              label="Email or mobile"
-              value={identifier}
-              onChangeText={setIdentifier}
-              onBlur={() => setTouched(true)}
-              placeholder="you@slam.fit or 98xxxxxxxx"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="username"
-              keyboardType="email-address"
-              inputMode="email"
-              returnKeyType="next"
-              onSubmitEditing={() => passwordRef.current?.focus()}
-              error={identifierError}
-              accessibilityLabel="Email address or mobile number"
-              testID="login-email"
-            />
+            <View style={styles.headline}>
+              <Text style={[styles.editorial, compact ? styles.editorialCompact : null]}>
+                Train smarter.
+              </Text>
+              <Text
+                style={[
+                  styles.editorial,
+                  styles.editorialAccent,
+                  compact ? styles.editorialCompact : null,
+                ]}
+              >
+                Perform better.
+              </Text>
+              <Text variant="body" tone={color.textSecondary} style={styles.tagline}>
+                Smart operations across every SLAM branch.
+              </Text>
+            </View>
+          </View>
 
-            <Input
-              ref={passwordRef}
-              label="Password"
-              secure
-              value={password}
-              onChangeText={setPassword}
-              onBlur={() => setTouched(true)}
-              placeholder="••••••••"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="current-password"
-              returnKeyType="go"
-              onSubmitEditing={submit}
-              error={passwordError}
-              accessibilityLabel="Password"
-              testID="login-password"
-              toggleTestID="toggle-password"
-            />
+          {/* ----------------------------------------------------- panel */}
+          <View style={styles.panel}>
+            <Text style={styles.welcome}>Welcome back.</Text>
+
+            {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
 
             {errorText ? (
               <Banner tone="critical" icon="alert-circle-outline" testID="login-error">
                 {errorText}
               </Banner>
             ) : null}
+
             {notice ? (
               <Banner tone="info" icon="information-circle-outline">
                 {notice}
               </Banner>
             ) : null}
 
+            <Stack gap="md">
+              <Input
+                label="Email / phone"
+                testID="login-email"
+                value={identifier}
+                onChangeText={setIdentifier}
+                onBlur={() => setTouched(true)}
+                error={identifierError}
+                placeholder="you@slam.fit"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="username"
+                textContentType="username"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+              />
+
+              <Input
+                ref={passwordRef}
+                label="Password"
+                testID="login-password"
+                toggleTestID="toggle-password"
+                value={password}
+                onChangeText={setPassword}
+                onBlur={() => setTouched(true)}
+                error={passwordError}
+                placeholder="Your GymFlow password"
+                secure
+                autoCapitalize="none"
+                autoComplete="current-password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
+              />
+
+              <Pressable
+                onPress={() => setNotice(HELP_TEXT)}
+                accessibilityRole="button"
+                accessibilityLabel="Forgot password"
+                testID="forgot-password"
+                hitSlop={space.sm}
+                style={styles.forgot}
+              >
+                <Text variant="label" tone={color.textSecondary}>
+                  Forgot password?
+                </Text>
+              </Pressable>
+            </Stack>
+
             <Button
               title="Sign in"
               size="lg"
+              testID="login-submit"
               loading={busy}
               disabled={!canSubmit}
-              onPress={submit}
-              testID="login-submit"
+              onPress={() => void submit()}
+              style={styles.primary}
             />
 
-            <Row>
-              <LinkButton
-                title="Forgot password?"
-                onPress={() => setNotice(HELP_TEXT)}
-                testID="forgot-password"
-              />
-              <Spacer />
-              <LinkButton
-                title="Contact your SLAM branch"
-                tone={color.textSecondary}
-                onPress={() => setNotice(HELP_TEXT)}
-                testID="contact-branch"
-              />
-            </Row>
-          </Stack>
+            {/* The alternatives. Drawn as the design asks, honest about being
+                unbuilt — each says why rather than failing silently. */}
+            <Pressable
+              onPress={() => setNotice(UNAVAILABLE.passkey)}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in with a passkey"
+              accessibilityHint="Not available in this build"
+              testID="passkey"
+              style={({ pressed }) => [styles.passkey, pressed ? styles.pressed : null]}
+            >
+              <Ionicons name="finger-print-outline" size={20} color={GOLD} />
+              <View style={styles.grow}>
+                <Text variant="label">Sign in with a passkey</Text>
+                <Text variant="caption" tone={color.textQuiet}>
+                  Not available yet
+                </Text>
+              </View>
+            </Pressable>
 
-          <Text variant="label" tone={color.textTertiary} align="center" style={styles.footer}>
-            Your session is stored in the device keychain. Attendance times always come from the
-            GymFlow server, never from your phone.
-          </Text>
+            <Row gap="sm" align="center" style={styles.divider}>
+              <View style={styles.rule} />
+              <Text variant="caption" caps tone={color.textQuiet}>
+                Continue with
+              </Text>
+              <View style={styles.rule} />
+            </Row>
+
+            <Row gap="sm" align="stretch">
+              {(['Apple', 'Google'] as const).map((provider) => (
+                <Pressable
+                  key={provider}
+                  onPress={() => setNotice(UNAVAILABLE.social)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Continue with ${provider}`}
+                  accessibilityHint="Not available in this build"
+                  testID={`social-${provider.toLowerCase()}`}
+                  style={({ pressed }) => [styles.social, pressed ? styles.pressed : null]}
+                >
+                  <Ionicons
+                    name={provider === 'Apple' ? 'logo-apple' : 'logo-google'}
+                    size={16}
+                    color={color.textSecondary}
+                  />
+                  <Text variant="label" tone={color.textSecondary}>
+                    {provider}
+                  </Text>
+                </Pressable>
+              ))}
+            </Row>
+
+            <Row gap="xs" justify="center" style={styles.signup}>
+              <Text variant="label" tone={color.textTertiary}>
+                Don&apos;t have an account?
+              </Text>
+              <Pressable
+                onPress={() => setNotice(UNAVAILABLE.signup)}
+                accessibilityRole="button"
+                accessibilityLabel="Create account"
+                testID="contact-branch"
+                hitSlop={space.sm}
+              >
+                <Text variant="label" tone={GOLD}>
+                  Contact your branch
+                </Text>
+              </Pressable>
+            </Row>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -296,26 +355,80 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: space.xl, gap: space.xl, flexGrow: 1, justifyContent: 'center' },
-  header: { alignItems: 'flex-start' },
-  headline: { marginTop: space.md },
-  roleChip: {
+  grow: { flex: 1 },
+  scroll: { flexGrow: 1, paddingBottom: space.xl },
+
+  hero: { paddingHorizontal: space.xl, paddingTop: space.lg, paddingBottom: space.xxl },
+  wordmark: {
+    fontFamily: font.displaySemi,
+    fontSize: 17,
+    letterSpacing: -0.4,
+    color: color.text,
+  },
+  heroCompact: { paddingBottom: space.lg },
+  headline: { paddingTop: space.xxl },
+  editorial: {
+    fontFamily: font.display,
+    fontSize: 40,
+    lineHeight: 44,
+    letterSpacing: -1.4,
+    color: color.text,
+  },
+  editorialCompact: { fontSize: 30, lineHeight: 34, letterSpacing: -1 },
+  editorialAccent: { fontFamily: font.displayItalic, color: GOLD },
+  tagline: { paddingTop: space.md },
+
+  // The panel rises over the page, which is what puts the fields and the
+  // primary action within thumb reach rather than centred on the screen.
+  panel: {
+    flexGrow: 1,
+    gap: space.lg,
+    backgroundColor: color.surface,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    borderTopWidth: 1,
+    borderColor: color.border,
+    paddingHorizontal: space.xl,
+    paddingTop: space.xl,
+    paddingBottom: space.xxl,
+  },
+  welcome: {
+    fontFamily: font.displaySemi,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    color: color.text,
+  },
+
+  forgot: { alignSelf: 'flex-end' },
+  primary: { backgroundColor: GOLD },
+
+  passkey: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 52,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.lg,
+    backgroundColor: color.surfaceInput,
+    borderWidth: 1,
+    borderColor: alpha(GOLD, 0.2),
+  },
+  social: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: space.md,
+    gap: space.sm,
+    minHeight: 48,
     borderRadius: radii.md,
+    backgroundColor: color.surfaceInput,
     borderWidth: 1,
     borderColor: color.border,
-    backgroundColor: color.surfaceRaised,
-    minHeight: 60,
   },
-  roleChipSelected: {
-    borderColor: color.brand,
-    backgroundColor: alpha(color.brand, 0.12),
-  },
-  roleChipPressed: { opacity: 0.8 },
-  roleLabel: { fontSize: 10 },
-  footer: { lineHeight: 18 },
+  pressed: { opacity: 0.7 },
+
+  divider: { paddingTop: space.xs },
+  rule: { flex: 1, height: 1, backgroundColor: color.border },
+  signup: { paddingTop: space.sm },
 });
