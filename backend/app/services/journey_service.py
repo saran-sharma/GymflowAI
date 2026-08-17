@@ -789,6 +789,34 @@ def update_set(db: Session, *, row: WorkoutSet, changes: dict) -> WorkoutSet:
     return row
 
 
+def previous_performance(
+    db: Session, *, session: WorkoutSession, item: WorkoutSessionItem
+) -> WorkoutSessionItem | None:
+    """The last time this member logged sets for this exercise.
+
+    Matched on exercise *name* rather than on the plan item, because a member's
+    plan is re-generated per session and re-splitting the programme must not
+    erase the history of a lift they have been doing for weeks.
+
+    Only sessions with at least one logged set qualify: an exercise that was
+    ticked off without any sets recorded has nothing to show, and returning it
+    would render an empty "last time" that reads as a bug.
+    """
+    return db.scalar(
+        select(WorkoutSessionItem)
+        .join(WorkoutSession, WorkoutSessionItem.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.member_id == session.member_id,
+            WorkoutSession.id != session.id,
+            WorkoutSession.session_date <= session.session_date,
+            WorkoutSessionItem.exercise == item.exercise,
+            WorkoutSessionItem.logged_sets.any(),
+        )
+        .order_by(WorkoutSession.session_date.desc(), WorkoutSession.id.desc())
+        .limit(1)
+    )
+
+
 def delete_set(db: Session, *, row: WorkoutSet) -> None:
     """Remove a set logged by mistake.
 

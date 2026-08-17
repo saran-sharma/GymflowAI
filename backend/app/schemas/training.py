@@ -122,6 +122,14 @@ class WorkoutItemOut(ORMModel):
     rest_seconds: int
     status: ItemStatus
     completed_at: datetime | None = None
+    # How many sets have actually been logged, against the ``sets`` the plan
+    # asked for. Counted in one aggregate by ``workout_out`` rather than by
+    # walking the relationship, which would be a query per exercise.
+    #
+    # Named apart from the model's ``logged_sets`` relationship on purpose:
+    # sharing the name makes ``model_validate`` read the list of rows into this
+    # integer field and fail validation.
+    sets_logged: int = 0
 
 
 class WorkoutSessionOut(BaseModel):
@@ -212,6 +220,22 @@ class WorkoutSetCreate(BaseModel):
     # not carry, and anything outside 1–10 is not on the scale at all.
     rpe: float | None = Field(default=None, ge=1, le=10, multiple_of=0.5)
     completed_at: datetime | None = None
+
+
+class WorkoutSetHistory(BaseModel):
+    """What the member did the last time they performed this exercise.
+
+    Returned as ``null`` rather than an empty list when there is no history, so
+    the app can say "first time" instead of rendering an empty table that looks
+    like a failed load.
+    """
+
+    session_id: int
+    session_date: date
+    split: WorkoutSplit
+    split_label: str
+    exercise: str
+    sets: list[WorkoutSetOut] = []
 
 
 class WorkoutSetUpdate(BaseModel):

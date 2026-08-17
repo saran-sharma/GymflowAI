@@ -3,23 +3,26 @@
  *
  * Days 1–3 are assessment and cardio, recorded by a trainer at the branch, so
  * this screen reports them rather than offering to start anything. Days 4–45
- * show the chart — sets, reps and rest — and let the member tick items off.
+ * show the chart — sets, reps and rest — and let the member work through it.
  * Finishing the chart completes the journey day server-side, including, on day
  * 45, the journey itself.
  *
- * The chart carries no load column. The API records sets, reps and rest and
- * nothing else, and a weight field the server cannot store would be a box that
- * silently forgets what a member typed.
+ * The chart is a list, not a workspace. Each exercise opens its own screen for
+ * logging, because weight and reps are entered between sets with one hand and
+ * deserve the whole display rather than a row in a list. What stays here is the
+ * thing the chart is for: which lift is next, and how far through it a member
+ * already is.
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Journey, JourneyDay, WorkoutItem, WorkoutSession } from '../../src/api/types';
-import { KindTag, NotConnected, TodayCard } from '../../src/components/member';
+import { KindTag, TodayCard } from '../../src/components/member';
 import {
   Badge,
   Banner,
@@ -57,6 +60,7 @@ const SPLIT_LABEL: Record<string, string> = {
 };
 
 export default function MemberWorkoutScreen() {
+  const router = useRouter();
   const { withToken } = useAuth();
   const journey = useApi<Journey | null>((token) => api.myJourney(token), []);
   const workout = useApi<WorkoutSession | null>((token) => api.todayWorkout(token), []);
@@ -70,6 +74,34 @@ export default function MemberWorkoutScreen() {
     void workout.refresh();
     void days.refresh();
   }, [journey, workout, days]);
+
+  /* Re-read the chart whenever the member comes back to it.
+   *
+   * Sets are logged on the exercise screen, so every count on this screen —
+   * `2/3` on a row, "3 of 6" in the badge, the progress bar — is stale the
+   * moment that screen is opened. Without this the member finishes an exercise
+   * and returns to a chart still showing the state they left, which reads as
+   * the app having lost the sets they just did.
+   *
+   * The callback holds no dependencies and reaches the current refresh through
+   * a ref, so it never changes identity. A callback rebuilt each render would
+   * make `useFocusEffect` re-run on every render, which is a fetch loop rather
+   * than a refresh.
+   */
+  const refreshOnReturn = useRef(workout.refresh);
+  refreshOnReturn.current = workout.refresh;
+  const arrived = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      // `useApi` already fetched on mount; the first focus would duplicate it.
+      if (!arrived.current) {
+        arrived.current = true;
+        return;
+      }
+      void refreshOnReturn.current();
+    }, []),
+  );
 
   const run = useCallback(
     async (action: (token: string) => Promise<unknown>) => {
@@ -129,10 +161,18 @@ export default function MemberWorkoutScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={workout.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={workout.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
-        {error ? <Banner tone="critical" icon="alert-circle-outline">{error}</Banner> : null}
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
 
         {/* Assessment days belong to the trainer, so this reports rather than acts. */}
         {inAssessment ? (
@@ -201,14 +241,18 @@ export default function MemberWorkoutScreen() {
                   <KindTag kind="own_workout" />
                   <Spacer />
                   <Badge
-                    label={done ? 'Completed' : `${session.completed_items} of ${session.total_items}`}
+                    label={
+                      done ? 'Completed' : `${session.completed_items} of ${session.total_items}`
+                    }
                     tone={done ? 'positive' : 'brand'}
                     solid={done}
                   />
                 </Row>
                 <Text variant="title">{session.split_label}</Text>
                 <ProgressBar
-                  value={session.total_items ? (session.completed_items / session.total_items) * 100 : 0}
+                  value={
+                    session.total_items ? (session.completed_items / session.total_items) * 100 : 0
+                  }
                   tone={done ? 'positive' : 'brand'}
                 />
               </Card>
@@ -218,21 +262,15 @@ export default function MemberWorkoutScreen() {
                   <ExerciseRow
                     key={item.id}
                     item={item}
-                    disabled={busy || done}
-                    onToggle={() =>
-                      void run((token) =>
-                        api.setWorkoutItem(session.id, item.id, item.status !== 'completed', token),
-                      )
+                    onOpen={() =>
+                      router.push({
+                        pathname: '/(member)/exercise/[itemId]',
+                        params: { itemId: String(item.id), sessionId: String(session.id) },
+                      })
                     }
                   />
                 ))}
               </Section>
-
-              <NotConnected
-                icon="scale-outline"
-                title="Loads are not recorded yet"
-                detail="GymFlow stores sets, reps and rest for each exercise. Weight per set needs a change on the server before it can be saved."
-              />
 
               {!done ? (
                 <Button
@@ -274,39 +312,45 @@ export default function MemberWorkoutScreen() {
   );
 }
 
-function ExerciseRow({
-  item,
-  disabled,
-  onToggle,
-}: {
-  item: WorkoutItem;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
+/**
+ * One exercise on the chart.
+ *
+ * The row states progress rather than offering a tick box: an exercise is
+ * finished by logging its sets, and a checkbox beside a lift with two of three
+ * sets recorded would be offering to contradict the member's own data.
+ */
+function ExerciseRow({ item, onOpen }: { item: WorkoutItem; onOpen: () => void }) {
   const done = item.status === 'completed';
+  const started = item.sets_logged > 0;
+
   return (
     <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: done, disabled }}
-      accessibilityLabel={`${item.exercise}, ${item.sets} sets of ${item.reps}`}
-      disabled={disabled}
-      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.exercise}, ${item.sets_logged} of ${item.sets} sets logged. Open.`}
+      onPress={onOpen}
       style={({ pressed }) => [styles.exercise, pressed ? styles.exercisePressed : null]}
     >
       <Ionicons
-        name={done ? 'checkmark-circle' : 'ellipse-outline'}
+        name={done ? 'checkmark-circle' : started ? 'ellipse' : 'ellipse-outline'}
         size={26}
-        color={done ? color.status.positive : color.textTertiary}
+        color={done ? color.status.positive : started ? color.brand : color.textTertiary}
       />
       <Stack gap="xxs" style={styles.grow}>
         <Text variant="body" tone={done ? color.textSecondary : color.text}>
           {item.exercise}
         </Text>
         <Text variant="label" tone={color.textTertiary}>
+          {/* The prescription, and against it what has actually been recorded. */}
           {item.sets} × {item.reps}
           {item.rest_seconds ? ` · ${item.rest_seconds}s rest` : ''}
         </Text>
       </Stack>
+      {started ? (
+        <Text variant="mono" tone={done ? color.status.positive : color.brand}>
+          {item.sets_logged}/{item.sets}
+        </Text>
+      ) : null}
+      <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />
     </Pressable>
   );
 }

@@ -212,6 +212,9 @@ import type {
   TrainerPerformance,
   WorkoutItem,
   WorkoutSession,
+  WorkoutSet,
+  WorkoutSetHistory,
+  WorkoutSetInput,
   WorkoutSplit,
 } from './types';
 
@@ -282,6 +285,46 @@ export const setWorkoutItem = (sessionId: number, itemId: number, done: boolean,
   request<WorkoutItem>(`/journeys/workouts/${sessionId}/items/${itemId}`, {
     method: 'PATCH',
     body: { done },
+    token,
+  });
+
+/* ----------------------------------------------------------- logged sets */
+
+const setsPath = (sessionId: number, itemId: number) =>
+  `/journeys/workouts/${sessionId}/items/${itemId}/sets`;
+
+export const workoutSets = (sessionId: number, itemId: number, token: string) =>
+  request<WorkoutSet[]>(setsPath(sessionId, itemId), { token });
+
+export const logWorkoutSet = (
+  sessionId: number,
+  itemId: number,
+  body: WorkoutSetInput,
+  token: string,
+) => request<WorkoutSet>(setsPath(sessionId, itemId), { method: 'POST', body, token });
+
+export const updateWorkoutSet = (
+  sessionId: number,
+  itemId: number,
+  setId: number,
+  body: Partial<WorkoutSetInput>,
+  token: string,
+) =>
+  request<WorkoutSet>(`${setsPath(sessionId, itemId)}/${setId}`, {
+    method: 'PATCH',
+    body,
+    token,
+  });
+
+export const deleteWorkoutSet = (sessionId: number, itemId: number, setId: number, token: string) =>
+  request<{ message: string }>(`${setsPath(sessionId, itemId)}/${setId}`, {
+    method: 'DELETE',
+    token,
+  });
+
+/** Null when the member has never logged this exercise before. */
+export const previousPerformance = (sessionId: number, itemId: number, token: string) =>
+  request<WorkoutSetHistory | null>(`/journeys/workouts/${sessionId}/items/${itemId}/previous`, {
     token,
   });
 
