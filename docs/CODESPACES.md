@@ -18,8 +18,8 @@ npm run dev
 This automatically:
 1. Starts the FastAPI backend on port 8000 (if not already running).
 2. Verifies backend health and database connectivity.
-3. Configures Codespaces public port forwarding for ports 8000 and 8081.
-4. Starts the Metro bundler on port 8081 with Codespaces public URLs.
+3. Configures Codespaces public port forwarding for ports 8000 and 8082.
+4. Starts the Metro bundler on port 8082 with Codespaces public URLs.
 5. Prints the exact Dev Client URL, deep link, and QR code to connect your physical Android device.
 
 ---
@@ -44,7 +44,7 @@ This automatically:
 2. Run `npm run dev`.
 3. Open the app on your phone, select **Enter URL manually**, and enter:
    ```
-   https://<codespace-name>-8081.app.github.dev
+   https://<codespace-name>-8082.app.github.dev
    ```
    *(Or scan the QR code printed in the terminal)*
 4. Fast Refresh is active: any change in `apps/mobile/src` will automatically hot-reload on your phone.
@@ -53,11 +53,11 @@ This automatically:
 
 ## Ports & Public Access
 
-Codespaces forwards port 8000 (FastAPI) and port 8081 (Metro). Both are configured with `visibility: public` in `devcontainer.json` so external phones can reach them.
+Codespaces forwards port 8000 (FastAPI) and port 8082 (Metro). Both are configured with `visibility: public` in `devcontainer.json` so external phones can reach them.
 
 To verify or change port visibility manually:
 ```bash
-gh codespace ports visibility 8000:public 8081:public
+gh codespace ports visibility 8000:public 8082:public
 ```
 Or check status at any time:
 ```bash

@@ -21,9 +21,9 @@
 
 | Command | Description |
 | --- | --- |
-| `npm run dev` (or `./dev.sh`) | Start both Backend (:8000) and Metro (:8081) in one command |
+| `npm run dev` (or `./dev.sh`) | Start both Backend (:8000) and Metro (:8082) in one command |
 | `npm run dev:backend` | Start only the FastAPI backend (:8000) |
-| `npm run dev:mobile` | Start only Metro bundler for mobile (:8081) |
+| `npm run dev:mobile` | Start only Metro bundler for mobile (:8082) |
 | `npm run dev:status` | Run system diagnostics (ports, health, database, Expo config) |
 | `npm run dev:stop` | Stop all running development services cleanly |
 | `npm run dev:clean` | Clear Metro bundler cache and restart |
@@ -36,7 +36,7 @@
 ### In GitHub Codespaces (Recommended)
 Everything is pre-configured automatically:
 1. Open the repository in GitHub Codespaces.
-2. The devcontainer post-create script automatically creates the Python `.venv`, seeds the database, installs dependencies, and configures public port forwarding for ports `8000` and `8081`.
+2. The devcontainer post-create script automatically creates the Python `.venv`, seeds the database, installs dependencies, and configures public port forwarding for ports `8000` and `8082`.
 3. Run `npm run dev`.
 
 ### Local Setup (Direct on Host Machine)
@@ -75,11 +75,11 @@ GymFlow AI uses an **Expo Development Build** (`expo-dev-client`) rather than pl
 
 ### Step 2: Connect to Metro
 1. In your Codespace / dev terminal, run `npm run dev`.
-2. Codespaces automatically forwards port `8081` as **Public**.
+2. Codespaces automatically forwards port `8082` as **Public**.
 3. Open the **GymFlow AI** development app on your phone.
 4. Under "Development servers", tap **Enter URL manually** and enter:
    ```
-   https://<your-codespace-name>-8081.app.github.dev
+   https://<your-codespace-name>-8082.app.github.dev
    ```
    *(The exact URL is printed in your terminal when running `npm run dev`)*
 5. Alternatively, scan the QR code printed in the terminal directly from the dev client or phone camera.
@@ -96,8 +96,8 @@ GymFlow AI separates the **Backend API URL** from the **Metro Bundler URL**:
   - In Local Dev: `http://localhost:8000` (or `http://10.0.2.2:8000` for Android emulator)
   - Automatically written to `apps/mobile/.env` when starting `npm run dev`.
 - **Metro Bundler URL**:
-  - In Codespaces: `https://<codespace>-8081.app.github.dev`
-  - In Local Dev: `http://localhost:8081`
+  - In Codespaces: `https://<codespace>-8082.app.github.dev`
+  - In Local Dev: `http://localhost:8082`
   - Managed via `REACT_NATIVE_PACKAGER_HOSTNAME` and `EXPO_PACKAGER_PROXY_URL`.
 
 ---
@@ -130,8 +130,8 @@ GymFlow AI — System Diagnostics
 
 Backend : 8000         ✓ RUNNING
 Database               ✓ CONNECTED
-Metro   : 8081         ✓ RUNNING
-Codespaces Ports       ✓ PUBLIC (8000, 8081)
+Metro   : 8082         ✓ RUNNING
+Codespaces Ports       ✓ PUBLIC (8000, 8082)
 Expo Configuration     ✓ CONFIGURED (https://...-8000.app.github.dev)
 
 All systems healthy! Ready for development.
@@ -152,7 +152,7 @@ All systems healthy! Ready for development.
      npm run dev:clean
      ```
 
-3. **Port 8000 or 8081 in use**:
+3. **Port 8000 or 8082 in use**:
    - Stop any stuck processes:
      ```bash
      npm run dev:stop

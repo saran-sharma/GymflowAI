@@ -11,18 +11,23 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
 
-  "forwardPorts": [8000, 8081],
+  // 8082 is where scripts/dev-runner.mjs puts Metro. Declaring it here is what
+  // makes the forward exist; the runner's `gh codespace ports visibility` call
+  // is a backstop for a container where this file has not been re-read, not the
+  // mechanism — `gh` is not always authenticated inside the container, and when
+  // it is not the port stays private and the phone gets a GitHub login page.
+  "forwardPorts": [8000, 8082],
 
   "portsAttributes": {
     "8000": {
       "label": "GymFlow API",
       "onAutoForward": "notify",
-      // A phone running Expo Go is outside the Codespace, so it can only reach
-      // the API if this port is public. Codespaces defaults forwarded ports to
-      // private, which would make every request fail with an auth redirect.
+      // A phone is outside the Codespace, so it can only reach the API if this
+      // port is public. Codespaces defaults forwarded ports to private, which
+      // would make every request fail with an auth redirect.
       "visibility": "public"
     },
-    "8081": {
+    "8082": {
       "label": "Metro bundler",
       "onAutoForward": "silent",
       "visibility": "public"

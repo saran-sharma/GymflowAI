@@ -94,7 +94,7 @@ say "Mobile dependencies"
 
 # Configure Codespaces ports to public if running inside Codespaces
 if [ -n "${CODESPACE_NAME:-}" ]; then
-  gh codespace ports visibility 8000:public 8081:public 2>/dev/null || true
+  gh codespace ports visibility 8000:public 8082:public 2>/dev/null || true
 fi
 
 say "Ready — run 'npm run dev' (or './dev.sh')"
