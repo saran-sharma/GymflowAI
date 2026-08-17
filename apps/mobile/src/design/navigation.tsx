@@ -16,7 +16,7 @@ import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-
 
 import { Motion } from './motion';
 import { Row, Text } from './primitives';
-import { alpha, color, hairline, HIT_TARGET, motion, radii, space } from './tokens';
+import { alpha, color, font, hairline, HIT_TARGET, motion, radii, space } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -29,13 +29,18 @@ export const TAB_BAR_HEIGHT = 64;
  * `compact` drops the label size a step, for the five-tab layouts where six
  * characters of label would otherwise wrap.
  */
-export function tabScreenOptions({ compact = false }: { compact?: boolean } = {}) {
+export function tabScreenOptions({
+  compact = false,
+  accent = color.brand,
+}: { compact?: boolean; accent?: string } = {}) {
   return {
     headerShown: false as const,
     // All three role layouts already call this factory, so wiring the animated
     // bar here rather than per layout is what keeps them from drifting apart.
-    tabBar: (props: BottomTabBarProps) => <AnimatedTabBar {...props} />,
-    tabBarActiveTintColor: color.brand,
+    // `accent` is how a role's colour reaches the bar without any component
+    // below needing to know that roles exist.
+    tabBar: (props: BottomTabBarProps) => <AnimatedTabBar {...props} accent={accent} />,
+    tabBarActiveTintColor: accent,
     tabBarInactiveTintColor: color.textTertiary,
     tabBarStyle: {
       backgroundColor: color.surface,
@@ -47,7 +52,7 @@ export function tabScreenOptions({ compact = false }: { compact?: boolean } = {}
     },
     tabBarLabelStyle: {
       fontSize: compact ? 10 : 11,
-      fontWeight: '700' as const,
+      fontFamily: font.sansMedium,
       letterSpacing: 0.4,
     },
     sceneStyle: { backgroundColor: color.background },
@@ -533,7 +538,12 @@ export function NavRow({
  * that keeps the bar clear of the Android navigation bar, and the tab
  * accessibility roles a screen reader navigates by.
  */
-export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function AnimatedTabBar({
+  state,
+  descriptors,
+  navigation,
+  accent = color.brand,
+}: BottomTabBarProps & { accent?: string }) {
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
 
@@ -561,7 +571,7 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
           importantForAccessibility="no-hide-descendants"
           style={[styles.pill, pill]}
         >
-          <View style={styles.pillInner} />
+          <View style={[styles.pillInner, { backgroundColor: accent }]} />
         </Motion.View>
       ) : null}
 
@@ -591,13 +601,13 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
           >
             {options.tabBarIcon?.({
               focused,
-              color: focused ? color.brand : color.textTertiary,
+              color: focused ? accent : color.textQuiet,
               size: 22,
             })}
             <Text
               variant="caption"
               caps
-              tone={focused ? color.brand : color.textTertiary}
+              tone={focused ? accent : color.textQuiet}
               numberOfLines={1}
               style={styles.tabLabel}
             >

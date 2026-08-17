@@ -27,6 +27,7 @@ import {
   Text,
   alpha,
   color,
+  font,
   hairline,
   radii,
   space,
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaLabel: { fontWeight: '800', letterSpacing: 0.3 },
+  ctaLabel: { fontFamily: font.sansSemi, letterSpacing: 0.3 },
   card: {
     backgroundColor: color.surfaceRaised,
     borderRadius: radii.lg,

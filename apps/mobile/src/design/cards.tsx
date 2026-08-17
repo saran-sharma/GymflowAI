@@ -20,7 +20,7 @@ import { Avatar } from './brand';
 import { Motion, entrance, usePressMotion } from './motion';
 import { Badge, ProgressBar, ProgressRing } from './controls';
 import { Card, Eyebrow, Row, Spacer, Stack, Text } from './primitives';
-import { alpha, color, hairline, motion, radii, space, toneColor, type Tone } from './tokens';
+import { alpha, color, font, hairline, motion, radii, space, toneColor, type Tone } from './tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   heroFigure: {
     fontSize: 24,
     lineHeight: 28,
-    fontWeight: '800',
+    fontFamily: font.monoMedium,
     letterSpacing: -0.8,
     color: color.text,
   },
@@ -439,7 +439,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: color.surfaceOverlay,
   },
-  metricValue: { fontSize: 22, lineHeight: 26, fontWeight: '800', letterSpacing: -0.8 },
+  metricValue: {
+    fontFamily: font.monoMedium,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.8,
+  },
   timelineRail: { width: 56, alignItems: 'flex-start' },
   timelineDot: {
     width: 9,
@@ -489,7 +494,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 28,
     lineHeight: 32,
-    fontWeight: '800',
+    fontFamily: font.monoMedium,
     letterSpacing: -1,
   },
   sessionTime: { minWidth: 52 },
