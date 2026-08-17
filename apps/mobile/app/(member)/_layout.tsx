@@ -30,6 +30,8 @@ export default function MemberLayout() {
       <Tabs.Screen name="classes" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="visits" options={{ href: null }} />
+      {/* Pushed from the workout chart while a member is mid-set. */}
+      <Tabs.Screen name="exercise/[itemId]" options={{ href: null }} />
     </Tabs>
   );
 }

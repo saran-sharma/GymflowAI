@@ -16,7 +16,13 @@ import pytest
 from conftest import make_member
 from sqlalchemy import select
 
-from app.db.models import SessionStatus, WorkoutSet
+from app.db.models import (
+    SessionStatus,
+    WorkoutSession,
+    WorkoutSessionItem,
+    WorkoutSet,
+    WorkoutSplit,
+)
 from app.services import journey_service
 
 BASE = "/api/v1/journeys"
@@ -393,3 +399,169 @@ def test_deleting_an_exercise_takes_its_sets_with_it(db, world, workout):
     db.delete(item)
     db.commit()
     assert db.scalars(select(WorkoutSet).where(WorkoutSet.session_item_id == item.id)).all() == []
+
+
+# --------------------------------------------------- previous performance
+
+
+def _past_session(db, member, *, days_ago: int, exercise: str, sets: list[tuple[float, int]]):
+    """A completed workout on an earlier date, with sets logged against one lift.
+
+    Built directly rather than through ``start_workout``, which deliberately
+    reuses today's open session and so cannot produce a session in the past.
+    """
+    session = WorkoutSession(
+        member_id=member.id,
+        branch_id=member.branch_id,
+        split=WorkoutSplit.PUSH,
+        session_date=date.today() - timedelta(days=days_ago),
+        status=SessionStatus.COMPLETED,
+    )
+    db.add(session)
+    db.flush()
+    item = WorkoutSessionItem(
+        session_id=session.id, order_index=0, exercise=exercise, sets=3, reps="10"
+    )
+    db.add(item)
+    db.flush()
+    for number, (weight, reps) in enumerate(sets, start=1):
+        journey_service.log_set(db, item=item, set_number=number, weight_kg=weight, reps=reps)
+    return session
+
+
+def previous_url(session, item) -> str:
+    return f"{BASE}/workouts/{session.id}/items/{item.id}/previous"
+
+
+def test_no_history_reads_as_null_not_as_an_empty_list(client, world, auth, workout):
+    """ "You have not done this before" and "we could not load it" must differ."""
+    response = client.get(
+        previous_url(workout, first_item(workout)), headers=auth(world["member_ngk_user"])
+    )
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_previous_performance_returns_the_last_session_that_logged_sets(
+    client, db, world, auth, workout
+):
+    item = first_item(workout)
+    _past_session(
+        db, world["member_ngk"], days_ago=3, exercise=item.exercise, sets=[(60, 8), (60, 6)]
+    )
+    db.commit()
+
+    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert body is not None
+    assert body["exercise"] == item.exercise
+    assert body["session_date"] == (date.today() - timedelta(days=3)).isoformat()
+    assert [(s["weight_kg"], s["reps"]) for s in body["sets"]] == [(60.0, 8), (60.0, 6)]
+
+
+def test_the_most_recent_history_wins(client, db, world, auth, workout):
+    item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=10, exercise=item.exercise, sets=[(50, 10)])
+    _past_session(db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[(65, 5)])
+    db.commit()
+
+    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert [(s["weight_kg"], s["reps"]) for s in body["sets"]] == [(65.0, 5)]
+
+
+def test_a_past_session_with_no_logged_sets_is_not_offered_as_history(
+    client, db, world, auth, workout
+):
+    """An exercise ticked off without sets has nothing to show."""
+    item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[])
+    _past_session(db, world["member_ngk"], days_ago=9, exercise=item.exercise, sets=[(55, 7)])
+    db.commit()
+
+    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert body["session_date"] == (date.today() - timedelta(days=9)).isoformat()
+
+
+def test_history_never_crosses_members(client, db, world, auth, workout):
+    """Another member's lifts are not this member's previous performance."""
+    item = first_item(workout)
+    other, _ = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
+    journey_service.start_journey(db, member=other, start_date=date.today() - timedelta(days=5))
+    _past_session(db, other, days_ago=1, exercise=item.exercise, sets=[(200, 20)])
+    db.commit()
+
+    response = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"]))
+    assert response.json() is None
+
+
+def test_the_current_session_is_not_its_own_history(client, world, auth, workout):
+    headers = auth(world["member_ngk_user"])
+    item = first_item(workout)
+    client.post(
+        sets_url(workout, item), json={"set_number": 1, "weight_kg": 60, "reps": 8}, headers=headers
+    )
+
+    assert client.get(previous_url(workout, item), headers=headers).json() is None
+
+
+def test_reading_history_requires_authentication_and_ownership(client, db, world, auth, workout):
+    item = first_item(workout)
+    assert client.get(previous_url(workout, item)).status_code == 401
+
+    _, other_user = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
+    db.commit()
+    assert client.get(previous_url(workout, item), headers=auth(other_user)).status_code == 403
+
+
+# ----------------------------------------------------- the chart's summary
+
+
+def test_the_workout_chart_reports_how_many_sets_are_logged(client, world, auth, workout):
+    """The chart is where a member picks the next lift, so it has to show
+    which ones they have already worked through."""
+    headers = auth(world["member_ngk_user"])
+    item = first_item(workout)
+    for number in (1, 2):
+        client.post(
+            sets_url(workout, item),
+            json={"set_number": number, "weight_kg": 60, "reps": 8},
+            headers=headers,
+        )
+
+    chart = client.get("/api/v1/journeys/me/workout/today", headers=headers).json()
+    by_id = {entry["id"]: entry for entry in chart["items"]}
+    assert by_id[item.id]["sets_logged"] == 2
+    # Every other exercise reports zero rather than omitting the field.
+    assert all(
+        by_id[other.id]["sets_logged"] == 0 for other in workout.items if other.id != item.id
+    )
+
+
+def test_the_logged_count_is_one_query_not_one_per_exercise(client, world, auth, workout):
+    """Guards the aggregate: walking the relationship would be an N+1 that only
+    shows up as a slow screen on a member with a full chart."""
+    from sqlalchemy import event
+
+    from app.db.session import engine
+
+    headers = auth(world["member_ngk_user"])
+    client.post(
+        sets_url(workout, first_item(workout)),
+        json={"set_number": 1, "weight_kg": 60, "reps": 8},
+        headers=headers,
+    )
+
+    counted: list[str] = []
+
+    def record(conn, cursor, statement, *rest):
+        counted.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        client.get("/api/v1/journeys/me/workout/today", headers=headers)
+    finally:
+        # The same function object, or the listener outlives the test and
+        # every later test pays for it.
+        event.remove(engine, "before_cursor_execute", record)
+
+    set_queries = [q for q in counted if "workout_sets" in q.lower()]
+    assert len(set_queries) == 1, set_queries

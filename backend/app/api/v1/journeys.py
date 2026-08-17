@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today
@@ -56,6 +56,7 @@ from app.schemas.training import (
     WorkoutPlanOut,
     WorkoutSessionOut,
     WorkoutSetCreate,
+    WorkoutSetHistory,
     WorkoutSetOut,
     WorkoutSetUpdate,
 )
@@ -148,8 +149,21 @@ def journey_out(db: Session, journey: Journey) -> JourneyOut:
     )
 
 
+def _logged_set_counts(db: Session, items: list[WorkoutSessionItem]) -> dict[int, int]:
+    """Sets logged per exercise, in one query rather than one per exercise."""
+    if not items:
+        return {}
+    rows = db.execute(
+        select(WorkoutSet.session_item_id, func.count())
+        .where(WorkoutSet.session_item_id.in_([i.id for i in items]))
+        .group_by(WorkoutSet.session_item_id)
+    ).all()
+    return dict(rows)
+
+
 def workout_out(db: Session, session: WorkoutSession) -> WorkoutSessionOut:
     items = sorted(session.items, key=lambda i: i.order_index)
+    counts = _logged_set_counts(db, items)
     return WorkoutSessionOut(
         id=session.id,
         member_id=session.member_id,
@@ -163,7 +177,10 @@ def workout_out(db: Session, session: WorkoutSession) -> WorkoutSessionOut:
         started_at=session.started_at,
         completed_at=session.completed_at,
         supervising_trainer_id=session.supervising_trainer_id,
-        items=[WorkoutItemOut.model_validate(i) for i in items],
+        items=[
+            WorkoutItemOut.model_validate(i).model_copy(update={"sets_logged": counts.get(i.id, 0)})
+            for i in items
+        ],
         completed_items=sum(1 for i in items if i.status.value == "completed"),
         total_items=len(items),
     )
@@ -334,6 +351,39 @@ def list_workout_sets(
     session = _authorised_session(db, user, session_id)
     item = journey_service.load_item(db, session=session, item_id=item_id)
     return journey_service.list_sets(db, item=item)
+
+
+@router.get(
+    "/workouts/{session_id}/items/{item_id}/previous",
+    response_model=WorkoutSetHistory | None,
+)
+def previous_performance(
+    session_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WorkoutSetHistory | None:
+    """What this member lifted the last time they did this exercise.
+
+    Null when there is no history. The app needs to tell "you have not done
+    this before" apart from "we could not load it", and an empty list cannot
+    carry that distinction.
+    """
+    session = _authorised_session(db, user, session_id)
+    item = journey_service.load_item(db, session=session, item_id=item_id)
+    previous = journey_service.previous_performance(db, session=session, item=item)
+    if previous is None:
+        return None
+
+    past = previous.session
+    return WorkoutSetHistory(
+        session_id=past.id,
+        session_date=past.session_date,
+        split=past.split,
+        split_label=SPLIT_LABELS.get(past.split, past.split.value.title()),
+        exercise=previous.exercise,
+        sets=[WorkoutSetOut.model_validate(s) for s in previous.logged_sets],
+    )
 
 
 @router.post(

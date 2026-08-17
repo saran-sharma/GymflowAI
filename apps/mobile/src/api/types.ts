@@ -346,6 +346,8 @@ export interface WorkoutItem {
   rest_seconds: number;
   status: ItemState;
   completed_at: string | null;
+  /** Sets actually logged, against the `sets` the plan prescribed. */
+  sets_logged: number;
 }
 
 export interface WorkoutSession {
@@ -364,6 +366,38 @@ export interface WorkoutSession {
   items: WorkoutItem[];
   completed_items: number;
   total_items: number;
+}
+
+/**
+ * One performed set. `weight_kg` is 0 for bodyweight work — a real answer, not
+ * a missing one — while `rpe` is genuinely optional and stays null when the
+ * member did not record it.
+ */
+export interface WorkoutSet {
+  id: number;
+  session_item_id: number;
+  set_number: number;
+  weight_kg: number;
+  reps: number;
+  rpe: number | null;
+  completed_at: string | null;
+}
+
+export interface WorkoutSetInput {
+  set_number: number;
+  weight_kg: number;
+  reps: number;
+  rpe?: number | null;
+}
+
+/** What the member lifted the last time they did this exercise. Null when never. */
+export interface WorkoutSetHistory {
+  session_id: number;
+  session_date: string;
+  split: WorkoutSplit;
+  split_label: string;
+  exercise: string;
+  sets: WorkoutSet[];
 }
 
 export interface PTPackage {
@@ -419,7 +453,12 @@ export interface PTOffer {
   headline: string;
   message: string;
   benefits: string[];
-  options: { sessions: number; label: string; price_amount: number | null; currency: string | null }[];
+  options: {
+    sessions: number;
+    label: string;
+    price_amount: number | null;
+    currency: string | null;
+  }[];
   disclaimer: string;
 }
 
