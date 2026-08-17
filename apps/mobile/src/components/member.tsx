@@ -105,6 +105,14 @@ export interface TodayCardProps {
   statusTone?: Tone;
   cta: string;
   onPress: () => void;
+  /**
+   * A quieter second route out of the card, under the CTA.
+   *
+   * Exists because one card can have two honest destinations — "carry on with
+   * the next exercise" and "show me the whole chart" — and the alternative is
+   * a second card competing with the first for the same glance.
+   */
+  secondary?: { label: string; onPress: () => void };
   disabled?: boolean;
   testID?: string;
 }
@@ -126,6 +134,7 @@ export function TodayCard({
   statusTone = 'neutral',
   cta,
   onPress,
+  secondary,
   disabled = false,
   testID,
 }: TodayCardProps) {
@@ -187,6 +196,20 @@ export function TodayCard({
             {cta}
           </Text>
         </Pressable>
+
+        {secondary ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={secondary.label}
+            onPress={secondary.onPress}
+            hitSlop={space.sm}
+            style={styles.secondary}
+          >
+            <Text variant="label" tone={color.textSecondary}>
+              {secondary.label}
+            </Text>
+          </Pressable>
+        ) : null}
       </Stack>
     </View>
   );
@@ -382,6 +405,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  secondary: { alignSelf: 'center', paddingVertical: space.xs },
   ctaLabel: { fontFamily: font.sansSemi, letterSpacing: 0.3 },
   card: {
     backgroundColor: color.surfaceRaised,

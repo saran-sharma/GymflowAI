@@ -10,13 +10,13 @@
  * server-side — which is how Day 45 completes without anyone pressing anything.
  */
 
-import { useRouter } from 'expo-router';
-import React from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useRef } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { MemberHome, Payment } from '../../src/api/types';
+import type { MemberHome, Payment, WorkoutItem, WorkoutSession } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
 import {
   JourneyBar,
@@ -60,10 +60,51 @@ function isToday(iso: string | null | undefined): boolean {
   );
 }
 
+/**
+ * The exercise the member should walk to next.
+ *
+ * The first one they have not finished, in the order the chart lists them.
+ * Null when every exercise is done — at which point the thing left to do is
+ * finish the workout, which is not an exercise and lives on the chart.
+ */
+function nextExercise(session: WorkoutSession): WorkoutItem | null {
+  return (
+    [...session.items]
+      .sort((a, b) => a.order_index - b.order_index)
+      .find((item) => item.status !== 'completed') ?? null
+  );
+}
+
+/** Sets actually logged today, across the whole workout. */
+function loggedSets(session: WorkoutSession): number {
+  return session.items.reduce((total, item) => total + item.sets_logged, 0);
+}
+
 export default function MemberHomeScreen() {
   const router = useRouter();
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
   const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
+
+  /* Home now sends the member straight into logging, so it is the screen they
+   * come back to — and its counts describe a moment that has already passed.
+   *
+   * The callback holds no dependencies and reaches the current refresh through
+   * a ref, so it never changes identity; one rebuilt each render would make
+   * `useFocusEffect` fire on every render, which is a fetch loop. The first
+   * focus is skipped because `useApi` has already fetched on mount. */
+  const refreshOnReturn = useRef(home.refresh);
+  refreshOnReturn.current = home.refresh;
+  const arrived = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!arrived.current) {
+        arrived.current = true;
+        return;
+      }
+      void refreshOnReturn.current();
+    }, []),
+  );
 
   if (home.loading) return <SkeletonScreen cards={3} />;
 
@@ -313,19 +354,15 @@ export default function MemberHomeScreen() {
 
     const started = workout !== null;
     const done = workout?.status === 'completed';
+    const next = started ? nextExercise(workout) : null;
+    const chart = () => router.push('/(member)/workout' as never);
 
     return (
       <TodayCard
         testID="today-card"
         kind="own_workout"
         title={workout?.split_label ?? journey.split_today.toUpperCase()}
-        subtitle={
-          started
-            ? `${workout.completed_items} of ${workout.total_items} exercises done`
-            : journey.phase === 'assessment'
-              ? `Day ${journey.current_day} · assessment and cardio with your trainer`
-              : `Day ${journey.current_day} of ${journey.duration_days}`
-        }
+        subtitle={todaySubtitle()}
         percent={
           started && workout.total_items
             ? (workout.completed_items / workout.total_items) * 100
@@ -338,12 +375,57 @@ export default function MemberHomeScreen() {
         }
         status={done ? 'Completed' : started ? 'In progress' : undefined}
         statusTone={done ? 'positive' : 'brand'}
+        // The CTA is the shortest honest sentence about what happens next, and
+        // it lands wherever that actually is. Starting and finishing both live
+        // on the chart; continuing lands on the exercise itself, because the
+        // chart in between is a list the member would only scroll past.
         cta={
-          done ? 'Review today’s workout' : started ? 'Continue workout' : 'Start today’s workout'
+          done
+            ? 'Review today’s workout'
+            : next
+              ? `Continue · ${next.exercise}`
+              : started
+                ? 'Finish workout'
+                : 'Start today’s workout'
         }
-        onPress={() => router.push('/(member)/workout' as never)}
+        onPress={
+          next && workout
+            ? () =>
+                router.push({
+                  pathname: '/(member)/exercise/[itemId]',
+                  params: { itemId: String(next.id), sessionId: String(workout.id) },
+                })
+            : chart
+        }
+        secondary={next ? { label: 'See the full chart', onPress: chart } : undefined}
       />
     );
+  }
+
+  /**
+   * The line under the split.
+   *
+   * Once a workout is finished it states what was actually done — sets logged,
+   * not exercises ticked — because that is the number the member built today
+   * and the only one that came from them rather than from the plan.
+   */
+  function todaySubtitle(): string {
+    if (!journey) return '';
+    if (!workout) {
+      return journey.phase === 'assessment'
+        ? `Day ${journey.current_day} · assessment and cardio with your trainer`
+        : `Day ${journey.current_day} of ${journey.duration_days}`;
+    }
+
+    const sets = loggedSets(workout);
+    if (workout.status === 'completed') {
+      return sets > 0
+        ? `${workout.total_items} exercises · ${sets} ${sets === 1 ? 'set' : 'sets'} logged`
+        : `${workout.total_items} exercises done`;
+    }
+
+    const progress = `${workout.completed_items} of ${workout.total_items} exercises done`;
+    return sets > 0 ? `${progress} · ${sets} ${sets === 1 ? 'set' : 'sets'} logged` : progress;
   }
 }
 
