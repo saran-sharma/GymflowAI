@@ -13,7 +13,7 @@ Two things matter here beyond CRUD:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -43,6 +43,7 @@ from app.db.models import (
     WorkoutPlanItem,
     WorkoutSession,
     WorkoutSessionItem,
+    WorkoutSet,
     WorkoutSplit,
 )
 from app.domain import journey as journey_domain
@@ -666,9 +667,13 @@ def start_workout(
     return session
 
 
-def set_item_status(
-    db: Session, *, session: WorkoutSession, item_id: int, done: bool
-) -> WorkoutSessionItem:
+def load_item(db: Session, *, session: WorkoutSession, item_id: int) -> WorkoutSessionItem:
+    """Fetch an exercise, refusing one that belongs to a different workout.
+
+    The session is already authorised by the caller, so re-checking the parent
+    here is what stops an item id from *another* member's workout being
+    reached through a session id the caller does own.
+    """
     item = db.scalar(
         select(WorkoutSessionItem).where(
             WorkoutSessionItem.id == item_id, WorkoutSessionItem.session_id == session.id
@@ -680,10 +685,119 @@ def set_item_status(
             "item_not_found",
             status.HTTP_404_NOT_FOUND,
         )
+    return item
+
+
+def set_item_status(
+    db: Session, *, session: WorkoutSession, item_id: int, done: bool
+) -> WorkoutSessionItem:
+    item = load_item(db, session=session, item_id=item_id)
     item.status = ItemStatus.COMPLETED if done else ItemStatus.PENDING
     item.completed_at = now_utc() if done else None
     db.flush()
     return item
+
+
+# ------------------------------------------------------------- logged sets
+
+# Set logging is the member's own record of what they lifted. It is deliberately
+# not gated on the exercise's ``status``: a member logs sets as they go and the
+# exercise is only "completed" at the end, so requiring completion first would
+# invert the order the work actually happens in.
+
+
+def list_sets(db: Session, *, item: WorkoutSessionItem) -> list[WorkoutSet]:
+    return list(
+        db.scalars(
+            select(WorkoutSet)
+            .where(WorkoutSet.session_item_id == item.id)
+            .order_by(WorkoutSet.set_number)
+        ).all()
+    )
+
+
+def _assert_set_number_free(
+    db: Session, *, item: WorkoutSessionItem, set_number: int, exclude_id: int | None = None
+) -> None:
+    stmt = select(WorkoutSet.id).where(
+        WorkoutSet.session_item_id == item.id, WorkoutSet.set_number == set_number
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(WorkoutSet.id != exclude_id)
+    if db.scalar(stmt) is not None:
+        raise JourneyError(
+            f"Set {set_number} is already logged for this exercise.",
+            "set_number_taken",
+        )
+
+
+def log_set(
+    db: Session,
+    *,
+    item: WorkoutSessionItem,
+    set_number: int,
+    weight_kg: float,
+    reps: int,
+    rpe: float | None = None,
+    completed_at: datetime | None = None,
+) -> WorkoutSet:
+    """Record one performed set.
+
+    ``completed_at`` defaults to now rather than staying null: a set that has
+    been logged has been done, and leaving the time empty would make "logged"
+    and "planned" indistinguishable in the history this table exists to serve.
+    """
+    _assert_set_number_free(db, item=item, set_number=set_number)
+    row = WorkoutSet(
+        session_item_id=item.id,
+        set_number=set_number,
+        weight_kg=weight_kg,
+        reps=reps,
+        rpe=rpe,
+        completed_at=completed_at or now_utc(),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def load_set(db: Session, *, item: WorkoutSessionItem, set_id: int) -> WorkoutSet:
+    row = db.scalar(
+        select(WorkoutSet).where(WorkoutSet.id == set_id, WorkoutSet.session_item_id == item.id)
+    )
+    if row is None:
+        raise JourneyError(
+            "That set is not part of this exercise.",
+            "set_not_found",
+            status.HTTP_404_NOT_FOUND,
+        )
+    return row
+
+
+def update_set(db: Session, *, row: WorkoutSet, changes: dict) -> WorkoutSet:
+    """Apply a partial correction. Only keys present in ``changes`` are touched."""
+    if "set_number" in changes and changes["set_number"] != row.set_number:
+        _assert_set_number_free(
+            db,
+            item=row.item,
+            set_number=changes["set_number"],
+            exclude_id=row.id,
+        )
+    for field, value in changes.items():
+        setattr(row, field, value)
+    db.flush()
+    return row
+
+
+def delete_set(db: Session, *, row: WorkoutSet) -> None:
+    """Remove a set logged by mistake.
+
+    A mistyped set is data the member never did, so this is a real delete
+    rather than a soft one — unlike attendance or payments, nothing downstream
+    is entitled to the erroneous row.
+    """
+    db.delete(row)
+    db.flush()
 
 
 def complete_workout(db: Session, session: WorkoutSession) -> WorkoutSession:

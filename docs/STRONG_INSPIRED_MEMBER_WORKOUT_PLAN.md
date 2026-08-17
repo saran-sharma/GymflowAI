@@ -1177,3 +1177,105 @@ Every feature should support at least one of:
 - Better understanding
 - Better coaching decisions
 - Better next action
+
+---
+
+# Implementation assessment — Phase 1 (pre-code inspection)
+
+Recorded per the Phase 1 brief's Step 1. **No code changed for this section.**
+
+## 1. What already exists
+
+| Concept | Where | Usable as-is? |
+| --- | --- | --- |
+| General Training | `JourneyType.GENERAL_TRAINING` (`models.py:114`) | **Yes** — already the only journey type |
+| 45-day period | `Journey.duration_days` default `45`, with `start_date` / `end_date` (`models.py:698-700`) | **Yes** — a real column, not a hard-coded literal. The milestone has a home |
+| PPL splits | `WorkoutSplit` enum + `JourneyDay.split`, `WorkoutSession.split` | **Yes** |
+| Per-day schedule | `JourneyDay` — `day_number`, `planned_on`, `split`, `status` | **Yes** |
+| A workout session | `WorkoutSession` — `split`, `session_date`, `status`, `started_at`, `completed_at` | **Yes** |
+| Exercises in a session | `WorkoutSessionItem` — `exercise`, `sets` (planned count), `reps` (string, e.g. `"10"`), `rest_seconds`, `status` | **Partly — see the gap below** |
+| Plan templates | `WorkoutPlan` / `WorkoutPlanItem` | Yes |
+| PT | `PTPackage`, `PTSession`, `Member.assigned_trainer_id` | Yes |
+| Endpoints | `/journeys/me/workout/today`, `/journeys/me/workout/start`, `/journeys/members/{id}/plan` | Yes |
+| Events / alerts | existing alert + audit infrastructure | Yes — reuse, do not rebuild |
+
+## 2. The blocking gap: there is no per-set record
+
+`WorkoutSessionItem` stores the **plan** for an exercise (`sets: 3`, `reps: "10"`) and one
+`status` for the whole exercise. There is **no row per set**, and nowhere in the schema
+records:
+
+- **weight lifted** — the only two `weight_kg` columns in `models.py` (lines 773, 1183)
+  belong to body composition / InBody, not to training
+- **actual reps performed** (as opposed to the prescribed `reps` string)
+- **RPE**
+- **set number**, or per-set completion time
+
+Consequences for the P0 brief, all of which depend on per-set data:
+
+- weight / reps entry — **no destination**
+- set completion — only whole-exercise completion exists
+- previous-session performance (`60 kg × 8`) — **cannot be read**, because it was never written
+- PR detection (heaviest weight, best reps, e1RM, session volume) — **no source data**
+- grounded GymFlow AI insights ("bench volume up 8%") — **no source data**
+- RPE trends in trainer review — **no source data**
+
+This is not a UI problem. **The smallest production-safe solution is one new table**, e.g.
+`workout_sets` — `session_item_id`, `set_number`, `weight_kg`, `reps`, `rpe` (nullable),
+`completed_at` — plus create/update endpoints under the existing `/journeys` router and a
+migration. Everything else in P0 is then reachable from real data.
+
+Until that table exists, any "previous performance", PR or volume insight would be
+fabricated, which the brief forbids.
+
+## 3. What Phase 1 must therefore contain, in order
+
+1. ~~`workout_sets` table + migration + endpoints + service + backend tests~~ *(prerequisite —
+   **done**; see §6)*
+2. Member workout execution UI reading and writing it
+3. Member Home CTA into that flow
+4. Milestone: derive from `Journey.start_date` + a single named constant
+   `GENERAL_TRAINING_PT_REVIEW_DAYS = 45` (reusing `duration_days` where it already applies)
+5. Trainer review surface + explicit PT-trial conversion
+6. Owner event on conversion, via the existing alert/audit infrastructure
+
+## 4. Decisions taken
+
+- **The 45 is not re-declared.** `Journey.duration_days` already holds it per journey;
+  the constant names the *review* rule for members whose journey predates it.
+- **Members never see the 45-day framing.** `JourneyBar` currently renders "Day 12 of 45"
+  on Member Home — that is internal business workflow and must be replaced with
+  PPL/consistency framing for General Training members.
+- **No fabricated sections.** AI Readiness, recovery, HRV, nutrition and calories have no
+  model and are omitted entirely rather than shown as placeholders.
+
+## 5. Risk
+
+The prerequisite in §3.1 is a schema change, and the brief requires new business entities to
+carry validation and tests. Sequencing set logging ahead of the UI is what keeps the rest of
+Phase 1 from resting on invented data.
+
+## 6. Phase 1 step 1 — delivered
+
+The prerequisite in §3.1 is implemented. Nothing else in this document has been built.
+
+`workout_sets` stores one row per performed set — `session_item_id`, `set_number`,
+`weight_kg`, `reps`, `rpe` (nullable), `completed_at`, timestamps — under
+`workout_session_items`, with `(session_item_id, set_number)` unique and a cascading
+delete from the exercise. Migration `7c4b1e9a2f30`.
+
+Four endpoints on the existing `/journeys` router, nested under the workout path already
+used by `PATCH /workouts/{id}/items/{item_id}`:
+
+    GET    /journeys/workouts/{session_id}/items/{item_id}/sets
+    POST   /journeys/workouts/{session_id}/items/{item_id}/sets
+    PATCH  /journeys/workouts/{session_id}/items/{item_id}/sets/{set_id}
+    DELETE /journeys/workouts/{session_id}/items/{item_id}/sets/{set_id}
+
+Authorization reuses `assert_can_read_member`, exactly as workout-item completion does:
+the member logs their own sets, a trainer at the same branch may correct them, everyone
+else is refused by branch scope. Writes stop once the workout is completed; reads do not.
+
+What this unblocks, now from real data rather than invented: previous-session performance,
+PR detection, session volume, RPE trends and any AI insight derived from them. None of
+those are built — they are the next steps, in the order §3 sets out.

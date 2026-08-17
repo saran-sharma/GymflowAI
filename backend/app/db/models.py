@@ -909,6 +909,53 @@ class WorkoutSessionItem(Base, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     session: Mapped[WorkoutSession] = relationship(back_populates="items")
+    # ``sets`` above is the prescription, so the performed sets need a different
+    # name. Ordered here so no reader has to remember to sort them.
+    logged_sets: Mapped[list[WorkoutSet]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="WorkoutSet.set_number",
+    )
+
+
+class WorkoutSet(Base, TimestampMixin):
+    """One set the member actually performed.
+
+    ``WorkoutSessionItem`` holds what the plan asked for — three sets of ten —
+    and a single status for the whole exercise. That cannot record what was
+    lifted: a member who presses 60 kg for 8 and then 60 kg for 6 has done two
+    different sets of one prescribed exercise. This is the row per set, and it
+    is the only place actual weight, actual reps and RPE exist.
+
+    Everything downstream — previous-session performance, personal records,
+    volume, RPE trends — reads from here. Without it those numbers could only
+    be invented.
+    """
+
+    __tablename__ = "workout_sets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_item_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_session_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 1-based, and unique per exercise: "set 2" has to mean one row.
+    set_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Kilograms to one decimal, which is the finest increment any plate loading
+    # produces. Bodyweight movements record 0.0 — an honest "no external load"
+    # rather than a null that would then have to be guessed at on read.
+    weight_kg: Mapped[float] = mapped_column(Numeric(5, 1, asdecimal=False), nullable=False)
+    reps: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Rate of perceived exertion, 1–10 in half points. Nullable because it is a
+    # coaching input a member may not record, and a defaulted RPE would read as
+    # data the member never gave.
+    rpe: Mapped[float | None] = mapped_column(Numeric(3, 1, asdecimal=False))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    item: Mapped[WorkoutSessionItem] = relationship(back_populates="logged_sets")
+
+    __table_args__ = (
+        UniqueConstraint("session_item_id", "set_number", name="uq_workout_set_number"),
+    )
 
 
 # ---------------------------------------------------------------------- PT
@@ -1372,5 +1419,6 @@ __all__ = [
     "WorkoutPlanItem",
     "WorkoutSession",
     "WorkoutSessionItem",
+    "WorkoutSet",
     "WorkoutSplit",
 ]
