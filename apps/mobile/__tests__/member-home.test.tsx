@@ -1,0 +1,329 @@
+/**
+ * Member Home's one actionable element: today's workout.
+ *
+ * What is pinned here is where the card sends the member and what it claims
+ * about their day. Both are easy to get subtly wrong — a card that says "2 of
+ * 6" while the member is standing at exercise three, or a "Continue" that
+ * lands on a list they then have to scroll, is the difference between an entry
+ * point and an obstacle.
+ */
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import React from 'react';
+
+import MemberHomeScreen from '../app/(member)/index';
+import type { Journey, MemberHome, WorkoutItem, WorkoutSession } from '../src/api/types';
+
+const mockPush = jest.fn();
+
+let focusCallback: (() => void | (() => void)) | null = null;
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    focusCallback = callback;
+  },
+}));
+
+const mockHome = jest.fn();
+const mockPayments = jest.fn();
+jest.mock('../src/api/endpoints', () => ({
+  memberHome: (...a: unknown[]) => mockHome(...a),
+  myPayments: (...a: unknown[]) => mockPayments(...a),
+}));
+
+const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
+jest.mock('../src/store/AuthContext', () => ({ useAuth: () => mockAuth }));
+
+jest.mock('../src/components/account', () => ({
+  AccountAvatar: () => null,
+}));
+
+function anItem(partial: Partial<WorkoutItem> = {}): WorkoutItem {
+  return {
+    id: 11,
+    order_index: 0,
+    exercise: 'Barbell Bench Press',
+    sets: 3,
+    reps: '10',
+    rest_seconds: 90,
+    status: 'pending',
+    completed_at: null,
+    sets_logged: 0,
+    ...partial,
+  };
+}
+
+function aJourney(partial: Partial<Journey> = {}): Journey {
+  return {
+    id: 3,
+    member_id: 2,
+    member_name: 'Aditya Rao',
+    branch_id: 1,
+    journey_type: 'general_training',
+    status: 'active',
+    start_date: '2026-08-12',
+    end_date: '2026-09-25',
+    duration_days: 45,
+    assessment_days: 3,
+    current_day: 6,
+    phase: 'training',
+    split_today: 'push',
+    assessment_status: 'completed',
+    cardio_completed: 3,
+    cardio_required: 3,
+    days_completed: 5,
+    completion_pct: 11,
+    workouts_completed: 4,
+    pt_converted: false,
+    ...partial,
+  } as Journey;
+}
+
+function aWorkout(items: WorkoutItem[], partial: Partial<WorkoutSession> = {}): WorkoutSession {
+  return {
+    id: 5,
+    member_id: 2,
+    branch_id: 1,
+    journey_id: 3,
+    day_number: 6,
+    split: 'push',
+    split_label: 'Push',
+    session_date: '2026-08-17',
+    status: 'in_progress',
+    started_at: '2026-08-17T08:00:00Z',
+    completed_at: null,
+    supervising_trainer_id: null,
+    items,
+    completed_items: items.filter((i) => i.status === 'completed').length,
+    total_items: items.length,
+    ...partial,
+  };
+}
+
+function aHome(partial: Partial<MemberHome> = {}): MemberHome {
+  return {
+    member_id: 2,
+    full_name: 'Aditya Rao',
+    branch_id: 1,
+    branch_name: 'SLAM Nagalkeni',
+    membership_plan: 'Annual',
+    membership_status: 'active',
+    days_remaining: 200,
+    is_inside: false,
+    trainer_name: 'Vikas Menon',
+    journey: aJourney(),
+    today_workout: null,
+    next_pt_session: null,
+    pt_package: null,
+    next_class: null,
+    occupancy: null,
+    unread_alerts: 0,
+    streak_days: 3,
+    ...partial,
+  };
+}
+
+async function openHome() {
+  const result = render(<MemberHomeScreen />);
+  await act(async () => {});
+  await focus();
+  return result;
+}
+
+async function focus() {
+  await act(async () => {
+    focusCallback?.();
+  });
+}
+
+const comeBack = focus;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  focusCallback = null;
+  mockPayments.mockResolvedValue([]);
+  mockHome.mockResolvedValue(aHome());
+});
+
+/* ------------------------------------------------------------ not started */
+
+describe('before the workout has been started', () => {
+  it('offers to start it, and sends the member to the chart to do so', async () => {
+    // Starting is a write that lives on the chart. Home does not duplicate it.
+    await openHome();
+    fireEvent.press(screen.getByLabelText('Start today’s workout'));
+    expect(mockPush).toHaveBeenCalledWith('/(member)/workout');
+  });
+
+  it('names the day rather than claiming progress it has none of', async () => {
+    await openHome();
+    expect(screen.getByText('Day 6 of 45')).toBeTruthy();
+    expect(screen.queryByText(/sets logged/)).toBeNull();
+  });
+
+  it('offers no shortcut into an exercise that does not exist yet', async () => {
+    await openHome();
+    expect(screen.queryByText('See the full chart')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------ in progress */
+
+describe('while the workout is under way', () => {
+  const items = [
+    anItem({ id: 11, order_index: 0, status: 'completed', sets_logged: 3 }),
+    anItem({ id: 12, order_index: 1, exercise: 'Incline Dumbbell Press', sets_logged: 1 }),
+    anItem({ id: 13, order_index: 2, exercise: 'Lateral Raise' }),
+  ];
+
+  beforeEach(() => {
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(items) }));
+  });
+
+  it('names the next exercise on the button itself', async () => {
+    // The member reads where they are going before deciding to go.
+    await openHome();
+    expect(screen.getByText('Continue · Incline Dumbbell Press')).toBeTruthy();
+  });
+
+  it('opens that exercise directly, not the list in front of it', async () => {
+    await openHome();
+    fireEvent.press(screen.getByLabelText('Continue · Incline Dumbbell Press'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(member)/exercise/[itemId]',
+      params: { itemId: '12', sessionId: '5' },
+    });
+  });
+
+  it('picks the next unfinished exercise in chart order, not the first started one', async () => {
+    const outOfOrder = [
+      anItem({ id: 13, order_index: 2, exercise: 'Lateral Raise' }),
+      anItem({ id: 11, order_index: 0, status: 'completed', sets_logged: 3 }),
+      anItem({ id: 12, order_index: 1, exercise: 'Incline Dumbbell Press' }),
+    ];
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(outOfOrder) }));
+    await openHome();
+    expect(screen.getByText('Continue · Incline Dumbbell Press')).toBeTruthy();
+  });
+
+  it('keeps the whole chart one tap away', async () => {
+    await openHome();
+    fireEvent.press(screen.getByLabelText('See the full chart'));
+    expect(mockPush).toHaveBeenCalledWith('/(member)/workout');
+  });
+
+  it('states progress in exercises and in sets actually logged', async () => {
+    await openHome();
+    expect(screen.getByText('1 of 3 exercises done · 4 sets logged')).toBeTruthy();
+    expect(screen.getByText('1/3')).toBeTruthy();
+  });
+
+  it('does not mention sets before any have been logged', async () => {
+    const untouched = [anItem({ id: 11 }), anItem({ id: 12, order_index: 1 })];
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(untouched) }));
+    await openHome();
+    expect(screen.getByText('0 of 2 exercises done')).toBeTruthy();
+  });
+});
+
+/* ----------------------------------------------------- everything but done */
+
+describe('when every exercise is finished but the workout is not', () => {
+  it('offers to finish it, on the chart where finishing lives', async () => {
+    const allDone = [
+      anItem({ id: 11, status: 'completed', sets_logged: 3 }),
+      anItem({ id: 12, order_index: 1, status: 'completed', sets_logged: 3 }),
+    ];
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(allDone) }));
+    await openHome();
+
+    expect(screen.getByText('Finish workout')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Finish workout'));
+    expect(mockPush).toHaveBeenCalledWith('/(member)/workout');
+  });
+});
+
+/* -------------------------------------------------------------- completed */
+
+describe('once the workout is recorded', () => {
+  const items = [
+    anItem({ id: 11, status: 'completed', sets_logged: 3 }),
+    anItem({ id: 12, order_index: 1, status: 'completed', sets_logged: 4 }),
+  ];
+
+  beforeEach(() => {
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(items, { status: 'completed' }) }));
+  });
+
+  it('says what was built, in sets the member logged', async () => {
+    await openHome();
+    expect(screen.getByText('Completed')).toBeTruthy();
+    expect(screen.getByText('2 exercises · 7 sets logged')).toBeTruthy();
+  });
+
+  it('offers a review rather than a way back in', async () => {
+    await openHome();
+    expect(screen.getByText('Review today’s workout')).toBeTruthy();
+    expect(screen.queryByText(/^Continue/)).toBeNull();
+    expect(screen.queryByText('See the full chart')).toBeNull();
+  });
+
+  it('falls back to exercises when a workout was completed without sets', async () => {
+    // Older sessions, and any exercise ticked off without logging, have none.
+    const noSets = items.map((item) => ({ ...item, sets_logged: 0 }));
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(noSets, { status: 'completed' }) }));
+    await openHome();
+    expect(screen.getByText('2 exercises done')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------------- returning */
+
+describe('coming back from logging', () => {
+  it('re-reads the day, so the card is not the one the member left', async () => {
+    mockHome.mockResolvedValue(aHome({ today_workout: aWorkout([anItem()]) }));
+    await openHome();
+    expect(mockHome).toHaveBeenCalledTimes(1);
+
+    mockHome.mockResolvedValue(
+      aHome({
+        today_workout: aWorkout([anItem({ status: 'completed', sets_logged: 3 })], {
+          status: 'completed',
+        }),
+      }),
+    );
+    await comeBack();
+
+    await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
+    expect(mockHome).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fetch twice on the way in', async () => {
+    await openHome();
+    expect(mockHome).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ------------------------------------------------ what must not be touched */
+
+describe('the rest of home is left alone', () => {
+  it('still leads with a rest day rather than an exercise', async () => {
+    mockHome.mockResolvedValue(aHome({ journey: aJourney({ split_today: 'rest' }) }));
+    await openHome();
+    // Twice: the kind tag and the card title. Both are meant to be there.
+    expect(screen.getAllByText('Rest & recovery').length).toBe(2);
+    expect(screen.queryByText(/^Continue/)).toBeNull();
+  });
+
+  it('still says plainly when no programme has started', async () => {
+    mockHome.mockResolvedValue(aHome({ journey: null }));
+    await openHome();
+    expect(screen.getByText('Your programme has not started')).toBeTruthy();
+  });
+
+  it('still shows the streak and the workout count', async () => {
+    await openHome();
+    expect(screen.getByText('Streak')).toBeTruthy();
+    expect(screen.getByText('Workouts')).toBeTruthy();
+  });
+});
