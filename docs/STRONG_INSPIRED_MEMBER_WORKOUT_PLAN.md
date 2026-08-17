@@ -1230,7 +1230,8 @@ fabricated, which the brief forbids.
 
 ## 3. What Phase 1 must therefore contain, in order
 
-1. `workout_sets` table + migration + endpoints + service + backend tests *(prerequisite)*
+1. ~~`workout_sets` table + migration + endpoints + service + backend tests~~ *(prerequisite —
+   **done**; see §6)*
 2. Member workout execution UI reading and writing it
 3. Member Home CTA into that flow
 4. Milestone: derive from `Journey.start_date` + a single named constant
@@ -1253,3 +1254,28 @@ fabricated, which the brief forbids.
 The prerequisite in §3.1 is a schema change, and the brief requires new business entities to
 carry validation and tests. Sequencing set logging ahead of the UI is what keeps the rest of
 Phase 1 from resting on invented data.
+
+## 6. Phase 1 step 1 — delivered
+
+The prerequisite in §3.1 is implemented. Nothing else in this document has been built.
+
+`workout_sets` stores one row per performed set — `session_item_id`, `set_number`,
+`weight_kg`, `reps`, `rpe` (nullable), `completed_at`, timestamps — under
+`workout_session_items`, with `(session_item_id, set_number)` unique and a cascading
+delete from the exercise. Migration `7c4b1e9a2f30`.
+
+Four endpoints on the existing `/journeys` router, nested under the workout path already
+used by `PATCH /workouts/{id}/items/{item_id}`:
+
+    GET    /journeys/workouts/{session_id}/items/{item_id}/sets
+    POST   /journeys/workouts/{session_id}/items/{item_id}/sets
+    PATCH  /journeys/workouts/{session_id}/items/{item_id}/sets/{set_id}
+    DELETE /journeys/workouts/{session_id}/items/{item_id}/sets/{set_id}
+
+Authorization reuses `assert_can_read_member`, exactly as workout-item completion does:
+the member logs their own sets, a trainer at the same branch may correct them, everyone
+else is refused by branch scope. Writes stop once the workout is completed; reads do not.
+
+What this unblocks, now from real data rather than invented: previous-session performance,
+PR detection, session volume, RPE trends and any AI insight derived from them. None of
+those are built — they are the next steps, in the order §3 sets out.

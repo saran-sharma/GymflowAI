@@ -33,6 +33,8 @@ from app.db.models import (
     User,
     WorkoutPlanItem,
     WorkoutSession,
+    WorkoutSessionItem,
+    WorkoutSet,
     WorkoutSplit,
 )
 from app.db.session import get_db
@@ -53,6 +55,9 @@ from app.schemas.training import (
     WorkoutItemUpdate,
     WorkoutPlanOut,
     WorkoutSessionOut,
+    WorkoutSetCreate,
+    WorkoutSetOut,
+    WorkoutSetUpdate,
 )
 from app.services import audit, journey_service
 
@@ -284,6 +289,112 @@ def update_workout_item(
     if session.status is SessionStatus.COMPLETED:
         raise HTTPException(status_code=409, detail="This workout is already finished")
     return journey_service.set_item_status(db, session=session, item_id=item_id, done=payload.done)
+
+
+# ------------------------------------------------------------- logged sets
+
+# Who may log a set is the same question as who may see the workout, so these
+# reuse ``assert_can_read_member`` exactly as ``update_workout_item`` does. That
+# is deliberate: the member records their own sets, and ``assert_can_write_member``
+# would lock the member out of their own workout. A trainer at the same branch
+# can still correct a set, and everyone else is refused by branch scope.
+
+
+def _authorised_session(db: Session, user: User, session_id: int) -> WorkoutSession:
+    session = db.get(WorkoutSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    assert_can_read_member(db, user, _load_member(db, session.member_id))
+    return session
+
+
+def _writable_item(db: Session, user: User, session_id: int, item_id: int) -> WorkoutSessionItem:
+    """The read path plus the one rule that separates writing from reading.
+
+    A finished workout is a record. Reopening it by logging into it would let
+    today's session absorb tomorrow's work, so writes stop at completion while
+    reads stay open.
+    """
+    session = _authorised_session(db, user, session_id)
+    if session.status is SessionStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="This workout is already finished")
+    return journey_service.load_item(db, session=session, item_id=item_id)
+
+
+@router.get(
+    "/workouts/{session_id}/items/{item_id}/sets",
+    response_model=list[WorkoutSetOut],
+)
+def list_workout_sets(
+    session_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[WorkoutSet]:
+    session = _authorised_session(db, user, session_id)
+    item = journey_service.load_item(db, session=session, item_id=item_id)
+    return journey_service.list_sets(db, item=item)
+
+
+@router.post(
+    "/workouts/{session_id}/items/{item_id}/sets",
+    response_model=WorkoutSetOut,
+    status_code=201,
+)
+def log_workout_set(
+    session_id: int,
+    item_id: int,
+    payload: WorkoutSetCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WorkoutSet:
+    item = _writable_item(db, user, session_id, item_id)
+    return journey_service.log_set(
+        db,
+        item=item,
+        set_number=payload.set_number,
+        weight_kg=payload.weight_kg,
+        reps=payload.reps,
+        rpe=payload.rpe,
+        completed_at=payload.completed_at,
+    )
+
+
+@router.patch(
+    "/workouts/{session_id}/items/{item_id}/sets/{set_id}",
+    response_model=WorkoutSetOut,
+)
+def update_workout_set(
+    session_id: int,
+    item_id: int,
+    set_id: int,
+    payload: WorkoutSetUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WorkoutSet:
+    item = _writable_item(db, user, session_id, item_id)
+    row = journey_service.load_set(db, item=item, set_id=set_id)
+    # exclude_unset, so a field the client did not send keeps its stored value
+    # rather than being overwritten with the schema default.
+    return journey_service.update_set(db, row=row, changes=payload.model_dump(exclude_unset=True))
+
+
+@router.delete(
+    "/workouts/{session_id}/items/{item_id}/sets/{set_id}",
+    response_model=MessageOut,
+)
+def delete_workout_set(
+    session_id: int,
+    item_id: int,
+    set_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MessageOut:
+    item = _writable_item(db, user, session_id, item_id)
+    row = journey_service.load_set(db, item=item, set_id=set_id)
+    set_number = row.set_number
+    journey_service.delete_set(db, row=row)
+    return MessageOut(message=f"Set {set_number} removed.")
 
 
 @router.post("/workouts/{session_id}/complete", response_model=WorkoutSessionOut)

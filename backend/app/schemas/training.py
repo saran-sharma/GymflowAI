@@ -180,6 +180,55 @@ class WorkoutItemUpdate(BaseModel):
     done: bool = True
 
 
+# ------------------------------------------------------------ logged sets
+
+# The bounds are the point of these schemas. A set is typed on a phone mid-
+# workout, one-handed, so a fat-fingered "600" reps or a 5000 kg squat has to
+# be rejected at the edge rather than stored and then explained away later in
+# every chart that reads the table.
+
+MAX_SET_NUMBER = 50
+# Comfortably past the heaviest lift ever recorded, and inside NUMERIC(5, 1).
+MAX_WEIGHT_KG = 1000.0
+MAX_REPS = 500
+
+
+class WorkoutSetOut(ORMModel):
+    id: int
+    session_item_id: int
+    set_number: int
+    weight_kg: float
+    reps: int
+    rpe: float | None = None
+    completed_at: datetime | None = None
+
+
+class WorkoutSetCreate(BaseModel):
+    set_number: int = Field(ge=1, le=MAX_SET_NUMBER)
+    # Zero is allowed and meaningful: a bodyweight movement carries no load.
+    weight_kg: float = Field(ge=0, le=MAX_WEIGHT_KG)
+    reps: int = Field(ge=1, le=MAX_REPS)
+    # RPE is recorded in half points; anything finer is noise the scale does
+    # not carry, and anything outside 1–10 is not on the scale at all.
+    rpe: float | None = Field(default=None, ge=1, le=10, multiple_of=0.5)
+    completed_at: datetime | None = None
+
+
+class WorkoutSetUpdate(BaseModel):
+    """Every field optional — a correction usually touches one of them.
+
+    ``rpe`` cannot be cleared back to null through this: an explicit null is
+    indistinguishable from an omitted field in JSON, and silently wiping a
+    coaching input on an unrelated edit is the worse failure.
+    """
+
+    set_number: int | None = Field(default=None, ge=1, le=MAX_SET_NUMBER)
+    weight_kg: float | None = Field(default=None, ge=0, le=MAX_WEIGHT_KG)
+    reps: int | None = Field(default=None, ge=1, le=MAX_REPS)
+    rpe: float | None = Field(default=None, ge=1, le=10, multiple_of=0.5)
+    completed_at: datetime | None = None
+
+
 # --------------------------------------------------------------------- PT
 
 
