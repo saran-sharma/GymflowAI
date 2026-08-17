@@ -7,12 +7,13 @@ branch they do not belong to.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from conftest import make_member
 from sqlalchemy import select
 
-from app.core.clock import now_utc
+from app.core import clock
+from app.core.clock import UTC, branch_today, now_utc
 from app.db.models import MarketingSource, Member, TrainerAttendance
 from app.services import journey_service, pt_service
 
@@ -219,13 +220,18 @@ def test_a_trainer_cannot_see_another_trainers_pt_session(client, db, world, aut
 
 
 def test_the_trainers_day_lists_pt_group_classes_and_supported_workouts(client, db, world, auth):
+    # Frozen mid-morning in Asia/Kolkata. `session_date` is a *branch* date and
+    # the endpoint below asks for the branch's today, so pinning it to the UTC
+    # date makes this fail for every run after 18:30 UTC, when the two diverge.
+    clock.freeze(datetime(2026, 8, 17, 4, 0, tzinfo=UTC))
+
     package = pt_service.create_package(db, member=world["member_ngk"], sessions_total=12)
     pt_service.schedule_session(
         db,
         package=package,
         trainer_id=world["trainer_ngk"].id,
         scheduled_start=now_utc() + timedelta(hours=2),
-        session_date=date.today(),
+        session_date=branch_today(world["branches"]["ngk"].timezone),
     )
     db.commit()
 
