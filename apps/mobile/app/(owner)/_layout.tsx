@@ -13,13 +13,16 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { tabIcon, tabScreenOptions } from '../../src/design';
+import { roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
 
 export default function OwnerLayout() {
   return (
-    <Tabs screenOptions={tabScreenOptions({ compact: true })}>
+    <Tabs screenOptions={tabScreenOptions({ compact: true, accent: roleAccent.owner })}>
       <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: tabIcon('grid') }} />
-      <Tabs.Screen name="members" options={{ title: 'Members', tabBarIcon: tabIcon('people-circle') }} />
+      <Tabs.Screen
+        name="members"
+        options={{ title: 'Members', tabBarIcon: tabIcon('people-circle') }}
+      />
       <Tabs.Screen name="trainers" options={{ title: 'Trainers', tabBarIcon: tabIcon('people') }} />
       <Tabs.Screen
         name="marketing"

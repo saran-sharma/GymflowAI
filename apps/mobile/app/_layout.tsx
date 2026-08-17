@@ -6,6 +6,19 @@
  * still enforces every permission; this is presentation only.
  */
 
+import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
+import {
+  Fraunces_300Light,
+  Fraunces_300Light_Italic,
+  Fraunces_400Regular,
+} from '@expo-google-fonts/fraunces';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
+import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -47,6 +60,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  // Every typeface the design system names, loaded before anything paints.
+  // A screen rendered against a family that has not arrived falls back to the
+  // system font and then reflows when it does, which is visible and looks like
+  // a bug — so the splash is held until they are all in.
+  const [fontsLoaded] = useFonts({
+    Fraunces_300Light,
+    Fraunces_300Light_Italic,
+    Fraunces_400Regular,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    DMMono_400Regular,
+    DMMono_500Medium,
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>

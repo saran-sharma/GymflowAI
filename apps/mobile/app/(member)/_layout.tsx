@@ -10,23 +10,14 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { tabIcon, tabScreenOptions } from '../../src/design';
+import { roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
 
 export default function MemberLayout() {
   return (
-    <Tabs screenOptions={tabScreenOptions()}>
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Home', tabBarIcon: tabIcon('home') }}
-      />
-      <Tabs.Screen
-        name="workout"
-        options={{ title: 'Workout', tabBarIcon: tabIcon('barbell') }}
-      />
-      <Tabs.Screen
-        name="pt"
-        options={{ title: 'PT', tabBarIcon: tabIcon('person') }}
-      />
+    <Tabs screenOptions={tabScreenOptions({ accent: roleAccent.member })}>
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
+      <Tabs.Screen name="workout" options={{ title: 'Workout', tabBarIcon: tabIcon('barbell') }} />
+      <Tabs.Screen name="pt" options={{ title: 'PT', tabBarIcon: tabIcon('person') }} />
       <Tabs.Screen
         name="progress"
         options={{ title: 'Progress', tabBarIcon: tabIcon('stats-chart') }}

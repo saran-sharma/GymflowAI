@@ -30,35 +30,45 @@ import { Platform, type TextStyle, type ViewStyle } from 'react-native';
  * place.
  */
 const palette = {
-  // Neutral ramp, darkest to lightest. Hue-shifted a few degrees toward red.
-  ink0: '#08080A',
-  ink1: '#0E0E11',
-  ink2: '#141417',
-  ink3: '#1B1B1F',
-  ink4: '#232329',
-  ink5: '#2C2C33',
-  ink6: '#3A3A42',
+  // The Figma neutral ramp. Genuinely neutral — no hue shift — because the
+  // accent is now per-role, and greys tinted toward one accent would fight the
+  // other three.
+  ink0: '#0A0A0A', // page
+  ink1: '#111111', // chrome and cards
+  ink2: '#161616', // inputs
+  ink3: '#191919', // elevated / pressed
+  ink4: '#1F1F1F',
+  ink5: 'rgba(255,255,255,0.07)', // the only border in the design
+  ink6: 'rgba(255,255,255,0.14)',
 
-  // SLAM red.
-  red400: '#FF5B68',
-  red500: '#EF2B3C',
-  red600: '#D01F2F',
-  red700: '#C8102E',
+  /**
+   * Role accents.
+   *
+   * GymFlow no longer has one brand colour. A person's accent tells them whose
+   * app they are in before they read a word of it, which is worth more in a
+   * product where one human can be a member at one branch and a trainer at
+   * another. Auth is gold because it belongs to none of them yet.
+   */
+  member: '#B4E052',
+  owner: '#7C6EF5',
+  trainer: '#D4A44C',
+  gold: '#C9A84C',
 
-  // Text ramp.
-  white: '#FFFFFF',
-  grey300: '#D4D4D8',
-  grey400: '#A1A1AA',
-  grey500: '#71717A',
+  // Text ramp, from the design.
+  text1: '#F0EDE8', // not pure white: warm, and easier to read at length
+  text2: '#888888',
+  text3: '#444444',
+  text4: '#3A3A3A', // placeholders and inactive tabs
 
-  // Outcome hues. Deliberately few, and none of them saturated enough to
-  // compete with the accent.
-  green: '#22C55E',
-  amber: '#F59E0B',
-  orange: '#F97316',
-  violet: '#A855F7',
-  blue: '#3B82F6',
-  slate: '#64748B',
+  // Outcome hues. Deliberately few, and none saturated enough to be mistaken
+  // for a role accent.
+  green: '#5FBF6A',
+  amber: '#D9A441',
+  red: '#E05252',
+  orange: '#D98841',
+  violet: '#8F7BF0',
+  blue: '#5B8FD9',
+  slate: '#6B6B6B',
 } as const;
 
 /* ------------------------------------------------------- semantic colour */
@@ -69,37 +79,58 @@ export const color = {
   /** Chrome that sits on the background: tab bar, headers. */
   surface: palette.ink1,
   /** Content containers. The default card. */
-  surfaceRaised: palette.ink2,
+  surfaceRaised: palette.ink1,
   /** A container on top of a container, or a pressed state. */
   surfaceOverlay: palette.ink3,
   /** Form fields, which must read as recessed rather than raised. */
-  surfaceInput: palette.ink4,
+  surfaceInput: palette.ink2,
 
   border: palette.ink5,
   borderStrong: palette.ink6,
 
-  brand: palette.red500,
-  brandPressed: palette.red600,
-  brandDeep: palette.red700,
-  /** For text and icons on a dark ground, where red500 is too dense to read. */
-  brandAccent: palette.red400,
+  /**
+   * The accent for the app you are currently in.
+   *
+   * Defaults to gold — the auth colour — and is replaced per role group by
+   * `roleAccent`. Every component reads `color.brand`, so a role's colour
+   * arrives without a single component knowing roles exist.
+   */
+  brand: palette.gold,
+  brandPressed: palette.trainer,
+  brandDeep: palette.trainer,
+  /** For text and icons on a dark ground. */
+  brandAccent: palette.gold,
 
-  text: palette.white,
-  textSecondary: palette.grey400,
-  textTertiary: palette.grey500,
+  text: palette.text1,
+  textSecondary: palette.text2,
+  textTertiary: palette.text3,
+  /** Placeholders, inactive tabs — the quietest legible step. */
+  textQuiet: palette.text4,
   /** On a brand or light fill. */
   textInverse: palette.ink0,
 
   status: {
     positive: palette.green,
     caution: palette.amber,
-    critical: palette.red500,
+    critical: palette.red,
     warning: palette.orange,
     notable: palette.violet,
     info: palette.blue,
     neutral: palette.slate,
   },
 } as const;
+
+/** Each role's accent, and the colour the auth screen wears before any role. */
+export const roleAccent = {
+  member: palette.member,
+  owner: palette.owner,
+  branch_manager: palette.owner,
+  super_admin: palette.owner,
+  trainer: palette.trainer,
+  auth: palette.gold,
+} as const;
+
+export type RoleAccent = keyof typeof roleAccent;
 
 /**
  * A translucent wash of any token colour.
@@ -110,6 +141,10 @@ export const color = {
  */
 export function alpha(hex: string, amount: number): string {
   const clamped = Math.max(0, Math.min(1, amount));
+  // The border tokens are already rgba strings — the design defines its only
+  // border as translucent white. Appending a hex alpha to one would produce a
+  // colour React Native silently drops, so pass it through instead.
+  if (!hex.startsWith('#')) return hex;
   const value = Math.round(clamped * 255)
     .toString(16)
     .padStart(2, '0');
@@ -152,16 +187,85 @@ export const radii = {
  * negative tracking is what makes a metric read as a figure rather than a
  * spreadsheet cell.
  */
+export const font = {
+  /** Headlines and brand moments. Editorial, never functional UI. */
+  display: 'Fraunces_300Light',
+  displayItalic: 'Fraunces_300Light_Italic',
+  displaySemi: 'Fraunces_400Regular',
+  /** Everything a person reads to operate the app. */
+  sans: 'Inter_400Regular',
+  sansMedium: 'Inter_500Medium',
+  sansSemi: 'Inter_600SemiBold',
+  sansBold: 'Inter_700Bold',
+  /** Figures that must align in a column, and measurements. */
+  mono: 'DMMono_400Regular',
+  monoMedium: 'DMMono_500Medium',
+} as const;
+
+/**
+ * One scale, eight roles.
+ *
+ * `display` and `title` are Fraunces because a headline is where this product
+ * gets to have a voice; everything below them is Inter because a label, a
+ * button and a form field are read, not admired. `mono` is DM Mono so a column
+ * of numbers lines up — the reason monospace exists.
+ *
+ * Weight lives in the family name, not in `fontWeight`: React Native on Android
+ * will happily synthesise a fake bold from a regular face, which looks like a
+ * rendering bug rather than a typeface.
+ */
 export const text = {
-  display: { fontSize: 40, lineHeight: 44, fontWeight: '800', letterSpacing: -1.4 },
-  title: { fontSize: 26, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 },
-  heading: { fontSize: 19, lineHeight: 25, fontWeight: '700', letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 21, fontWeight: '500', letterSpacing: -0.1 },
-  label: { fontSize: 13, lineHeight: 18, fontWeight: '600', letterSpacing: 0.2 },
-  /** All-caps eyebrows and badges. Wide tracking is what makes caps legible. */
-  caption: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1 },
+  display: {
+    fontFamily: font.display,
+    fontSize: 44,
+    lineHeight: 48,
+    letterSpacing: -1.5,
+  },
+  title: {
+    fontFamily: font.display,
+    fontSize: 27,
+    lineHeight: 33,
+    letterSpacing: -0.7,
+  },
+  heading: {
+    fontFamily: font.sansSemi,
+    fontSize: 17,
+    lineHeight: 23,
+    letterSpacing: -0.3,
+  },
+  body: {
+    fontFamily: font.sans,
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: -0.1,
+  },
+  label: {
+    fontFamily: font.sansMedium,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
+  /** All-caps eyebrows and section labels. Wide tracking makes caps legible. */
+  caption: {
+    fontFamily: font.sansMedium,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1,
+  },
   /** Times, counts and anything that should align in a column. */
-  mono: { fontSize: 15, lineHeight: 20, fontWeight: '700', letterSpacing: 0.5 },
+  mono: {
+    fontFamily: font.mono,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0,
+  },
+  /** The oversized figure on a metric. Mono so a row of them aligns. */
+  metric: {
+    fontFamily: font.monoMedium,
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: -1,
+  },
 } as const satisfies Record<string, TextStyle>;
 
 export type TextRole = keyof typeof text;
@@ -265,6 +369,7 @@ export const tokens = {
   text,
   elevation,
   hairline,
+  font,
   motion,
   control,
   toneColor,

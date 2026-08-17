@@ -26,6 +26,7 @@ import { Row, Spacer, Stack, Text } from './primitives';
 import {
   alpha,
   color,
+  font,
   control,
   hairline,
   HIT_TARGET,
@@ -135,7 +136,7 @@ export function Button({
               style={{
                 color: tone.fg,
                 fontSize: dimension.font,
-                fontWeight: '800',
+                fontFamily: font.sansSemi,
                 letterSpacing: dimension.tracking,
               }}
             >
