@@ -33,6 +33,10 @@ UNWORKED_SHIFT = "trainer.unworked_shift"
 ATTENDANCE_EXCEPTION = "attendance.correction_pending"
 JOURNEY_DAY45 = "journey.day45_complete"
 JOURNEY_PT_READY = "journey.pt_ready"
+#: Sent to the member's own trainer, who decides whether to convert them.
+JOURNEY_PT_REVIEW = "journey.pt_review"
+#: Sent to management after a trainer has converted somebody.
+PT_CONVERTED = "pt.converted"
 PT_LOW_BALANCE = "pt.low_balance"
 PT_PACKAGE_COMPLETE = "pt.package_complete"
 CLASS_ANNOUNCED = "class.announced"

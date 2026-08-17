@@ -34,10 +34,12 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.schemas.training import (
+    ConvertToPtRequest,
     CreatePackageRequest,
     PTArrivalRequest,
     PTCloseRequest,
     PTCompleteRequest,
+    PtConversionOut,
     PTOfferOut,
     PTPackageOut,
     PTSessionOut,
@@ -460,6 +462,93 @@ def create_package(
         },
     )
     return package_out(db, package)
+
+
+@router.post(
+    "/members/{member_id}/convert",
+    response_model=PtConversionOut,
+    status_code=201,
+)
+def convert_member_to_pt(
+    member_id: int,
+    payload: ConvertToPtRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PtConversionOut:
+    """A trainer moves their member from General Training onto PT.
+
+    Deliberately not open to a member, and deliberately not automatic. The
+    45-day mark raises an alert and stops; the decision is a conversation on
+    the gym floor and only the trainer who had it can record its outcome.
+    Management may also convert, because a branch manager standing in for an
+    absent trainer is a real situation.
+    """
+    member = db.get(Member, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # A member cannot convert themselves; this reuses the same staff-only rule
+    # that guards recording an assessment.
+    assert_can_write_member(db, user, member)
+
+    if not payload.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "confirmation_required",
+                "message": "Converting a member to PT has to be confirmed.",
+            },
+        )
+
+    trainer = _converting_trainer(db, user, member)
+    package = pt_service.convert_to_pt(
+        db,
+        member=member,
+        trainer=trainer,
+        actor=user,
+        sessions_total=payload.sessions_total,
+        note=payload.note,
+    )
+    db.commit()
+
+    return PtConversionOut(
+        member_id=member.id,
+        member_name=member.user.full_name,
+        trainer_id=trainer.id,
+        trainer_name=trainer.user.full_name,
+        from_training_type="general_training",
+        to_training_type="pt",
+        package=package_out(db, package),
+        converted_at=package.created_at,
+    )
+
+
+def _converting_trainer(db: Session, user: User, member: Member) -> Trainer:
+    """Whose conversion this is.
+
+    A trainer converts as themselves. Management converting on a trainer's
+    behalf is recorded against the member's assigned trainer, because the
+    relationship that continues afterwards is the member's, not the manager's.
+    """
+    if user.role.key == RoleKey.TRAINER.value:
+        trainer = db.scalar(select(Trainer).where(Trainer.user_id == user.id))
+        if trainer is None:
+            raise HTTPException(status_code=403, detail="No trainer profile for this account")
+        return trainer
+
+    if member.assigned_trainer_id:
+        assigned = db.get(Trainer, member.assigned_trainer_id)
+        if assigned is not None:
+            return assigned
+
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "no_trainer",
+            "message": "Assign a trainer to this member before converting them to PT.",
+        },
+    )
 
 
 @router.get("/packages", response_model=list[PTPackageOut])

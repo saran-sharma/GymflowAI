@@ -16,13 +16,20 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { MemberHome, Payment, WorkoutItem, WorkoutSession } from '../../src/api/types';
+import type {
+  JourneyDay,
+  MemberHome,
+  Payment,
+  WorkoutItem,
+  WorkoutSession,
+} from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
 import {
-  JourneyBar,
   NotConnected,
   PtLine,
   TodayCard,
+  WeekStrip,
+  journeyToday,
   type SessionKind,
 } from '../../src/components/member';
 import {
@@ -84,6 +91,8 @@ export default function MemberHomeScreen() {
   const router = useRouter();
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
   const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
+  // The member's week, which replaces the internal 45-day counter.
+  const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
 
   /* Home now sends the member straight into logging, so it is the screen they
    * come back to — and its counts describe a moment that has already passed.
@@ -196,22 +205,23 @@ export default function MemberHomeScreen() {
         {/* Today. The one thing this screen exists to say. */}
         {renderToday()}
 
-        {/* The 45 days, immediately under today's session. */}
+        {/* The training week, immediately under today's session.
+            Not the 45-day counter: that is a business rule about when a
+            trainer is asked to review somebody, and showing a member a
+            deadline they were never told about and cannot act on is worse
+            than showing them what they are training this week. */}
         {journey && !journeyDone ? (
-          <JourneyBar
-            currentDay={journey.current_day}
-            totalDays={journey.duration_days}
-            phase={journey.phase}
-            daysCompleted={journey.days_completed}
-            completionPct={journey.completion_pct}
-            onPress={() => router.push('/(member)/progress' as never)}
+          <WeekStrip
+            days={days.data ?? []}
+            today={journeyToday(journey)}
+            onPress={() => router.push('/(member)/workout' as never)}
           />
         ) : null}
 
         {journeyDone && journey ? (
           <Card>
             <Eyebrow>Programme complete</Eyebrow>
-            <Text variant="heading">All {journey.duration_days} days done.</Text>
+            <Text variant="heading">General Training complete</Text>
             <Text variant="body" tone={color.textSecondary}>
               {journey.workouts_completed} workouts recorded. Your trainer plans what comes next.
             </Text>
@@ -316,7 +326,7 @@ export default function MemberHomeScreen() {
           <Eyebrow>Today</Eyebrow>
           <Text variant="heading">Your programme has not started</Text>
           <Text variant="body" tone={color.textSecondary}>
-            Your trainer starts your 45-day journey with you at {me.branch_name}.
+            Your trainer sets up your training programme with you at {me.branch_name}.
           </Text>
         </Card>
       );
@@ -413,8 +423,8 @@ export default function MemberHomeScreen() {
     if (!journey) return '';
     if (!workout) {
       return journey.phase === 'assessment'
-        ? `Day ${journey.current_day} · assessment and cardio with your trainer`
-        : `Day ${journey.current_day} of ${journey.duration_days}`;
+        ? 'Assessment and cardio with your trainer'
+        : 'Your chart is ready — tap to start';
     }
 
     const sets = loggedSets(workout);

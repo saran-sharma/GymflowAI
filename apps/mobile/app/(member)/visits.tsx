@@ -100,7 +100,11 @@ export default function MemberAttendanceScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={visits.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={visits.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
         <Stack gap="xxs">
@@ -142,8 +146,8 @@ export default function MemberAttendanceScreen() {
               </Text>
             </Row>
             <Text variant="body" tone={color.textSecondary}>
-              {journey.days_completed} of {journey.duration_days} days completed ·{' '}
-              {journey.workouts_completed} workouts recorded
+              {journey.workouts_completed} workouts completed · {journey.workouts_completed}{' '}
+              workouts recorded
             </Text>
           </Card>
         ) : null}

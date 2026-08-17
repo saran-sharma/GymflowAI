@@ -33,7 +33,8 @@ import {
   space,
   type Tone,
 } from '../design';
-import type { WorkoutSplit } from '../api/types';
+import type { JourneyDay, WorkoutSplit } from '../api/types';
+import { splitMeta } from './programme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -215,6 +216,125 @@ export function TodayCard({
   );
 }
 
+/* ------------------------------------------------------------- this week */
+
+/**
+ * The member's training week: Push, Pull, Legs and the rest days between them.
+ *
+ * This replaces the 45-day counter on every member-facing surface. The 45 days
+ * are a real business rule — they decide when a trainer is asked to review
+ * somebody for PT — but they are *the gym's* rule, not the member's goal. A
+ * member who sees "Day 31 of 45" reads a deadline they were never told about
+ * and cannot act on; a member who sees this week's splits knows what to do
+ * today and what is coming.
+ *
+ * The days come from the journey the server already computes, so nothing here
+ * is invented: it is the same plan, framed as a week instead of a countdown.
+ */
+export interface WeekStripProps {
+  days: JourneyDay[];
+  /** ISO date of today, so the current column can be marked. */
+  today: string;
+  onPress?: () => void;
+}
+
+export function WeekStrip({ days, today, onPress }: WeekStripProps) {
+  const week = weekAround(days, today);
+  if (week.length === 0) return null;
+
+  const inner = (
+    <Stack gap="sm">
+      <Row gap="sm">
+        <Eyebrow>This week</Eyebrow>
+        <Spacer />
+        <Text variant="label" tone={color.textTertiary}>
+          {week.filter((d) => d.status === 'completed').length} done
+        </Text>
+      </Row>
+
+      <Row gap="xs">
+        {week.map((day) => {
+          const meta = splitMeta[day.split] ?? splitMeta.rest;
+          const isToday = day.planned_on === today;
+          const done = day.status === 'completed';
+          return (
+            <Stack key={day.planned_on} gap="xxs" align="center" style={styles.weekDay}>
+              <Text variant="caption" caps tone={isToday ? color.text : color.textTertiary}>
+                {weekdayInitial(day.planned_on)}
+              </Text>
+              <View
+                style={[
+                  styles.weekPip,
+                  {
+                    backgroundColor: done ? meta.color : 'transparent',
+                    borderColor: isToday ? color.text : meta.color,
+                    borderWidth: isToday ? 2 : 1,
+                  },
+                ]}
+              />
+              <Text
+                variant="caption"
+                tone={isToday ? color.text : color.textTertiary}
+                numberOfLines={1}
+              >
+                {meta.label === 'Rest' ? '—' : meta.label}
+              </Text>
+            </Stack>
+          );
+        })}
+      </Row>
+    </Stack>
+  );
+
+  if (!onPress) return <Card>{inner}</Card>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="See your training week"
+      onPress={onPress}
+      style={({ pressed }) => [pressed ? styles.cardPressed : null]}
+    >
+      <Card>{inner}</Card>
+    </Pressable>
+  );
+}
+
+/**
+ * Today, as the member's branch reckons it.
+ *
+ * Derived from the server's own day arithmetic — start date plus the day number
+ * it computed — rather than the device clock. A phone in another timezone, or
+ * one whose date is simply wrong, would otherwise highlight the wrong column.
+ */
+export function journeyToday(journey: { start_date: string; current_day: number }): string {
+  const start = new Date(`${journey.start_date}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return new Date().toISOString().slice(0, 10);
+  start.setDate(start.getDate() + Math.max(0, journey.current_day - 1));
+  return start.toISOString().slice(0, 10);
+}
+
+/** Monday-to-Sunday around `today`, from whatever days the server sent. */
+export function weekAround(days: JourneyDay[], today: string): JourneyDay[] {
+  const anchor = new Date(`${today}T00:00:00`);
+  if (Number.isNaN(anchor.getTime())) return [];
+  // getDay() is 0 for Sunday; the SLAM week starts on Monday.
+  const monday = new Date(anchor);
+  monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const from = monday.toISOString().slice(0, 10);
+  const to = sunday.toISOString().slice(0, 10);
+  return days
+    .filter((day) => day.planned_on >= from && day.planned_on <= to)
+    .sort((a, b) => a.planned_on.localeCompare(b.planned_on));
+}
+
+function weekdayInitial(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? '?' : ['S', 'M', 'T', 'W', 'T', 'F', 'S'][date.getDay()];
+}
+
 /* --------------------------------------------------------------- the journey */
 
 export interface JourneyBarProps {
@@ -379,6 +499,8 @@ export function NotConnected({
 }
 
 const styles = StyleSheet.create({
+  weekDay: { flex: 1 },
+  weekPip: { width: 18, height: 18, borderRadius: 9 },
   grow: { flex: 1 },
   kindTag: {
     flexDirection: 'row',

@@ -1,11 +1,16 @@
 /**
  * The member's workout.
  *
- * Days 1–3 are assessment and cardio, recorded by a trainer at the branch, so
- * this screen reports them rather than offering to start anything. Days 4–45
- * show the chart — sets, reps and rest — and let the member work through it.
- * Finishing the chart completes the journey day server-side, including, on day
- * 45, the journey itself.
+ * The assessment days are cardio and a movement screen recorded by a trainer
+ * at the branch, so this screen reports them rather than offering to start
+ * anything. Every other day shows the chart — sets, reps and rest — and lets
+ * the member work through it. Finishing the chart ticks the day off
+ * server-side.
+ *
+ * The member is never shown the 45-day counter. It is a real rule — it decides
+ * when a trainer is asked to review somebody for PT — but it is the gym's rule,
+ * and a deadline the member was never told about and cannot act on only reads
+ * as pressure. They see their week instead.
  *
  * The chart is a list, not a workspace. Each exercise opens its own screen for
  * logging, because weight and reps are entered between sets with one hand and
@@ -22,7 +27,7 @@ import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Journey, JourneyDay, WorkoutItem, WorkoutSession } from '../../src/api/types';
-import { KindTag, TodayCard } from '../../src/components/member';
+import { KindTag, TodayCard, WeekStrip, journeyToday } from '../../src/components/member';
 import {
   Badge,
   Banner,
@@ -185,7 +190,7 @@ export default function MemberWorkoutScreen() {
                 tone={plan.assessment_status === 'completed' ? 'positive' : 'caution'}
               />
             </Row>
-            <Text variant="title">Days 1–{plan.assessment_days}</Text>
+            <Text variant="title">Getting started</Text>
             <Text variant="body" tone={color.textSecondary}>
               Your assessment and introductory cardio. Your trainer records these with you at the
               branch — there is nothing to start here.
@@ -207,7 +212,7 @@ export default function MemberWorkoutScreen() {
           <TodayCard
             kind="rest"
             title="Rest & recovery"
-            subtitle={`Day ${plan.current_day} of ${plan.duration_days}. Recovery is part of the programme.`}
+            subtitle="No workout is planned for today. Recovery is part of the programme."
             cta="Nothing to do today"
             onPress={() => {}}
             disabled
@@ -224,7 +229,7 @@ export default function MemberWorkoutScreen() {
               </Row>
               <Text variant="title">{SPLIT_LABEL[plan.split_today] ?? plan.split_today}</Text>
               <Text variant="body" tone={color.textSecondary}>
-                Day {plan.current_day} of {plan.duration_days}. Start to load your chart.
+                Start to load today’s chart.
               </Text>
               <Button
                 title="Start today’s workout"
@@ -290,15 +295,17 @@ export default function MemberWorkoutScreen() {
                 />
               ) : (
                 <Banner tone="positive" icon="checkmark-circle-outline">
-                  Workout recorded. Day {plan.current_day} is done.
+                  Workout recorded. Nice work.
                 </Banner>
               )}
             </>
           )
         ) : null}
 
-        {/* Where today sits in the 45. */}
-        <Section title="Previous days">
+        {/* The week, in place of the internal day counter. */}
+        <WeekStrip days={days.data ?? []} today={journeyToday(plan)} />
+
+        <Section title="Recent sessions">
           {history.length === 0 ? (
             <Text variant="label" tone={color.textTertiary}>
               Completed days will be listed here as you work through the programme.
@@ -363,9 +370,6 @@ function HistoryRow({ day }: { day: JourneyDay }) {
 
   return (
     <Row gap="md" style={styles.historyRow}>
-      <Text variant="mono" tone={color.textTertiary} style={styles.dayNumber}>
-        {day.day_number}
-      </Text>
       <Stack gap="xxs" style={styles.grow}>
         <Text variant="body">{SPLIT_LABEL[day.split] ?? day.split}</Text>
         <Text variant="label" tone={color.textTertiary}>

@@ -30,7 +30,7 @@ export default function MemberAccountScreen() {
         },
         {
           label: 'Progress',
-          detail: 'The 45 days, workouts and measurements',
+          detail: 'Your workouts, sessions and measurements',
           icon: 'stats-chart-outline',
           route: '/(member)/progress',
         },

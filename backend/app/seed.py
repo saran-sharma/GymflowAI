@@ -40,6 +40,7 @@ from app.db.models import (
     ItemStatus,
     Journey,
     JourneyDay,
+    JourneyStatus,
     MarketingSource,
     Member,
     Membership,
@@ -69,6 +70,7 @@ from app.db.models import (
     WorkoutPlanItem,
     WorkoutSession,
     WorkoutSessionItem,
+    WorkoutSet,
 )
 from app.db.session import SessionLocal
 from app.services import (
@@ -591,6 +593,52 @@ def ensure_marketing(db: Session, branches: dict[str, Branch]) -> dict[str, Camp
     return out
 
 
+def _exercise_seed(exercise: str) -> int:
+    """A stable small number from an exercise name.
+
+    Deliberately not ``hash()``: Python salts string hashing per process, so a
+    re-seed would hand the same lift a different starting weight and the demo
+    history would silently change shape between runs.
+    """
+    return sum(exercise.encode()) % 997
+
+
+def _seeded_sets(
+    exercise: str,
+    *,
+    week: int,
+    prescribed: int,
+    rng: random.Random,
+) -> list[tuple[float, int, float | None]]:
+    """Weight, reps and RPE for one exercise on one day.
+
+    Two things make this worth generating rather than fixing: the load creeps
+    up week on week, so previous-performance and personal-record detection have
+    something real to find; and it is not monotonic, so a member sometimes has
+    a worse day — a seed where every session beats the last would make the PR
+    logic look like it fires on everything.
+
+    """
+    # A stable starting load per lift, so the same exercise does not jump
+    # between 20 kg and 90 kg across two members' histories. Every movement in
+    # `workout_library` carries external load, so none of these are bodyweight.
+    base = 20.0 + (_exercise_seed(exercise) % 9) * 7.5
+
+    # Most weeks add a plate; roughly every fourth is a plateau. Derived from
+    # the week rather than a coin flip, because a flip can land on "no gain"
+    # for every call and leave a member's whole history flat — which would make
+    # the record logic look like it never fires. Non-decreasing by construction.
+    increments = int(max(0, week - 1) * 0.75)
+    load = base + 2.5 * increments
+    out: list[tuple[float, int, float | None]] = []
+    for index in range(prescribed):
+        # Reps drop across the sets of an exercise, as they do in a real chart.
+        reps = max(4, 12 - index * 2 - rng.choice([0, 0, 1]))
+        rpe = rng.choice([None, 7.0, 7.5, 8.0, 8.5, 9.0])
+        out.append((round(load, 1), reps, rpe))
+    return out
+
+
 def seed_journey(
     db: Session,
     member: Member,
@@ -661,20 +709,38 @@ def seed_journey(
         )
         db.add(session)
         db.flush()
+        week = ((offset - journey.assessment_days - 1) // 7) + 1
         for item in journey_service.plan_items(db, plan, day_row.split):
-            db.add(
-                WorkoutSessionItem(
-                    session_id=session.id,
-                    plan_item_id=item.id,
-                    order_index=item.order_index,
-                    exercise=item.exercise,
-                    sets=item.sets,
-                    reps=item.reps,
-                    rest_seconds=item.rest_seconds,
-                    status=ItemStatus.COMPLETED,
-                    completed_at=session.completed_at,
-                )
+            session_item = WorkoutSessionItem(
+                session_id=session.id,
+                plan_item_id=item.id,
+                order_index=item.order_index,
+                exercise=item.exercise,
+                sets=item.sets,
+                reps=item.reps,
+                rest_seconds=item.rest_seconds,
+                status=ItemStatus.COMPLETED,
+                completed_at=session.completed_at,
             )
+            db.add(session_item)
+            db.flush()
+
+            # The sets the member actually performed. Without these the whole
+            # performance layer — previous performance, history, records — has
+            # nothing to read, and every demo member looks like a first-timer.
+            for number, (weight, reps, rpe) in enumerate(
+                _seeded_sets(item.exercise, week=week, prescribed=item.sets, rng=rng), start=1
+            ):
+                db.add(
+                    WorkoutSet(
+                        session_item_id=session_item.id,
+                        set_number=number,
+                        weight_kg=weight,
+                        reps=reps,
+                        rpe=rpe,
+                        completed_at=session.completed_at,
+                    )
+                )
         day_row.status = day_row.status.COMPLETED
         day_row.completed_at = session.completed_at
     db.flush()
@@ -683,6 +749,46 @@ def seed_journey(
     # this member has finished, from the dates alone.
     journey_service.settle_journey(db, journey)
     return journey
+
+
+def seed_workout_in_progress(db: Session, member: Member, rng: random.Random) -> bool:
+    """Leave one member part-way through today's workout.
+
+    Every other seeded session is finished, which means the member flow can only
+    ever be entered from a standing start. This gives the demo an actual
+    half-done chart: the first exercise logged and ticked off, the second with
+    one set of three recorded, the rest untouched — which is what "some
+    completed and incomplete sets" looks like on a phone.
+
+    Uses ``start_workout`` rather than building the session by hand, so the
+    session, its day number and its split come out of the same code the API
+    runs.
+    """
+    # A member whose back-dated history already reaches today has a *finished*
+    # session for it. Starting another would leave them with two sessions on one
+    # date — a shape production never produces, and confusing to demo.
+    if journey_service.today_workout(db, member) is not None:
+        return False
+
+    session = journey_service.start_workout(db, member=member)
+    if session is None or not session.items:
+        return False
+
+    items = sorted(session.items, key=lambda i: i.order_index)
+    for position, item in enumerate(items[:2]):
+        # The first exercise is finished; the second is one set in.
+        logged = item.sets if position == 0 else 1
+        for number, (weight, reps, rpe) in enumerate(
+            _seeded_sets(item.exercise, week=6, prescribed=logged, rng=rng), start=1
+        ):
+            journey_service.log_set(
+                db, item=item, set_number=number, weight_kg=weight, reps=reps, rpe=rpe
+            )
+        if position == 0:
+            item.status = ItemStatus.COMPLETED
+            item.completed_at = now_utc()
+    db.flush()
+    return True
 
 
 def seed_pt(
@@ -1193,6 +1299,7 @@ def seed(db: Session, *, reset: bool = False) -> None:
             db, referrer_member_id=referrer.id, referred_member=referred, note="DEMO referral"
         )
 
+    mid_workout_candidates: list[Member] = []
     for member, branch, journey_day, pt_sessions in fresh_members:
         journey = None
         trainer = (
@@ -1200,6 +1307,16 @@ def seed(db: Session, *, reset: bool = False) -> None:
         )
         if journey_day:
             journey = seed_journey(db, member, branch, journey_day, trainer, rng)
+        # The first member found in the training phase with no PT is left
+        # part-way through today's workout — see `seed_workout_in_progress`.
+        if (
+            journey is not None
+            and journey.status is JourneyStatus.ACTIVE
+            and not pt_sessions
+            and journey_service.progress(db, journey).phase == "training"
+        ):
+            mid_workout_candidates.append(member)
+
         if pt_sessions and trainer is not None:
             completed_journey = (
                 journey if journey is not None and journey.completed_on is not None else None
@@ -1216,6 +1333,12 @@ def seed(db: Session, *, reset: bool = False) -> None:
                 used=max(1, pt_sessions - rng.choice([2, 4, 9])),
                 rng=rng,
             )
+
+    # The first candidate whose history has not already used up today.
+    for candidate in mid_workout_candidates:
+        if seed_workout_in_progress(db, candidate, rng):
+            print(f"  Mid-workout today: {candidate.user.full_name}")
+            break
 
     seed_classes(db, branches, trainers_by_name, members_by_branch, rng)
 
