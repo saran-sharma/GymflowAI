@@ -141,15 +141,17 @@ function findPython() {
     return venvBin;
   }
 
-  // fallback to system python
+  // Fall back to a system interpreter, and actually check each candidate runs.
+  // Reached only when .venv is missing, which is the moment a wrong answer is
+  // least recoverable — the backend fails to spawn with no useful message.
   const candidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
   for (const cmd of candidates) {
     try {
-      execSync(`gh codespace ports visibility 8000:public ${metroPort}:public`, { stdio: 'ignore' });
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
       return cmd;
     } catch {}
   }
-  return 'python3';
+  return candidates[0];
 }
 
 function syncEnvFiles() {

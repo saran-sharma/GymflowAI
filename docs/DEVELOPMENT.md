@@ -22,9 +22,9 @@
 
 | Command | Description |
 | --- | --- |
-| `npm run dev` (or `./dev.sh`) | Start both Backend (:8000) and Metro (:8081) in one command |
+| `npm run dev` (or `./dev.sh`) | Start both Backend (:8000) and Metro (:8082) in one command |
 | `npm run dev:backend` | Start only the FastAPI backend (:8000) |
-| `npm run dev:mobile` | Start only Metro bundler for mobile (:8081) |
+| `npm run dev:mobile` | Start only Metro bundler for mobile (:8082) |
 | `npm run dev:status` | Run system diagnostics (ports, health, database, Expo config) |
 | `npm run dev:stop` | Stop all running development services cleanly |
 | `npm run dev:clean` | Clear Metro bundler cache and restart |
@@ -41,8 +41,8 @@ GymFlow AI separates the **Backend API URL** from the **Metro Bundler URL**:
   - In Local Dev: `http://localhost:8000` (or `http://10.0.2.2:8000` for Android emulator)
   - Automatically written to `apps/mobile/.env` when starting `npm run dev`.
 - **Metro Bundler URL**:
-  - In Codespaces: `https://<codespace>-8081.app.github.dev`
-  - In Local Dev: `http://localhost:8081`
+  - In Codespaces: `https://<codespace>-8082.app.github.dev`
+  - In Local Dev: `http://localhost:8082`
   - Managed via `REACT_NATIVE_PACKAGER_HOSTNAME` and `EXPO_PACKAGER_PROXY_URL`.
 
 ---

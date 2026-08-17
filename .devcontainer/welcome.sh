@@ -7,10 +7,10 @@ set -uo pipefail
 if [ -n "${CODESPACE_NAME:-}" ]; then
   DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
   API_URL="https://${CODESPACE_NAME}-8000.${DOMAIN}"
-  METRO_URL="https://${CODESPACE_NAME}-8081.${DOMAIN}"
+  METRO_URL="https://${CODESPACE_NAME}-8082.${DOMAIN}"
 else
   API_URL="http://localhost:8000"
-  METRO_URL="http://localhost:8081"
+  METRO_URL="http://localhost:8082"
 fi
 
 cat <<EOF
@@ -32,7 +32,7 @@ cat <<EOF
                   aditya.rao@member.slam.demo
                   password SlamDemo2026!   ·   check-in PIN 246813
 
-  In Codespaces, ports 8000 and 8081 are auto-configured as Public.
+  In Codespaces, ports 8000 and 8082 are auto-configured as Public.
   Connect your phone's GymFlow dev client to ${METRO_URL}.
 
 EOF
