@@ -390,14 +390,53 @@ export interface WorkoutSetInput {
   rpe?: number | null;
 }
 
-/** What the member lifted the last time they did this exercise. Null when never. */
-export interface WorkoutSetHistory {
+/** One past session of one exercise, with what it adds up to. */
+export interface ExerciseSession {
   session_id: number;
   session_date: string;
   split: WorkoutSplit;
   split_label: string;
-  exercise: string;
   sets: WorkoutSet[];
+  volume_kg: number;
+  top_weight_kg: number;
+  total_reps: number;
+  /** Null when no set carried one — never 0, which would read as effortless. */
+  average_rpe: number | null;
+}
+
+export type RecordKind = 'heaviest_weight' | 'best_reps_at_weight' | 'session_volume';
+
+/**
+ * Something a logged set beat. Numbers, not sentences: the app already knows
+ * how to render a load, and a server-built string would drift from it.
+ */
+export interface PersonalRecord {
+  kind: RecordKind;
+  weight_kg: number;
+  reps: number;
+  volume_kg: number | null;
+  previous_weight_kg: number | null;
+  previous_reps: number | null;
+  previous_volume_kg: number | null;
+}
+
+/**
+ * A member's history with one lift. `sessions` is most recent first and never
+ * includes the session being worked in. An empty list is the honest answer for
+ * a first-ever session; the records look at every set, not just those sessions.
+ */
+export interface WorkoutSetHistory {
+  exercise: string;
+  sessions: ExerciseSession[];
+  heaviest: WorkoutSet | null;
+  best_volume_kg: number | null;
+  best_volume_on: string | null;
+}
+
+/** A stored set, and anything it beat. */
+export interface WorkoutSetLogged {
+  set: WorkoutSet;
+  records: PersonalRecord[];
 }
 
 export interface PTPackage {

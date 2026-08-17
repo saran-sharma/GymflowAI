@@ -1279,3 +1279,32 @@ else is refused by branch scope. Writes stop once the workout is completed; read
 What this unblocks, now from real data rather than invented: previous-session performance,
 PR detection, session volume, RPE trends and any AI insight derived from them. None of
 those are built — they are the next steps, in the order §3 sets out.
+
+## 7. Phase 1 step 2–3 — delivered
+
+Set logging (§3.2) and the performance layer on top of it are implemented. Everything
+below is derived from `workout_sets` on read; nothing is stored, nothing is cached, and
+no figure exists that cannot be recomputed from the rows the member logged.
+
+**Previous performance** is listed set by set — `60 kg × 8` on its own line — because it is
+glanced at between sets. **Exercise history** is a sheet: the last eight sessions with
+volume, top weight, total reps and average RPE, plus the member's heaviest set and best
+session for that lift.
+
+**Personal records** (`app/domain/records.py`) cover heaviest weight, most reps at a weight,
+and best session volume. Every kind requires something to have been beaten — a first-ever
+set records nothing, and neither does the first set at a new weight. Bodyweight sets never
+set a weight record. Records ride back on the `POST` that earned them, so the app cannot
+show a PR for a set the server did not store.
+
+**Estimated 1RM is deliberately absent.** Every e1RM formula is a model fitted to someone
+else's lifters, and presenting its output beside a weight the member actually lifted would
+present an estimate as a measurement. §7 lists it as *possible*; it is the one item there
+that cannot be derived honestly from what GymFlow knows.
+
+**RPE** is displayed per set and averaged per session (null, never 0, when nobody recorded
+one). The trend analysis in §9 is not built — it needs more history than any member has.
+
+Still unbuilt, in the order §3 sets out: the milestone constant, the trainer review surface,
+and the PT-trial conversion. Readiness, recovery, HRV and nutrition remain without models
+and are omitted rather than approximated.

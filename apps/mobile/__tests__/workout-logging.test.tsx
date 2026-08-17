@@ -10,13 +10,20 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
-import type { WorkoutSet, WorkoutSetHistory } from '../src/api/types';
+import type {
+  ExerciseSession,
+  PersonalRecord,
+  WorkoutSet,
+  WorkoutSetHistory,
+} from '../src/api/types';
 import {
   PreviousPerformance,
+  RecordNote,
   RestBar,
   SetRow,
   clockLabel,
   loadLabel,
+  recordDetail,
   setLabel,
   useRestTimer,
   volume,
@@ -69,39 +76,140 @@ describe('a load reads the way a lifter says it', () => {
 
 /* ------------------------------------------------------- previous work */
 
+function aHistory(sessions: WorkoutSetHistory['sessions']): WorkoutSetHistory {
+  return {
+    exercise: 'Bench Press',
+    sessions,
+    heaviest: sessions[0]?.sets[0] ?? null,
+    best_volume_kg: sessions[0]?.volume_kg ?? null,
+    best_volume_on: sessions[0]?.session_date ?? null,
+  };
+}
+
+function aPastSession(sets: WorkoutSet[], partial: Partial<ExerciseSession> = {}): ExerciseSession {
+  return {
+    session_id: 3,
+    session_date: '2026-08-12',
+    split: 'push',
+    split_label: 'Push',
+    sets,
+    volume_kg: sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0),
+    top_weight_kg: Math.max(...sets.map((s) => s.weight_kg), 0),
+    total_reps: sets.reduce((sum, s) => sum + s.reps, 0),
+    average_rpe: null,
+    ...partial,
+  };
+}
+
 describe('previous performance', () => {
   it('says outright when there is no history', async () => {
-    // Null is a real answer from the server. An empty row here would read as
-    // a failed load, and the member could not tell the two apart.
-    await draw(<PreviousPerformance history={null} />);
+    // An empty `sessions` list is a real answer from the server. A blank block
+    // would read as a failed load, and the member could not tell them apart.
+    await draw(<PreviousPerformance history={aHistory([])} />);
     expect(screen.getByText(/First time logging this lift/)).toBeTruthy();
   });
 
   it('treats a session that logged nothing the same as no session', async () => {
-    const history: WorkoutSetHistory = {
-      session_id: 3,
-      session_date: '2026-08-12',
-      split: 'push',
-      split_label: 'Push',
-      exercise: 'Bench Press',
-      sets: [],
-    };
-    await draw(<PreviousPerformance history={history} />);
+    await draw(<PreviousPerformance history={aHistory([aPastSession([])])} />);
     expect(screen.getByText(/First time logging this lift/)).toBeTruthy();
   });
 
-  it('lists what was actually lifted', async () => {
-    const history: WorkoutSetHistory = {
-      session_id: 3,
-      session_date: '2026-08-12',
-      split: 'push',
-      split_label: 'Push',
-      exercise: 'Bench Press',
-      sets: [aSet({ weight_kg: 60, reps: 8 }), aSet({ id: 2, weight_kg: 62.5, reps: 6 })],
-    };
-    await draw(<PreviousPerformance history={history} />);
-    expect(screen.getByText('60 × 8')).toBeTruthy();
-    expect(screen.getByText('62.5 × 6')).toBeTruthy();
+  it('handles the request not having landed yet', async () => {
+    await draw(<PreviousPerformance history={null} />);
+    expect(screen.getByText(/First time logging this lift/)).toBeTruthy();
+  });
+
+  it('lists each set on its own line, as a lifter reads them', async () => {
+    // Stacked, not run together: this is glanced at between sets, and
+    // `60 × 8 · 60 × 8 · 57.5 × 10` has to be parsed rather than read.
+    const sets = [
+      aSet({ id: 1, weight_kg: 60, reps: 8 }),
+      aSet({ id: 2, weight_kg: 60, reps: 8 }),
+      aSet({ id: 3, weight_kg: 57.5, reps: 10 }),
+    ];
+    await draw(<PreviousPerformance history={aHistory([aPastSession(sets)])} />);
+
+    expect(screen.getAllByText('60 kg × 8')).toHaveLength(2);
+    expect(screen.getByText('57.5 kg × 10')).toBeTruthy();
+  });
+
+  it('shows an RPE beside the set that carried one', async () => {
+    const sets = [aSet({ id: 1, rpe: 8 }), aSet({ id: 2, rpe: null })];
+    await draw(<PreviousPerformance history={aHistory([aPastSession(sets)])} />);
+    expect(screen.getAllByText(/RPE 8/)).toHaveLength(1);
+  });
+
+  it('offers the history only when there is more than the last session', async () => {
+    const one = aHistory([aPastSession([aSet()])]);
+    const { rerender } = await draw(<PreviousPerformance history={one} onOpenHistory={() => {}} />);
+    expect(screen.queryByText(/History ·/)).toBeNull();
+
+    const two = aHistory([
+      aPastSession([aSet()]),
+      aPastSession([aSet()], { session_id: 4, session_date: '2026-08-09' }),
+    ]);
+    rerender(<PreviousPerformance history={two} onOpenHistory={() => {}} />);
+    expect(screen.getByText('History · 2 sessions')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------- personal records */
+
+function aRecord(partial: Partial<PersonalRecord> = {}): PersonalRecord {
+  return {
+    kind: 'heaviest_weight',
+    weight_kg: 65,
+    reps: 6,
+    volume_kg: null,
+    previous_weight_kg: 60,
+    previous_reps: 8,
+    previous_volume_kg: null,
+    ...partial,
+  };
+}
+
+describe('a personal record', () => {
+  it('renders nothing at all when none were beaten', async () => {
+    const { toJSON } = await draw(<RecordNote records={[]} />);
+    expect(toJSON()).toBeNull();
+  });
+
+  it('names what was beaten as well as what was done', async () => {
+    await draw(<RecordNote records={[aRecord()]} />);
+    expect(screen.getByText('Heaviest ever')).toBeTruthy();
+    expect(screen.getByText('65 kg × 6 · was 60 kg × 8')).toBeTruthy();
+  });
+
+  it('states a volume record in kilograms moved', async () => {
+    await draw(
+      <RecordNote
+        records={[
+          aRecord({
+            kind: 'session_volume',
+            volume_kg: 960,
+            previous_volume_kg: 480,
+            previous_weight_kg: null,
+            previous_reps: null,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText('Best session for this lift')).toBeTruthy();
+    expect(screen.getByText('960 kg moved · was 480 kg')).toBeTruthy();
+  });
+
+  it('says only what it did when there is nothing to compare against', () => {
+    const detail = recordDetail(aRecord({ previous_weight_kg: null, previous_reps: null }));
+    expect(detail).toBe('65 kg × 6');
+    expect(detail).not.toMatch(/was/);
+  });
+
+  it('shows two records at once without ranking them', async () => {
+    await draw(
+      <RecordNote records={[aRecord(), aRecord({ kind: 'session_volume', volume_kg: 960 })]} />,
+    );
+    expect(screen.getByText('Heaviest ever')).toBeTruthy();
+    expect(screen.getByText('Best session for this lift')).toBeTruthy();
   });
 });
 

@@ -47,6 +47,12 @@ from app.db.models import (
     WorkoutSplit,
 )
 from app.domain import journey as journey_domain
+from app.domain.records import (
+    Performed,
+    PersonalRecord,
+    records_for,
+    volume_of,
+)
 from app.domain.workout_library import exercises_for
 from app.services import alert_service, settings_service
 
@@ -789,31 +795,163 @@ def update_set(db: Session, *, row: WorkoutSet, changes: dict) -> WorkoutSet:
     return row
 
 
-def previous_performance(
-    db: Session, *, session: WorkoutSession, item: WorkoutSessionItem
-) -> WorkoutSessionItem | None:
-    """The last time this member logged sets for this exercise.
+# ------------------------------------------------------ history and records
+
+# Everything below is derived from `workout_sets` on read. Nothing is stored,
+# nothing is cached, and no figure exists that cannot be recomputed from the
+# rows the member logged — which is the only way a training history stays
+# honest when a set is later corrected or deleted.
+
+#: How many past sessions of one exercise a member is shown. Enough to see a
+#: trend, few enough to stay one screen and one query.
+HISTORY_SESSIONS = 8
+
+
+@dataclass
+class ExerciseSession:
+    """One past session of one exercise, with what it adds up to."""
+
+    session: WorkoutSession
+    sets: list[WorkoutSet]
+
+    @property
+    def volume_kg(self) -> float:
+        return volume_of([Performed(weight_kg=row.weight_kg, reps=row.reps) for row in self.sets])
+
+    @property
+    def top_weight_kg(self) -> float:
+        return max((row.weight_kg for row in self.sets), default=0.0)
+
+    @property
+    def total_reps(self) -> int:
+        return sum(row.reps for row in self.sets)
+
+    @property
+    def average_rpe(self) -> float | None:
+        """None when nobody recorded one — never zero, which would read as easy."""
+        scored = [row.rpe for row in self.sets if row.rpe is not None]
+        return round(sum(scored) / len(scored), 1) if scored else None
+
+
+@dataclass
+class ExerciseHistory:
+    exercise: str
+    sessions: list[ExerciseSession]
+    heaviest: WorkoutSet | None
+    best_volume: ExerciseSession | None
+
+
+def exercise_history(
+    db: Session,
+    *,
+    member_id: int,
+    exercise: str,
+    before_session_id: int | None = None,
+    limit: int = HISTORY_SESSIONS,
+) -> ExerciseHistory:
+    """Past sessions of one lift, most recent first.
 
     Matched on exercise *name* rather than on the plan item, because a member's
     plan is re-generated per session and re-splitting the programme must not
-    erase the history of a lift they have been doing for weeks.
+    erase the history of a lift they have been doing for weeks. That is a known
+    limitation, not an accident: renaming an exercise in the library starts its
+    history over.
 
-    Only sessions with at least one logged set qualify: an exercise that was
-    ticked off without any sets recorded has nothing to show, and returning it
-    would render an empty "last time" that reads as a bug.
+    ``before_session_id`` excludes the session being worked in, whose sets are
+    already on screen and are not yet history.
+
+    Sessions with no logged sets never appear. An exercise ticked off without
+    any sets recorded has nothing to show, and an empty row reads as a bug.
     """
-    return db.scalar(
-        select(WorkoutSessionItem)
+    rows = db.execute(
+        select(WorkoutSet, WorkoutSession)
+        .join(WorkoutSessionItem, WorkoutSet.session_item_id == WorkoutSessionItem.id)
+        .join(WorkoutSession, WorkoutSessionItem.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.member_id == member_id,
+            WorkoutSessionItem.exercise == exercise,
+            *([WorkoutSession.id != before_session_id] if before_session_id else []),
+        )
+        .order_by(
+            WorkoutSession.session_date.desc(),
+            WorkoutSession.id.desc(),
+            WorkoutSet.set_number,
+        )
+    ).all()
+
+    # Grouped in Python rather than in SQL: the rows arrive already ordered, and
+    # the alternative is one query per session to fetch the sets back.
+    grouped: dict[int, ExerciseSession] = {}
+    for workout_set, session in rows:
+        entry = grouped.get(session.id)
+        if entry is None:
+            entry = grouped[session.id] = ExerciseSession(session=session, sets=[])
+        entry.sets.append(workout_set)
+
+    sessions = list(grouped.values())
+    every_set = [row for entry in sessions for row in entry.sets]
+
+    return ExerciseHistory(
+        exercise=exercise,
+        sessions=sessions[:limit],
+        # Records look at everything, not just the window shown. A heaviest-ever
+        # that quietly meant "heaviest of the last eight" would be a lie.
+        heaviest=max(every_set, key=lambda row: (row.weight_kg, row.reps), default=None),
+        best_volume=max(sessions, key=lambda entry: entry.volume_kg, default=None),
+    )
+
+
+def previous_performance(
+    db: Session, *, session: WorkoutSession, item: WorkoutSessionItem
+) -> ExerciseSession | None:
+    """The last session in which this member logged sets for this exercise."""
+    history = exercise_history(
+        db,
+        member_id=session.member_id,
+        exercise=item.exercise,
+        before_session_id=session.id,
+        limit=1,
+    )
+    return history.sessions[0] if history.sessions else None
+
+
+# --------------------------------------------------------- personal records
+
+
+def detect_records(
+    db: Session, *, session: WorkoutSession, item: WorkoutSessionItem, logged: WorkoutSet
+) -> list[PersonalRecord]:
+    """What, if anything, the set just logged beat.
+
+    This function only gathers; :mod:`app.domain.records` decides. Keeping the
+    rules out of the query means they can be argued with, and tested, without a
+    database.
+    """
+    prior = db.execute(
+        select(WorkoutSet, WorkoutSessionItem.session_id)
+        .join(WorkoutSessionItem, WorkoutSet.session_item_id == WorkoutSessionItem.id)
         .join(WorkoutSession, WorkoutSessionItem.session_id == WorkoutSession.id)
         .where(
             WorkoutSession.member_id == session.member_id,
-            WorkoutSession.id != session.id,
-            WorkoutSession.session_date <= session.session_date,
             WorkoutSessionItem.exercise == item.exercise,
-            WorkoutSessionItem.logged_sets.any(),
+            WorkoutSet.id != logged.id,
         )
-        .order_by(WorkoutSession.session_date.desc(), WorkoutSession.id.desc())
-        .limit(1)
+    ).all()
+
+    by_session: dict[int, list[Performed]] = {}
+    earlier: list[Performed] = []
+    for row, session_id in prior:
+        performed = Performed(weight_kg=row.weight_kg, reps=row.reps)
+        earlier.append(performed)
+        by_session.setdefault(session_id, []).append(performed)
+
+    return records_for(
+        Performed(weight_kg=logged.weight_kg, reps=logged.reps),
+        earlier=earlier,
+        session_so_far=by_session.get(session.id, []),
+        past_session_volumes=[
+            volume_of(rows) for session_id, rows in by_session.items() if session_id != session.id
+        ],
     )
 
 
