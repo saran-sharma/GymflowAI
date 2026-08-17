@@ -68,21 +68,31 @@ it('shows the SLAM logo, the product name and the positioning line', async () =>
   expect(screen.getByText('Smart operations across every SLAM branch.')).toBeTruthy();
 });
 
-it('offers all four roles', async () => {
+it('offers no role selector — the server decides who you are', async () => {
   await renderLogin();
+  // The chips were always a lie: signIn never sent the role, and routing has
+  // always used the role the server returned. Asking before authenticating is
+  // a question the app cannot act on.
   for (const role of ['owner', 'trainer', 'member', 'super_admin']) {
-    expect(screen.getByTestId(`role-${role}`)).toBeTruthy();
+    expect(screen.queryByTestId(`role-${role}`)).toBeNull();
   }
-  expect(screen.getByText('ADMIN')).toBeTruthy();
 });
 
-it('marks the selected role and lets it change', async () => {
+it('draws the unbuilt sign-in routes and says why each is unavailable', async () => {
   await renderLogin();
-  expect(screen.getByTestId('role-owner').props.accessibilityState.selected).toBe(true);
 
-  fireEvent.press(screen.getByTestId('role-trainer'));
-  expect(screen.getByTestId('role-trainer').props.accessibilityState.selected).toBe(true);
-  expect(screen.getByTestId('role-owner').props.accessibilityState.selected).toBe(false);
+  fireEvent.press(screen.getByTestId('passkey'));
+  expect(screen.getByText(/WebAuthn endpoint GymFlow does not have/)).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('social-google'));
+  expect(screen.getByText(/no OAuth client configured/)).toBeTruthy();
+});
+
+it('does not offer Email as a social provider, which the password field already is', async () => {
+  await renderLogin();
+  expect(screen.getByTestId('social-apple')).toBeTruthy();
+  expect(screen.getByTestId('social-google')).toBeTruthy();
+  expect(screen.queryByTestId('social-email')).toBeNull();
 });
 
 it('keeps submit disabled until both fields are usable', async () => {
@@ -127,12 +137,10 @@ it('hides the password until the eye is tapped', async () => {
   expect(screen.getByTestId('login-password').props.secureTextEntry).toBe(true);
 });
 
-it('routes on the role the server returns, not the chip that was tapped', async () => {
+it('routes on the role the server returns', async () => {
   mockLogin.mockResolvedValue(signedInAs('trainer'));
   await renderLogin();
 
-  // The person taps OWNER but the account is a trainer.
-  fireEvent.press(screen.getByTestId('role-owner'));
   await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
@@ -189,15 +197,11 @@ it('reports a locked account as something the branch can fix', async () => {
 it('offers a way to get help without leaving the screen', async () => {
   await renderLogin();
   fireEvent.press(screen.getByTestId('forgot-password'));
-  await waitFor(() =>
-    expect(screen.getByText(/Ask your SLAM branch manager/)).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByText(/Ask your SLAM branch manager/)).toBeTruthy());
 });
 
 it('points at the branches by name from contact help', async () => {
   await renderLogin();
   fireEvent.press(screen.getByTestId('contact-branch'));
-  await waitFor(() =>
-    expect(screen.getByText(/Nagalkeni, Boganhalli and Alandur/)).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByText(/Nagalkeni, Boganhalli and Alandur/)).toBeTruthy());
 });
