@@ -15,8 +15,8 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
@@ -74,6 +74,34 @@ export default function MemberWorkoutScreen() {
     void workout.refresh();
     void days.refresh();
   }, [journey, workout, days]);
+
+  /* Re-read the chart whenever the member comes back to it.
+   *
+   * Sets are logged on the exercise screen, so every count on this screen —
+   * `2/3` on a row, "3 of 6" in the badge, the progress bar — is stale the
+   * moment that screen is opened. Without this the member finishes an exercise
+   * and returns to a chart still showing the state they left, which reads as
+   * the app having lost the sets they just did.
+   *
+   * The callback holds no dependencies and reaches the current refresh through
+   * a ref, so it never changes identity. A callback rebuilt each render would
+   * make `useFocusEffect` re-run on every render, which is a fetch loop rather
+   * than a refresh.
+   */
+  const refreshOnReturn = useRef(workout.refresh);
+  refreshOnReturn.current = workout.refresh;
+  const arrived = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      // `useApi` already fetched on mount; the first focus would duplicate it.
+      if (!arrived.current) {
+        arrived.current = true;
+        return;
+      }
+      void refreshOnReturn.current();
+    }, []),
+  );
 
   const run = useCallback(
     async (action: (token: string) => Promise<unknown>) => {
