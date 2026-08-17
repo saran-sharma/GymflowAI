@@ -25,6 +25,7 @@ from app.db.models import (
     SessionStatus,
     WorkoutSplit,
 )
+from app.domain.records import RecordKind
 
 
 class ORMModel(BaseModel):
@@ -222,20 +223,73 @@ class WorkoutSetCreate(BaseModel):
     completed_at: datetime | None = None
 
 
-class WorkoutSetHistory(BaseModel):
-    """What the member did the last time they performed this exercise.
+class ExerciseSessionOut(BaseModel):
+    """One past session of one exercise, with what it adds up to.
 
-    Returned as ``null`` rather than an empty list when there is no history, so
-    the app can say "first time" instead of rendering an empty table that looks
-    like a failed load.
+    The totals are computed from the sets in the same response rather than
+    stored, so a corrected or deleted set changes them immediately and no
+    figure can drift away from the rows it claims to summarise.
     """
 
     session_id: int
     session_date: date
     split: WorkoutSplit
     split_label: str
-    exercise: str
     sets: list[WorkoutSetOut] = []
+    volume_kg: float
+    top_weight_kg: float
+    total_reps: int
+    # None when no set in the session carried one. Never 0, which on a 1-10
+    # scale would read as "effortless" rather than "not recorded".
+    average_rpe: float | None = None
+
+
+class PersonalRecordOut(BaseModel):
+    """Something the set just logged beat.
+
+    Values are numbers, not sentences: the app already knows how to render a
+    load, and a server-built string would drift from it.
+    """
+
+    kind: RecordKind
+    weight_kg: float
+    reps: int
+    volume_kg: float | None = None
+    previous_weight_kg: float | None = None
+    previous_reps: int | None = None
+    previous_volume_kg: float | None = None
+
+
+class WorkoutSetHistory(BaseModel):
+    """Everything known about one member's history with one lift.
+
+    ``sessions`` is most recent first and excludes the session being worked in,
+    whose sets are already on screen. An empty list is the honest answer for a
+    first-ever session — the app says so rather than rendering an empty table
+    that looks like a failed load.
+
+    The records look at *all* of the member's sets, not just the sessions
+    returned: a "heaviest ever" that quietly meant "heaviest of the last eight"
+    would be a lie.
+    """
+
+    exercise: str
+    sessions: list[ExerciseSessionOut] = []
+    heaviest: WorkoutSetOut | None = None
+    best_volume_kg: float | None = None
+    best_volume_on: date | None = None
+
+
+class WorkoutSetLogged(BaseModel):
+    """A stored set, and anything it beat.
+
+    Records ride back with the write that earned them so the app never has to
+    ask a second time — and so a PR can never be shown for a set the server
+    did not store.
+    """
+
+    set: WorkoutSetOut
+    records: list[PersonalRecordOut] = []
 
 
 class WorkoutSetUpdate(BaseModel):

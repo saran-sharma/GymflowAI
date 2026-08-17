@@ -64,7 +64,7 @@ def test_a_member_logs_a_set_and_reads_it_back_unchanged(client, world, auth, wo
         headers=headers,
     )
     assert created.status_code == 201, created.text
-    body = created.json()
+    body = created.json()["set"]
     assert body["set_number"] == 1
     assert body["weight_kg"] == 60.0
     assert body["reps"] == 8
@@ -100,7 +100,7 @@ def test_a_correction_touches_only_the_fields_it_sends(client, world, auth, work
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 60, "reps": 8, "rpe": 8},
         headers=headers,
-    ).json()
+    ).json()["set"]
 
     updated = client.patch(
         f"{sets_url(workout, item)}/{created['id']}",
@@ -120,7 +120,7 @@ def test_a_mistyped_set_can_be_deleted(client, db, world, auth, workout):
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 600, "reps": 8},
         headers=headers,
-    ).json()
+    ).json()["set"]
 
     removed = client.delete(f"{sets_url(workout, item)}/{created['id']}", headers=headers)
     assert removed.status_code == 200, removed.text
@@ -136,7 +136,7 @@ def test_a_trainer_at_the_same_branch_can_correct_a_members_set(client, world, a
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 60, "reps": 8},
         headers=auth(world["member_ngk_user"]),
-    ).json()
+    ).json()["set"]
 
     updated = client.patch(
         f"{sets_url(workout, item)}/{created['id']}",
@@ -193,7 +193,7 @@ def test_bodyweight_records_zero_load_rather_than_being_refused(client, world, a
         headers=auth(world["member_ngk_user"]),
     )
     assert response.status_code == 201, response.text
-    assert response.json()["weight_kg"] == 0.0
+    assert response.json()["set"]["weight_kg"] == 0.0
 
 
 def test_the_same_set_number_cannot_be_logged_twice(client, world, auth, workout):
@@ -236,7 +236,7 @@ def test_renumbering_a_set_to_the_number_it_already_has_is_allowed(client, world
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 60, "reps": 8},
         headers=headers,
-    ).json()
+    ).json()["set"]
 
     same = client.patch(
         f"{sets_url(workout, item)}/{created['id']}",
@@ -255,7 +255,7 @@ def test_a_finished_workout_stops_accepting_sets(client, db, world, auth, workou
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 60, "reps": 8},
         headers=headers,
-    ).json()
+    ).json()["set"]
 
     journey_service.complete_workout(db, workout)
     db.commit()
@@ -325,7 +325,7 @@ def test_a_member_cannot_delete_another_members_set(client, db, world, auth, wor
         sets_url(workout, item),
         json={"set_number": 1, "weight_kg": 60, "reps": 8},
         headers=auth(world["member_ngk_user"]),
-    ).json()
+    ).json()["set"]
     _, other_user = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
     db.commit()
 
@@ -363,7 +363,7 @@ def test_a_set_from_a_different_exercise_is_not_reachable(client, world, auth, w
         sets_url(workout, items[0]),
         json={"set_number": 1, "weight_kg": 60, "reps": 8},
         headers=headers,
-    ).json()
+    ).json()["set"]
 
     response = client.patch(
         f"{sets_url(workout, items[1])}/{created['id']}",
@@ -401,7 +401,7 @@ def test_deleting_an_exercise_takes_its_sets_with_it(db, world, workout):
     assert db.scalars(select(WorkoutSet).where(WorkoutSet.session_item_id == item.id)).all() == []
 
 
-# --------------------------------------------------- previous performance
+# ------------------------------------------------------- exercise history
 
 
 def _past_session(db, member, *, days_ago: int, exercise: str, sets: list[tuple[float, int]]):
@@ -429,68 +429,108 @@ def _past_session(db, member, *, days_ago: int, exercise: str, sets: list[tuple[
     return session
 
 
-def previous_url(session, item) -> str:
-    return f"{BASE}/workouts/{session.id}/items/{item.id}/previous"
+def history_url(session, item) -> str:
+    return f"{BASE}/workouts/{session.id}/items/{item.id}/history"
 
 
-def test_no_history_reads_as_null_not_as_an_empty_list(client, world, auth, workout):
+def test_no_history_is_an_empty_list_not_a_missing_body(client, world, auth, workout):
     """ "You have not done this before" and "we could not load it" must differ."""
     response = client.get(
-        previous_url(workout, first_item(workout)), headers=auth(world["member_ngk_user"])
+        history_url(workout, first_item(workout)), headers=auth(world["member_ngk_user"])
     )
     assert response.status_code == 200
-    assert response.json() is None
+    body = response.json()
+    assert body["sessions"] == []
+    assert body["heaviest"] is None
+    assert body["best_volume_kg"] is None
 
 
-def test_previous_performance_returns_the_last_session_that_logged_sets(
-    client, db, world, auth, workout
-):
+def test_history_lists_past_sessions_most_recent_first(client, db, world, auth, workout):
     item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=9, exercise=item.exercise, sets=[(55, 7)])
     _past_session(
         db, world["member_ngk"], days_ago=3, exercise=item.exercise, sets=[(60, 8), (60, 6)]
     )
     db.commit()
 
-    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
-    assert body is not None
-    assert body["exercise"] == item.exercise
-    assert body["session_date"] == (date.today() - timedelta(days=3)).isoformat()
-    assert [(s["weight_kg"], s["reps"]) for s in body["sets"]] == [(60.0, 8), (60.0, 6)]
+    body = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert [entry["session_date"] for entry in body["sessions"]] == [
+        (date.today() - timedelta(days=3)).isoformat(),
+        (date.today() - timedelta(days=9)).isoformat(),
+    ]
+    assert [(s["weight_kg"], s["reps"]) for s in body["sessions"][0]["sets"]] == [
+        (60.0, 8),
+        (60.0, 6),
+    ]
 
 
-def test_the_most_recent_history_wins(client, db, world, auth, workout):
+def test_each_past_session_carries_what_it_adds_up_to(client, db, world, auth, workout):
     item = first_item(workout)
-    _past_session(db, world["member_ngk"], days_ago=10, exercise=item.exercise, sets=[(50, 10)])
-    _past_session(db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[(65, 5)])
+    _past_session(
+        db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[(60, 8), (57.5, 10)]
+    )
     db.commit()
 
-    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
-    assert [(s["weight_kg"], s["reps"]) for s in body["sets"]] == [(65.0, 5)]
+    entry = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()[
+        "sessions"
+    ][0]
+    assert entry["volume_kg"] == 1055.0  # 60×8 + 57.5×10
+    assert entry["top_weight_kg"] == 60.0
+    assert entry["total_reps"] == 18
 
 
-def test_a_past_session_with_no_logged_sets_is_not_offered_as_history(
-    client, db, world, auth, workout
-):
-    """An exercise ticked off without sets has nothing to show."""
+def test_a_session_nobody_scored_reports_no_average_rpe(client, db, world, auth, workout):
+    """None, never 0 — on a 1-10 scale zero would read as effortless."""
     item = first_item(workout)
-    _past_session(db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[])
-    _past_session(db, world["member_ngk"], days_ago=9, exercise=item.exercise, sets=[(55, 7)])
+    _past_session(db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[(60, 8)])
     db.commit()
 
-    body = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"])).json()
-    assert body["session_date"] == (date.today() - timedelta(days=9)).isoformat()
+    entry = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()[
+        "sessions"
+    ][0]
+    assert entry["average_rpe"] is None
+
+
+def test_average_rpe_uses_only_the_sets_that_carried_one(client, db, world, auth, workout):
+    item = first_item(workout)
+    session = _past_session(
+        db, world["member_ngk"], days_ago=2, exercise=item.exercise, sets=[(60, 8), (60, 6)]
+    )
+    logged = sorted(session.items[0].logged_sets, key=lambda s: s.set_number)
+    logged[0].rpe = 8
+    db.commit()
+
+    entry = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()[
+        "sessions"
+    ][0]
+    # Averaged over the one set that has an RPE, not over both.
+    assert entry["average_rpe"] == 8.0
+
+
+def test_the_heaviest_ever_looks_past_the_sessions_shown(client, db, world, auth, workout):
+    """A "heaviest ever" that quietly meant "of the last eight" would be a lie."""
+    item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=90, exercise=item.exercise, sets=[(100, 3)])
+    for days_ago in range(1, 10):
+        _past_session(
+            db, world["member_ngk"], days_ago=days_ago, exercise=item.exercise, sets=[(60, 8)]
+        )
+    db.commit()
+
+    body = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert len(body["sessions"]) == journey_service.HISTORY_SESSIONS
+    assert body["heaviest"]["weight_kg"] == 100.0
 
 
 def test_history_never_crosses_members(client, db, world, auth, workout):
-    """Another member's lifts are not this member's previous performance."""
     item = first_item(workout)
     other, _ = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
     journey_service.start_journey(db, member=other, start_date=date.today() - timedelta(days=5))
     _past_session(db, other, days_ago=1, exercise=item.exercise, sets=[(200, 20)])
     db.commit()
 
-    response = client.get(previous_url(workout, item), headers=auth(world["member_ngk_user"]))
-    assert response.json() is None
+    body = client.get(history_url(workout, item), headers=auth(world["member_ngk_user"])).json()
+    assert body["sessions"] == []
 
 
 def test_the_current_session_is_not_its_own_history(client, world, auth, workout):
@@ -500,16 +540,92 @@ def test_the_current_session_is_not_its_own_history(client, world, auth, workout
         sets_url(workout, item), json={"set_number": 1, "weight_kg": 60, "reps": 8}, headers=headers
     )
 
-    assert client.get(previous_url(workout, item), headers=headers).json() is None
+    assert client.get(history_url(workout, item), headers=headers).json()["sessions"] == []
 
 
 def test_reading_history_requires_authentication_and_ownership(client, db, world, auth, workout):
     item = first_item(workout)
-    assert client.get(previous_url(workout, item)).status_code == 401
+    assert client.get(history_url(workout, item)).status_code == 401
 
     _, other_user = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
     db.commit()
-    assert client.get(previous_url(workout, item), headers=auth(other_user)).status_code == 403
+    assert client.get(history_url(workout, item), headers=auth(other_user)).status_code == 403
+
+
+# ------------------------------------------------- records, over the wire
+
+
+def log(client, headers, workout, item, weight, reps, number):
+    return client.post(
+        sets_url(workout, item),
+        json={"set_number": number, "weight_kg": weight, "reps": reps},
+        headers=headers,
+    )
+
+
+def test_a_logged_set_comes_back_with_the_records_it_beat(client, db, world, auth, workout):
+    """The records ride back with the write, so the app can never show a PR for
+    a set the server did not store."""
+    headers = auth(world["member_ngk_user"])
+    item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=4, exercise=item.exercise, sets=[(60, 8)])
+    db.commit()
+
+    body = log(client, headers, workout, item, 65, 6, 1).json()
+    assert body["set"]["weight_kg"] == 65.0
+    assert [r["kind"] for r in body["records"]] == ["heaviest_weight"]
+    assert body["records"][0]["previous_weight_kg"] == 60.0
+
+
+def test_a_members_first_ever_set_is_reported_with_no_records(client, world, auth, workout):
+    headers = auth(world["member_ngk_user"])
+    body = log(client, headers, workout, first_item(workout), 60, 8, 1).json()
+    assert body["set"]["reps"] == 8
+    assert body["records"] == []
+
+
+def test_another_members_heavier_lift_is_not_a_record_to_beat(client, db, world, auth, workout):
+    headers = auth(world["member_ngk_user"])
+    item = first_item(workout)
+    other, _ = make_member(db, world["roles"], world["branches"]["ngk"], "Nikhil Suresh")
+    journey_service.start_journey(db, member=other, start_date=date.today() - timedelta(days=5))
+    _past_session(db, other, days_ago=1, exercise=item.exercise, sets=[(200, 10)])
+    _past_session(db, world["member_ngk"], days_ago=1, exercise=item.exercise, sets=[(60, 8)])
+    db.commit()
+
+    body = log(client, headers, workout, item, 65, 6, 1).json()
+    assert [r["kind"] for r in body["records"]] == ["heaviest_weight"]
+    assert body["records"][0]["previous_weight_kg"] == 60.0
+
+
+def test_a_different_exercise_is_not_history_for_this_one(client, db, world, auth, workout):
+    headers = auth(world["member_ngk_user"])
+    items = sorted(workout.items, key=lambda i: i.order_index)
+    _past_session(db, world["member_ngk"], days_ago=2, exercise=items[1].exercise, sets=[(90, 10)])
+    db.commit()
+
+    body = log(client, headers, workout, items[0], 60, 8, 1).json()
+    assert body["records"] == []
+
+
+def test_session_volume_is_reported_once_the_session_passes_its_best(
+    client, db, world, auth, workout
+):
+    headers = auth(world["member_ngk_user"])
+    item = first_item(workout)
+    _past_session(db, world["member_ngk"], days_ago=4, exercise=item.exercise, sets=[(60, 8)])
+    db.commit()
+
+    # 480 today equals the best; equalling is not beating.
+    first = log(client, headers, workout, item, 60, 8, 1).json()
+    assert [r["kind"] for r in first["records"]] == []
+
+    second = log(client, headers, workout, item, 60, 8, 2).json()
+    kinds = [r["kind"] for r in second["records"]]
+    assert "session_volume" in kinds
+    volume = next(r for r in second["records"] if r["kind"] == "session_volume")
+    assert volume["volume_kg"] == 960.0
+    assert volume["previous_volume_kg"] == 480.0
 
 
 # ----------------------------------------------------- the chart's summary

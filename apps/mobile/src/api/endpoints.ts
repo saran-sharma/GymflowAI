@@ -215,6 +215,7 @@ import type {
   WorkoutSet,
   WorkoutSetHistory,
   WorkoutSetInput,
+  WorkoutSetLogged,
   WorkoutSplit,
 } from './types';
 
@@ -296,12 +297,13 @@ const setsPath = (sessionId: number, itemId: number) =>
 export const workoutSets = (sessionId: number, itemId: number, token: string) =>
   request<WorkoutSet[]>(setsPath(sessionId, itemId), { token });
 
+/** Answers with the stored set *and* whatever it beat, in one round trip. */
 export const logWorkoutSet = (
   sessionId: number,
   itemId: number,
   body: WorkoutSetInput,
   token: string,
-) => request<WorkoutSet>(setsPath(sessionId, itemId), { method: 'POST', body, token });
+) => request<WorkoutSetLogged>(setsPath(sessionId, itemId), { method: 'POST', body, token });
 
 export const updateWorkoutSet = (
   sessionId: number,
@@ -322,9 +324,12 @@ export const deleteWorkoutSet = (sessionId: number, itemId: number, setId: numbe
     token,
   });
 
-/** Null when the member has never logged this exercise before. */
-export const previousPerformance = (sessionId: number, itemId: number, token: string) =>
-  request<WorkoutSetHistory | null>(`/journeys/workouts/${sessionId}/items/${itemId}/previous`, {
+/**
+ * Past sessions of this lift, most recent first, plus the member's records for
+ * it. Always a body — `sessions: []` is the answer for a lift never logged.
+ */
+export const exerciseHistory = (sessionId: number, itemId: number, token: string) =>
+  request<WorkoutSetHistory>(`/journeys/workouts/${sessionId}/items/${itemId}/history`, {
     token,
   });
 

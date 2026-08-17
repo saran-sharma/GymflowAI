@@ -20,9 +20,16 @@ import { Alert, Keyboard, Pressable, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
-import type { WorkoutSet, WorkoutSetHistory, WorkoutSession } from '../../../src/api/types';
+import type {
+  PersonalRecord,
+  WorkoutSession,
+  WorkoutSet,
+  WorkoutSetHistory,
+} from '../../../src/api/types';
 import {
+  ExerciseHistorySheet,
   PreviousPerformance,
+  RecordNote,
   RestBar,
   SetRow,
   loadLabel,
@@ -73,8 +80,8 @@ export default function ExerciseScreen() {
     (token) => api.workoutSets(sessionId, itemId, token),
     [sessionId, itemId],
   );
-  const previous = useApi<WorkoutSetHistory | null>(
-    (token) => api.previousPerformance(sessionId, itemId, token),
+  const history = useApi<WorkoutSetHistory>(
+    (token) => api.exerciseHistory(sessionId, itemId, token),
     [sessionId, itemId],
   );
 
@@ -86,6 +93,11 @@ export default function ExerciseScreen() {
   const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  /* Records for the set just logged, and only that one. Cleared as soon as the
+   * next set is started: a PR notice still on screen while the member types
+   * the following set reads as a claim about the set they are typing. */
+  const [records, setRecords] = useState<PersonalRecord[]>([]);
   const rest = useRestTimer();
 
   const session = workout.data;
@@ -126,20 +138,22 @@ export default function ExerciseScreen() {
     // between three taps and a keyboard.
     const source = logged.length
       ? logged[logged.length - 1]
-      : (previous.data?.sets.slice(-1)[0] ?? null);
+      : (history.data?.sessions[0]?.sets.slice(-1)[0] ?? null);
     if (!source) return EMPTY;
     // RPE is never suggested: it is how hard *this* set felt, and carrying the
     // last one forward would put a number the member never gave into a field
     // that then gets saved.
     return { weight: String(source.weight_kg), reps: String(source.reps), rpe: '' };
-  }, [logged, previous.data]);
+  }, [logged, history.data]);
 
   const active = draft ?? suggestion;
 
   // The first keystroke seeds the draft from whatever is on screen, so taking
   // over one field never wipes the other two.
-  const setField = (field: keyof Draft) => (value: string) =>
+  const setField = (field: keyof Draft) => (value: string) => {
+    setRecords([]);
     setDraft({ ...active, [field]: value });
+  };
 
   const beginEdit = (entry: WorkoutSet) => {
     setEditing(entry.id);
@@ -171,6 +185,8 @@ export default function ExerciseScreen() {
     }
 
     if (editing !== null) {
+      // A correction is not an achievement: it changes a number that was
+      // already counted, so it neither claims a record nor starts a rest.
       const saved = await run((token) =>
         api.updateWorkoutSet(sessionId, itemId, editing, { weight_kg: weight, reps, rpe }, token),
       );
@@ -178,17 +194,22 @@ export default function ExerciseScreen() {
       return;
     }
 
-    const saved = await run((token) =>
-      api.logWorkoutSet(
+    let beaten: PersonalRecord[] = [];
+    const saved = await run(async (token) => {
+      const response = await api.logWorkoutSet(
         sessionId,
         itemId,
         { set_number: nextNumber, weight_kg: weight, reps, rpe },
         token,
-      ),
-    );
+      );
+      beaten = response.records;
+      return response;
+    });
+
     if (saved) {
       // Back to the suggestion, which now derives from the set just logged.
       setDraft(null);
+      setRecords(beaten);
       rest.start(item?.rest_seconds || FALLBACK_REST_SECONDS);
     }
   };
@@ -210,6 +231,8 @@ export default function ExerciseScreen() {
 
   if (workout.loading || sets.loading) return <Loading label="Loading exercise" />;
 
+  // History failing is not worth blocking the screen for: a member can log
+  // sets without knowing what they did last week. It renders as "no history".
   const failure = workout.error ?? sets.error;
   if (failure) {
     const offline = failure.code === OFFLINE_CODE;
@@ -288,7 +311,9 @@ export default function ExerciseScreen() {
           </Banner>
         ) : null}
 
-        <PreviousPerformance history={previous.data} />
+        <PreviousPerformance history={history.data} onOpenHistory={() => setShowHistory(true)} />
+
+        <RecordNote records={records} />
 
         <Divider />
 
@@ -421,6 +446,12 @@ export default function ExerciseScreen() {
           </Text>
         ) : null}
       </Body>
+
+      <ExerciseHistorySheet
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        history={history.data}
+      />
     </Screen>
   );
 }

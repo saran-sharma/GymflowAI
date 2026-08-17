@@ -45,8 +45,10 @@ from app.schemas.training import (
     AssessmentRequest,
     CardioRequest,
     CardioSessionOut,
+    ExerciseSessionOut,
     JourneyDayOut,
     JourneyOut,
+    PersonalRecordOut,
     PlanItemOut,
     PlanItemUpsert,
     StartJourneyRequest,
@@ -57,6 +59,7 @@ from app.schemas.training import (
     WorkoutSessionOut,
     WorkoutSetCreate,
     WorkoutSetHistory,
+    WorkoutSetLogged,
     WorkoutSetOut,
     WorkoutSetUpdate,
 )
@@ -325,17 +328,22 @@ def _authorised_session(db: Session, user: User, session_id: int) -> WorkoutSess
     return session
 
 
-def _writable_item(db: Session, user: User, session_id: int, item_id: int) -> WorkoutSessionItem:
+def _writable_item(
+    db: Session, user: User, session_id: int, item_id: int
+) -> tuple[WorkoutSession, WorkoutSessionItem]:
     """The read path plus the one rule that separates writing from reading.
 
     A finished workout is a record. Reopening it by logging into it would let
     today's session absorb tomorrow's work, so writes stop at completion while
     reads stay open.
+
+    Returns the session as well as the item because every caller needs both,
+    and re-resolving the session would repeat the ownership check and its query.
     """
     session = _authorised_session(db, user, session_id)
     if session.status is SessionStatus.COMPLETED:
         raise HTTPException(status_code=409, detail="This workout is already finished")
-    return journey_service.load_item(db, session=session, item_id=item_id)
+    return session, journey_service.load_item(db, session=session, item_id=item_id)
 
 
 @router.get(
@@ -353,42 +361,58 @@ def list_workout_sets(
     return journey_service.list_sets(db, item=item)
 
 
-@router.get(
-    "/workouts/{session_id}/items/{item_id}/previous",
-    response_model=WorkoutSetHistory | None,
-)
-def previous_performance(
-    session_id: int,
-    item_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> WorkoutSetHistory | None:
-    """What this member lifted the last time they did this exercise.
-
-    Null when there is no history. The app needs to tell "you have not done
-    this before" apart from "we could not load it", and an empty list cannot
-    carry that distinction.
-    """
-    session = _authorised_session(db, user, session_id)
-    item = journey_service.load_item(db, session=session, item_id=item_id)
-    previous = journey_service.previous_performance(db, session=session, item=item)
-    if previous is None:
-        return None
-
-    past = previous.session
-    return WorkoutSetHistory(
+def _exercise_session_out(entry: journey_service.ExerciseSession) -> ExerciseSessionOut:
+    past = entry.session
+    return ExerciseSessionOut(
         session_id=past.id,
         session_date=past.session_date,
         split=past.split,
         split_label=SPLIT_LABELS.get(past.split, past.split.value.title()),
-        exercise=previous.exercise,
-        sets=[WorkoutSetOut.model_validate(s) for s in previous.logged_sets],
+        sets=[WorkoutSetOut.model_validate(row) for row in entry.sets],
+        volume_kg=entry.volume_kg,
+        top_weight_kg=entry.top_weight_kg,
+        total_reps=entry.total_reps,
+        average_rpe=entry.average_rpe,
+    )
+
+
+@router.get(
+    "/workouts/{session_id}/items/{item_id}/history",
+    response_model=WorkoutSetHistory,
+)
+def exercise_history(
+    session_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WorkoutSetHistory:
+    """This member's history with this lift, most recent session first.
+
+    Always a body, never null: `sessions: []` is the honest answer for a lift
+    they have never logged, and the app says "first time" from that rather than
+    having to tell an empty result apart from a failed request.
+    """
+    session = _authorised_session(db, user, session_id)
+    item = journey_service.load_item(db, session=session, item_id=item_id)
+    history = journey_service.exercise_history(
+        db,
+        member_id=session.member_id,
+        exercise=item.exercise,
+        before_session_id=session.id,
+    )
+
+    return WorkoutSetHistory(
+        exercise=history.exercise,
+        sessions=[_exercise_session_out(entry) for entry in history.sessions],
+        heaviest=(WorkoutSetOut.model_validate(history.heaviest) if history.heaviest else None),
+        best_volume_kg=history.best_volume.volume_kg if history.best_volume else None,
+        best_volume_on=(history.best_volume.session.session_date if history.best_volume else None),
     )
 
 
 @router.post(
     "/workouts/{session_id}/items/{item_id}/sets",
-    response_model=WorkoutSetOut,
+    response_model=WorkoutSetLogged,
     status_code=201,
 )
 def log_workout_set(
@@ -397,9 +421,15 @@ def log_workout_set(
     payload: WorkoutSetCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> WorkoutSet:
-    item = _writable_item(db, user, session_id, item_id)
-    return journey_service.log_set(
+) -> WorkoutSetLogged:
+    """Store the set, and say what it beat.
+
+    Records ride back with the write that earned them. Asking for them
+    separately would mean a moment where the app could show a PR for a set the
+    server had not stored — the one thing a training record must never do.
+    """
+    session, item = _writable_item(db, user, session_id, item_id)
+    logged = journey_service.log_set(
         db,
         item=item,
         set_number=payload.set_number,
@@ -407,6 +437,11 @@ def log_workout_set(
         reps=payload.reps,
         rpe=payload.rpe,
         completed_at=payload.completed_at,
+    )
+    records = journey_service.detect_records(db, session=session, item=item, logged=logged)
+    return WorkoutSetLogged(
+        set=WorkoutSetOut.model_validate(logged),
+        records=[PersonalRecordOut(**vars(record)) for record in records],
     )
 
 
@@ -422,7 +457,7 @@ def update_workout_set(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> WorkoutSet:
-    item = _writable_item(db, user, session_id, item_id)
+    _, item = _writable_item(db, user, session_id, item_id)
     row = journey_service.load_set(db, item=item, set_id=set_id)
     # exclude_unset, so a field the client did not send keeps its stored value
     # rather than being overwritten with the schema default.
@@ -440,7 +475,7 @@ def delete_workout_set(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MessageOut:
-    item = _writable_item(db, user, session_id, item_id)
+    _, item = _writable_item(db, user, session_id, item_id)
     row = journey_service.load_set(db, item=item, set_id=set_id)
     set_number = row.set_number
     journey_service.delete_set(db, row=row)

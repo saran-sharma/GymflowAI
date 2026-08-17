@@ -12,7 +12,13 @@ import React from 'react';
 
 import ExerciseScreen from '../app/(member)/exercise/[itemId]';
 import { ApiError } from '../src/api/client';
-import type { WorkoutSession, WorkoutSet, WorkoutSetHistory } from '../src/api/types';
+import type {
+  PersonalRecord,
+  WorkoutSession,
+  WorkoutSet,
+  WorkoutSetHistory,
+  WorkoutSetLogged,
+} from '../src/api/types';
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -22,7 +28,7 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockSets = jest.fn();
-const mockPrevious = jest.fn();
+const mockHistory = jest.fn();
 const mockToday = jest.fn();
 const mockLog = jest.fn();
 const mockUpdate = jest.fn();
@@ -32,7 +38,7 @@ const mockSetItem = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   todayWorkout: (...a: unknown[]) => mockToday(...a),
   workoutSets: (...a: unknown[]) => mockSets(...a),
-  previousPerformance: (...a: unknown[]) => mockPrevious(...a),
+  exerciseHistory: (...a: unknown[]) => mockHistory(...a),
   logWorkoutSet: (...a: unknown[]) => mockLog(...a),
   updateWorkoutSet: (...a: unknown[]) => mockUpdate(...a),
   deleteWorkoutSet: (...a: unknown[]) => mockDelete(...a),
@@ -62,6 +68,42 @@ function aSet(partial: Partial<WorkoutSet> = {}): WorkoutSet {
     completed_at: '2026-08-17T09:00:00Z',
     ...partial,
   };
+}
+
+function noHistory(): WorkoutSetHistory {
+  return {
+    exercise: 'Barbell Bench Press',
+    sessions: [],
+    heaviest: null,
+    best_volume_kg: null,
+    best_volume_on: null,
+  };
+}
+
+function historyOf(sets: WorkoutSet[], sessionDate = '2026-08-14'): WorkoutSetHistory {
+  return {
+    exercise: 'Barbell Bench Press',
+    sessions: [
+      {
+        session_id: 4,
+        session_date: sessionDate,
+        split: 'push',
+        split_label: 'Push',
+        sets,
+        volume_kg: sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0),
+        top_weight_kg: Math.max(...sets.map((s) => s.weight_kg), 0),
+        total_reps: sets.reduce((sum, s) => sum + s.reps, 0),
+        average_rpe: null,
+      },
+    ],
+    heaviest: sets[0] ?? null,
+    best_volume_kg: 480,
+    best_volume_on: sessionDate,
+  };
+}
+
+function logged(set: WorkoutSet, records: PersonalRecord[] = []): WorkoutSetLogged {
+  return { set, records };
 }
 
 function aSession(partial: Partial<WorkoutSession> = {}): WorkoutSession {
@@ -118,7 +160,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockToday.mockResolvedValue(aSession());
   mockSets.mockResolvedValue([]);
-  mockPrevious.mockResolvedValue(null);
+  mockHistory.mockResolvedValue(noHistory());
 });
 
 /* ------------------------------------------------------------- loading */
@@ -154,15 +196,9 @@ describe('what the member sees before anything is logged', () => {
 
 describe('the fields start from real history', () => {
   it('prefills from the last session when today has nothing yet', async () => {
-    const history: WorkoutSetHistory = {
-      session_id: 4,
-      session_date: '2026-08-14',
-      split: 'push',
-      split_label: 'Push',
-      exercise: 'Barbell Bench Press',
-      sets: [aSet({ weight_kg: 60, reps: 8 }), aSet({ id: 2, weight_kg: 62.5, reps: 6 })],
-    };
-    mockPrevious.mockResolvedValue(history);
+    mockHistory.mockResolvedValue(
+      historyOf([aSet({ weight_kg: 60, reps: 8 }), aSet({ id: 2, weight_kg: 62.5, reps: 6 })]),
+    );
     await open();
 
     // The last set of last session — what the member is most likely to repeat.
@@ -228,7 +264,7 @@ describe('a typo never reaches the server', () => {
   });
 
   it('accepts zero as a weight, because bodyweight is a real answer', async () => {
-    mockLog.mockResolvedValue(aSet({ weight_kg: 0, reps: 12 }));
+    mockLog.mockResolvedValue(logged(aSet({ weight_kg: 0, reps: 12 })));
     await open();
     fireEvent.changeText(screen.getByTestId('set-weight'), '0');
     fireEvent.changeText(screen.getByTestId('set-reps'), '12');
@@ -248,7 +284,7 @@ describe('a typo never reaches the server', () => {
 
 describe('logging a set', () => {
   it('sends what was typed and re-reads the stored rows', async () => {
-    mockLog.mockResolvedValue(aSet());
+    mockLog.mockResolvedValue(logged(aSet()));
     await open();
     fireEvent.changeText(screen.getByTestId('set-weight'), '62.5');
     fireEvent.changeText(screen.getByTestId('set-reps'), '8');
@@ -268,7 +304,7 @@ describe('logging a set', () => {
   });
 
   it('starts the rest the plan prescribed once the set is stored', async () => {
-    mockLog.mockResolvedValue(aSet());
+    mockLog.mockResolvedValue(logged(aSet()));
     await open();
     fireEvent.changeText(screen.getByTestId('set-weight'), '60');
     fireEvent.changeText(screen.getByTestId('set-reps'), '8');
@@ -361,5 +397,122 @@ describe('moving through the chart', () => {
     mockToday.mockResolvedValue(aSession({ items: [] }));
     await open();
     expect(screen.getByText(/not in today’s workout/)).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------ personal records */
+
+function aRecord(partial: Partial<PersonalRecord> = {}): PersonalRecord {
+  return {
+    kind: 'heaviest_weight',
+    weight_kg: 65,
+    reps: 6,
+    volume_kg: null,
+    previous_weight_kg: 60,
+    previous_reps: 8,
+    previous_volume_kg: null,
+    ...partial,
+  };
+}
+
+async function logASet(weight = '65', reps = '6') {
+  fireEvent.changeText(screen.getByTestId('set-weight'), weight);
+  fireEvent.changeText(screen.getByTestId('set-reps'), reps);
+  await act(async () => {
+    fireEvent.press(screen.getByTestId('log-set'));
+  });
+}
+
+describe('records the server reports', () => {
+  it('says what was beaten, without asking for anything back', async () => {
+    // No modal, no dismiss. A member mid-workout has their hands on a bar.
+    mockLog.mockResolvedValue(logged(aSet({ weight_kg: 65, reps: 6 }), [aRecord()]));
+    await open();
+    await logASet();
+
+    await waitFor(() => expect(screen.getByText('Heaviest ever')).toBeTruthy());
+    expect(screen.getByText('65 kg × 6 · was 60 kg × 8')).toBeTruthy();
+  });
+
+  it('shows nothing when the set beat nothing', async () => {
+    mockLog.mockResolvedValue(logged(aSet(), []));
+    await open();
+    await logASet('60', '8');
+    expect(screen.queryByText('Heaviest ever')).toBeNull();
+  });
+
+  it('never invents a record the server did not report', async () => {
+    // A heavier-looking set is not a PR unless the server says so — it is the
+    // only side that can see the member's whole history.
+    mockHistory.mockResolvedValue(historyOf([aSet({ weight_kg: 60, reps: 8 })]));
+    mockLog.mockResolvedValue(logged(aSet({ weight_kg: 100, reps: 10 }), []));
+    await open();
+    await logASet('100', '10');
+    expect(screen.queryByText(/Heaviest/)).toBeNull();
+  });
+
+  it('clears the notice once the member starts typing the next set', async () => {
+    // Left on screen it would read as a claim about the set being typed.
+    mockLog.mockResolvedValue(logged(aSet({ weight_kg: 65, reps: 6 }), [aRecord()]));
+    await open();
+    await logASet();
+    await waitFor(() => expect(screen.getByText('Heaviest ever')).toBeTruthy());
+
+    fireEvent.changeText(screen.getByTestId('set-weight'), '67.5');
+    expect(screen.queryByText('Heaviest ever')).toBeNull();
+  });
+
+  it('does not claim a record for a correction', async () => {
+    mockSets.mockResolvedValue([aSet()]);
+    mockUpdate.mockResolvedValue(aSet({ weight_kg: 65 }));
+    await open();
+    fireEvent.press(screen.getByLabelText(/Edit\.$/));
+    fireEvent.changeText(screen.getByTestId('set-weight'), '65');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('log-set'));
+    });
+    expect(screen.queryByText('Heaviest ever')).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------- history */
+
+describe('the history sheet', () => {
+  it('is offered only once there is more than the last session to show', async () => {
+    mockHistory.mockResolvedValue(historyOf([aSet()]));
+    await open();
+    expect(screen.queryByText(/History ·/)).toBeNull();
+  });
+
+  it('opens on request and lists past sessions with their totals', async () => {
+    const history = historyOf([aSet({ weight_kg: 60, reps: 8 })]);
+    history.sessions.push({
+      ...history.sessions[0],
+      session_id: 9,
+      session_date: '2026-08-10',
+      average_rpe: 8,
+    });
+    mockHistory.mockResolvedValue(history);
+    await open();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('History · 2 sessions'));
+    });
+    expect(screen.getByText('Your history')).toBeTruthy();
+    expect(screen.getByText('Heaviest set')).toBeTruthy();
+    expect(screen.getByText('Most moved in a session')).toBeTruthy();
+    expect(screen.getByText('RPE 8')).toBeTruthy();
+  });
+
+  it('does not block logging when the history request fails', async () => {
+    // A member can log sets without knowing what they did last week.
+    mockHistory.mockRejectedValue(new ApiError(500, 'server_error', 'History unavailable.'));
+    mockLog.mockResolvedValue(logged(aSet()));
+    await open();
+
+    expect(screen.getByTestId('log-set')).toBeTruthy();
+    expect(screen.getByText(/First time logging this lift/)).toBeTruthy();
+    await logASet('60', '8');
+    expect(mockLog).toHaveBeenCalled();
   });
 });
