@@ -44,6 +44,14 @@ def run_for_branch(db: Session, branch: Branch, on: date | None = None) -> dict:
     settled_days = attendance_service.close_stale_days(db, branch, work_date)
     attendance_alerts = _attendance_alerts(db, branch, work_date)
     journeys = journey_service.settle_all(db, branch.id)
+    # Re-assert the trainer's review alert for anyone finished and not yet
+    # converted. Idempotent, and it self-heals journeys that completed
+    # before the alert existed or on a day the sweep did not run.
+    pt_reviews = sum(
+        1
+        for j in journey_service.pt_ready_members(db, [branch.id])
+        if journey_service.raise_pt_review_alert(db, j)
+    )
     packages = pt_service.settle_all_packages(db, branch.id)
     memberships = _membership_alerts(db, branch, work_date)
     classes = _close_finished_classes(db, branch, work_date)
@@ -55,6 +63,7 @@ def run_for_branch(db: Session, branch: Branch, on: date | None = None) -> dict:
         "attendance_settled": settled_days,
         "attendance_alerts": attendance_alerts,
         "journeys_completed": journeys,
+        "pt_reviews": pt_reviews,
         "packages_settled": packages,
         "membership_alerts": memberships,
         "classes_closed": classes,

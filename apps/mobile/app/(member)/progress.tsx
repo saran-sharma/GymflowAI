@@ -16,9 +16,9 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { ActivityEntry, Journey, MemberActivity } from '../../src/api/types';
+import type { ActivityEntry, Journey, JourneyDay, MemberActivity } from '../../src/api/types';
 import { BarChart } from '../../src/components/programme';
-import { JourneyBar, NotConnected, kindMeta } from '../../src/components/member';
+import { NotConnected, WeekStrip, journeyToday, kindMeta } from '../../src/components/member';
 import {
   Body,
   Card,
@@ -49,14 +49,12 @@ const TIMELINE: Record<ActivityEntry['kind'], { label: string; hue: string }> = 
 
 export default function MemberProgressScreen() {
   const journey = useApi<Journey | null>((token) => api.myJourney(token), []);
+  const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
   const timeline = useApi<ActivityEntry[]>((token) => api.memberActivity(token, 40), []);
-  const stats = useApi<MemberActivity | null>(
-    async (token) => {
-      const me = await api.memberMe(token);
-      return api.memberActivityStats(me.member_id, token, 8);
-    },
-    [],
-  );
+  const stats = useApi<MemberActivity | null>(async (token) => {
+    const me = await api.memberMe(token);
+    return api.memberActivityStats(me.member_id, token, 8);
+  }, []);
 
   const refreshAll = useCallback(() => {
     void journey.refresh();
@@ -89,7 +87,11 @@ export default function MemberProgressScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={timeline.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={timeline.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
         <Stack gap="xxs">
@@ -99,15 +101,7 @@ export default function MemberProgressScreen() {
           </Text>
         </Stack>
 
-        {plan ? (
-          <JourneyBar
-            currentDay={plan.current_day}
-            totalDays={plan.duration_days}
-            phase={plan.phase}
-            daysCompleted={plan.days_completed}
-            completionPct={plan.completion_pct}
-          />
-        ) : null}
+        {plan ? <WeekStrip days={days.data ?? []} today={journeyToday(plan)} /> : null}
 
         {/* Reserved for InBody. Deliberately empty rather than filled with
             plausible-looking numbers nobody measured. */}

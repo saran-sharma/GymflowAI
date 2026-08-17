@@ -310,6 +310,31 @@ class WorkoutSetUpdate(BaseModel):
 # --------------------------------------------------------------------- PT
 
 
+class ConvertToPtRequest(BaseModel):
+    """A trainer's explicit decision to move a member onto PT.
+
+    ``confirm`` is required and must be true. It is not ceremony: this endpoint
+    changes which programme is authoritative for a member, and a mistyped route
+    or a double-tap should not be able to do that. The client sends it only
+    after the trainer has answered a confirmation.
+    """
+
+    sessions_total: int = Field(ge=1, le=100)
+    confirm: bool
+    note: str | None = Field(default=None, max_length=500)
+
+
+class PtConversionOut(BaseModel):
+    member_id: int
+    member_name: str
+    trainer_id: int
+    trainer_name: str
+    from_training_type: str
+    to_training_type: str
+    package: PTPackageOut
+    converted_at: datetime
+
+
 class PTPackageOut(BaseModel):
     id: int
     member_id: int

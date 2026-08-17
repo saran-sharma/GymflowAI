@@ -132,6 +132,58 @@ async function checkMetroStatus() {
   return { running: false };
 }
 
+/**
+ * Bring the database up to the migration head before anything reads it.
+ *
+ * This is the fix for a real failure: migrations used to run only in
+ * `.devcontainer/post-create.sh`, which fires once when the container is
+ * created. Pulling a branch that adds a table therefore left the existing
+ * database a revision behind, and the API answered most requests perfectly
+ * well while throwing `UndefinedTable` from exactly the endpoints touching the
+ * new table — which reads as "that feature is broken" rather than "this
+ * database needs migrating".
+ *
+ * Alembic is a no-op when the schema is already current, so this costs a
+ * second on every other run. A failure here stops the run rather than starting
+ * a backend that is going to 500: a migration that cannot be applied is not a
+ * warning, it is the reason nothing will work.
+ */
+function migrateDatabase() {
+  const python = findPython();
+  console.log(`${c.cyan}▸${c.reset} Applying database migrations...`);
+  try {
+    // Alembic logs through Python's logging, which writes to stderr — reading
+    // stdout alone reports "already current" even on a run that migrated.
+    const out = execSync(`"${python}" -m alembic upgrade head 2>&1`, {
+      cwd: path.join(REPO_ROOT, 'backend'),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      shell: true,
+    });
+    const applied = out
+      .toString()
+      .split('\n')
+      .filter((line) => line.includes('Running upgrade'));
+    if (applied.length) {
+      applied.forEach((line) => console.log(`  ${c.dim}${line.trim()}${c.reset}`));
+      console.log(`${c.green}✓${c.reset} Database migrated (${applied.length} applied)`);
+    } else {
+      console.log(`${c.green}✓${c.reset} Database schema already current`);
+    }
+    return true;
+  } catch (err) {
+    const detail = `${err.stderr?.toString() ?? ''}${err.stdout?.toString() ?? ''}`.trim();
+    console.error(`${c.red}✗ Database migration failed.${c.reset}`);
+    if (detail) console.error(`${c.dim}${detail.split('\n').slice(-12).join('\n')}${c.reset}`);
+    console.error(
+      `${c.yellow}The backend was not started: it would serve 500s from any endpoint` +
+        ` touching an unmigrated table.${c.reset}`
+    );
+    console.error(`${c.yellow}Check Postgres is running, then: cd backend && alembic upgrade head${c.reset}`);
+    return false;
+  }
+}
+
 function findPython() {
   const venvBin = process.platform === 'win32'
     ? path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe')
@@ -255,7 +307,9 @@ async function main() {
   syncEnvFiles();
   configureCodespacesPorts();
 
-  // 1. Start / Verify Backend
+  // 1. Bring the schema up to date, then start / verify the backend
+  if (!mobileOnly && !migrateDatabase()) return;
+
   let backendStatus = await checkBackendHealth();
   if (!mobileOnly) {
     if (backendStatus.running) {

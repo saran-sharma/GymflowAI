@@ -36,9 +36,11 @@ from app.db.models import (
     JourneyStatus,
     JourneyType,
     Member,
+    PackageStatus,
     PersonType,
     PTPackage,
     SessionStatus,
+    Trainer,
     WorkoutPlan,
     WorkoutPlanItem,
     WorkoutSession,
@@ -418,10 +420,12 @@ def settle_journey(db: Session, journey: Journey, on: date | None = None) -> Jou
             db,
             key=alert_service.JOURNEY_PT_READY,
             dedupe_key=f"journey:{journey.id}:member-pt-offer",
-            title="Your 45-day journey is complete",
+            # The 45 days are an internal business rule. The member is told
+            # what they achieved, not which internal counter it tripped.
+            title="Your General Training programme is complete",
             body=(
-                "You finished SLAM General Training. Personal training is the next step — "
-                "see what a PT package includes."
+                "You have finished SLAM General Training. Your trainer will talk you "
+                "through what comes next."
             ),
             severity=AlertSeverity.INFO,
             branch_id=journey.branch_id,
@@ -431,6 +435,8 @@ def settle_journey(db: Session, journey: Journey, on: date | None = None) -> Jou
             entity_id=journey.id,
             action_route="/member/pt",
         )
+
+    raise_pt_review_alert(db, journey)
 
     alert_service.create_task(
         db,
@@ -459,6 +465,73 @@ def settle_all(db: Session, branch_id: int | None = None) -> int:
         if journey.status is not before:
             settled += 1
     return settled
+
+
+def raise_pt_review_alert(db: Session, journey: Journey) -> bool:
+    """Tell the member's trainer that they are ready for a PT review.
+
+    The trainer owns the decision, so the trainer gets the alert with the action
+    attached; management sees the day-45 fact separately.
+
+    Idempotent on its dedupe key and safe to re-run, which is why the automation
+    sweep calls it as well as the completion transition. Without that, a member
+    whose journey completed before this alert existed — or on a day the sweep
+    did not run — would never be reviewed at all.
+    """
+    member = db.get(Member, journey.member_id)
+    if member is None or not member.assigned_trainer_id:
+        return False
+    trainer = db.get(Trainer, member.assigned_trainer_id)
+    if trainer is None:
+        return False
+
+    # `pt_ready_members` matches on the journey link, so a member whose package
+    # was created without one still looks unconverted. Asking their trainer to
+    # convert somebody already training on PT is worse than staying quiet — and
+    # a review alert raised before the package existed is withdrawn here rather
+    # than left standing, the same way the attendance alerts clear themselves.
+    if db.scalar(
+        select(PTPackage.id).where(
+            PTPackage.member_id == member.id, PTPackage.status == PackageStatus.ACTIVE
+        )
+    ):
+        alert_service.resolve_alert(db, f"journey:{journey.id}:pt-review")
+        return False
+
+    member_name = member.user.full_name if member.user else f"Member {journey.member_id}"
+    summary = journey.completion_summary or {}
+    workouts = summary.get("workouts_completed", 0)
+    consistency = summary.get("consistency_pct")
+    alert_service.raise_alert(
+        db,
+        key=alert_service.JOURNEY_PT_REVIEW,
+        dedupe_key=f"journey:{journey.id}:pt-review",
+        title=f"{member_name} is ready for PT review",
+        body=(
+            f"{member_name} has completed General Training — {workouts} workouts recorded"
+            + (f", {consistency}% consistency" if consistency is not None else "")
+            + ". Review their performance and decide whether to convert them to PT."
+        ),
+        severity=AlertSeverity.INFO,
+        branch_id=journey.branch_id,
+        target_role=None,
+        target_user_id=trainer.user_id,
+        entity_type="member",
+        entity_id=journey.member_id,
+        action_route=f"/trainer/client/{journey.member_id}",
+        payload={
+            "member_id": journey.member_id,
+            "member_name": member_name,
+            "journey_id": journey.id,
+            "training_type": journey.journey_type.value,
+            "reason": "general_training_complete",
+            "workouts_completed": workouts,
+            "consistency_pct": consistency,
+            "cardio_sessions": summary.get("cardio_sessions"),
+            "completed_on": journey.completed_on.isoformat() if journey.completed_on else None,
+        },
+    )
+    return True
 
 
 def pt_ready_members(db: Session, branch_ids: list[int] | None) -> list[Journey]:
@@ -1044,6 +1117,7 @@ __all__ = [
     "plan_items",
     "progress",
     "pt_ready_members",
+    "raise_pt_review_alert",
     "record_assessment",
     "record_cardio",
     "rules_for",

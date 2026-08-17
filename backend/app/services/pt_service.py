@@ -26,8 +26,9 @@ from app.db.models import (
     PTSession,
     SessionStatus,
     Trainer,
+    User,
 )
-from app.services import alert_service, settings_service
+from app.services import alert_service, audit, settings_service
 
 #: Statuses a session can no longer move out of.
 TERMINAL = {SessionStatus.COMPLETED, SessionStatus.CANCELLED, SessionStatus.NO_SHOW}
@@ -115,7 +116,111 @@ def create_package(
         journey = db.get(Journey, journey_id)
         if journey is not None:
             journey.pt_converted = True
+            # The trainer's review alert asked a question this package answers.
+            # Withdrawn here rather than in the conversion endpoint, so every
+            # path that creates a package clears it — including the seeder and
+            # a manager creating one directly.
+            alert_service.resolve_alert(db, f"journey:{journey.id}:pt-review")
             db.flush()
+    return package
+
+
+def convert_to_pt(
+    db: Session,
+    *,
+    member: Member,
+    trainer: Trainer,
+    actor: User,
+    sessions_total: int,
+    note: str | None = None,
+) -> PTPackage:
+    """Move a General Training member onto personal training.
+
+    This is the one place the transition happens, and it only happens because a
+    trainer asked for it. Nothing in GymFlow converts a member automatically:
+    the 45-day mark raises an alert and stops there, because the decision is a
+    conversation between a trainer and a member and the system does not have
+    the half of it that happened on the gym floor.
+
+    Idempotent by refusal rather than by silence — a member who already has an
+    active package is a conflict, not a no-op, because two callers converting
+    the same person means one of them is working from a stale screen.
+    """
+    existing = active_package(db, member.id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "already_pt",
+                "message": f"{member.user.full_name} is already on a personal-training package.",
+            },
+        )
+
+    journey = db.scalar(
+        select(Journey)
+        .where(Journey.member_id == member.id)
+        .order_by(Journey.start_date.desc(), Journey.id.desc())
+    )
+
+    package = create_package(
+        db,
+        member=member,
+        sessions_total=sessions_total,
+        trainer_id=trainer.id,
+        journey_id=journey.id if journey else None,
+        origin="trainer_conversion",
+        created_by_user_id=actor.id,
+    )
+
+    member_name = member.user.full_name
+    trainer_name = trainer.user.full_name
+
+    # The owner is told what changed, by whom, and when — enough to answer
+    # "who moved this member and on what basis" without opening the app.
+    alert_service.raise_alert(
+        db,
+        key=alert_service.PT_CONVERTED,
+        dedupe_key=f"member:{member.id}:pt-converted:{package.id}",
+        title=f"{member_name} converted to PT",
+        body=(
+            f"{member_name} was converted from General Training to personal training by "
+            f"{trainer_name}. {sessions_total} sessions." + (f" Note: {note}" if note else "")
+        ),
+        severity=AlertSeverity.INFO,
+        branch_id=member.branch_id,
+        entity_type="member",
+        entity_id=member.id,
+        action_route=f"/owner/member/{member.id}",
+        payload={
+            "member_id": member.id,
+            "member_name": member_name,
+            "trainer_id": trainer.id,
+            "trainer_name": trainer_name,
+            "from_training_type": "general_training",
+            "to_training_type": "pt",
+            "package_id": package.id,
+            "sessions_total": sessions_total,
+            "converted_at": now_utc().isoformat(),
+            "note": note,
+        },
+    )
+
+    audit.record(
+        db,
+        actor=actor,
+        action="pt.convert",
+        entity_type="member",
+        entity_id=member.id,
+        branch_id=member.branch_id,
+        details={
+            "from": "general_training",
+            "to": "pt",
+            "package_id": package.id,
+            "trainer_id": trainer.id,
+            "sessions_total": sessions_total,
+        },
+    )
+    db.flush()
     return package
 
 

@@ -26,9 +26,11 @@ jest.mock('expo-router', () => ({
 
 const mockHome = jest.fn();
 const mockPayments = jest.fn();
+const mockDays = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   memberHome: (...a: unknown[]) => mockHome(...a),
   myPayments: (...a: unknown[]) => mockPayments(...a),
+  myJourneyDays: (...a: unknown[]) => mockDays(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -142,6 +144,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   focusCallback = null;
   mockPayments.mockResolvedValue([]);
+  mockDays.mockResolvedValue([]);
   mockHome.mockResolvedValue(aHome());
 });
 
@@ -155,9 +158,19 @@ describe('before the workout has been started', () => {
     expect(mockPush).toHaveBeenCalledWith('/(member)/workout');
   });
 
-  it('names the day rather than claiming progress it has none of', async () => {
+  it('never shows the member the internal 45-day counter', async () => {
+    // The 45 days decide when a *trainer* is asked to review somebody for PT.
+    // Shown to the member it is a deadline they were never told about and
+    // cannot act on, so no member-facing surface carries it.
     await openHome();
-    expect(screen.getByText('Day 6 of 45')).toBeTruthy();
+    expect(screen.queryByText(/Day \d+ of \d+/)).toBeNull();
+    expect(screen.queryByText(/45/)).toBeNull();
+    expect(screen.queryByText(/45-day/)).toBeNull();
+  });
+
+  it('says the chart is ready instead of counting days', async () => {
+    await openHome();
+    expect(screen.getByText('Your chart is ready — tap to start')).toBeTruthy();
     expect(screen.queryByText(/sets logged/)).toBeNull();
   });
 

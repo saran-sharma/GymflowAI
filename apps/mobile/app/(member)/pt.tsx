@@ -49,7 +49,10 @@ import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
-const STATUS_META: Record<string, { label: string; tone: 'positive' | 'caution' | 'critical' | 'neutral' }> = {
+const STATUS_META: Record<
+  string,
+  { label: string; tone: 'positive' | 'caution' | 'critical' | 'neutral' }
+> = {
   completed: { label: 'Completed', tone: 'positive' },
   scheduled: { label: 'Scheduled', tone: 'neutral' },
   in_progress: { label: 'In progress', tone: 'caution' },
@@ -122,10 +125,18 @@ export default function MemberPtScreen() {
     <Screen>
       <Body
         refreshControl={
-          <RefreshControl refreshing={packageInfo.refreshing} onRefresh={refreshAll} tintColor={color.brand} />
+          <RefreshControl
+            refreshing={packageInfo.refreshing}
+            onRefresh={refreshAll}
+            tintColor={color.brand}
+          />
         }
       >
-        {error ? <Banner tone="critical" icon="alert-circle-outline">{error}</Banner> : null}
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
 
         {/* The balance, as a single number a member can act on. */}
         {active ? (
@@ -188,7 +199,9 @@ export default function MemberPtScreen() {
                     <Eyebrow>You</Eyebrow>
                     <Text
                       variant="body"
-                      tone={session.member_checked_in_at ? color.status.positive : color.textTertiary}
+                      tone={
+                        session.member_checked_in_at ? color.status.positive : color.textTertiary
+                      }
                     >
                       {session.member_checked_in_at
                         ? `In at ${timeOfDay(session.member_checked_in_at)}`
@@ -200,7 +213,9 @@ export default function MemberPtScreen() {
                     <Eyebrow>Trainer</Eyebrow>
                     <Text
                       variant="body"
-                      tone={session.trainer_checked_in_at ? color.status.positive : color.textTertiary}
+                      tone={
+                        session.trainer_checked_in_at ? color.status.positive : color.textTertiary
+                      }
                     >
                       {session.trainer_checked_in_at
                         ? `In at ${timeOfDay(session.trainer_checked_in_at)}`
@@ -233,12 +248,12 @@ export default function MemberPtScreen() {
             title="No PT package yet"
             detail={
               promotion?.message ??
-              'Personal training starts after your 45-day journey. Your trainer will talk you through it.'
+              'Personal training is something your trainer will talk you through when you are ready.'
             }
           />
         ) : null}
 
-        {/* The Day-45 conversion, only when the server says the member is eligible. */}
+        {/* The PT offer, only when the server says the member is eligible. */}
         {promotion?.eligible ? (
           <Card>
             <Eyebrow>What comes next</Eyebrow>
@@ -324,7 +339,10 @@ export default function MemberPtScreen() {
               />
             </StatRow>
             {past.slice(0, 12).map((session) => {
-              const meta = STATUS_META[session.status] ?? { label: session.status, tone: 'neutral' as const };
+              const meta = STATUS_META[session.status] ?? {
+                label: session.status,
+                tone: 'neutral' as const,
+              };
               return (
                 <Row key={session.id} gap="md" style={styles.historyRow}>
                   <Stack gap="xxs" style={styles.grow}>
