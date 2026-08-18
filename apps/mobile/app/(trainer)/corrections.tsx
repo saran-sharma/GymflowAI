@@ -140,7 +140,9 @@ export default function TrainerCorrectionsScreen() {
 
         {pending.length ? (
           <Banner tone="caution">
-            {pending.length} request{pending.length === 1 ? '' : 's'} waiting for review.
+            <Text variant="label" tone={color.status.caution} style={{ flex: 1 }}>
+              {pending.length} request{pending.length === 1 ? '' : 's'} waiting for review.
+            </Text>
           </Banner>
         ) : null}
 

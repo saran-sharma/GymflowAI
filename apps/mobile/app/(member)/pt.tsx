@@ -153,8 +153,10 @@ export default function MemberPtScreen() {
 
         {active && pack.low_balance ? (
           <Banner tone="caution" icon="alert-circle-outline">
-            Only {pack.sessions_remaining} session{pack.sessions_remaining === 1 ? '' : 's'} left.
-            Talk to your branch about renewing.
+            <Text variant="label" tone={color.status.caution} style={styles.grow}>
+              Only {pack.sessions_remaining} session{pack.sessions_remaining === 1 ? '' : 's'} left.
+              Talk to your branch about renewing.
+            </Text>
           </Banner>
         ) : null}
 

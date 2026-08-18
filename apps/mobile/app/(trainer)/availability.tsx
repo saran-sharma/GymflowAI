@@ -194,7 +194,9 @@ export default function TrainerAvailabilityScreen() {
         ) : null}
         {saved && !dirty ? (
           <Banner tone="positive" icon="checkmark-circle-outline">
-            Published. {chosen.size} hour{chosen.size === 1 ? '' : 's'} on this day.
+            <Text variant="label" tone={color.status.positive} style={styles.grow}>
+              Published. {chosen.size} hour{chosen.size === 1 ? '' : 's'} on this day.
+            </Text>
           </Banner>
         ) : null}
 

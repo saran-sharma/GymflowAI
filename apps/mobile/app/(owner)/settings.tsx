@@ -134,7 +134,13 @@ export default function OwnerSettingsScreen() {
           in the audit trail.
         </Text>
 
-        {saved ? <Banner tone="positive">{saved} updated.</Banner> : null}
+        {saved ? (
+          <Banner tone="positive">
+            <Text variant="label" tone={color.status.positive} style={styles.grow}>
+              {saved} updated.
+            </Text>
+          </Banner>
+        ) : null}
         {error && !editing ? <Banner tone="critical">{error}</Banner> : null}
         {readOnly ? (
           <Banner tone="info">
