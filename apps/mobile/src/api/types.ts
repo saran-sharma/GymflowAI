@@ -806,6 +806,18 @@ export interface TrainerClientDetail {
   activity: ActivityEntry[];
 }
 
+/** What the server returns when a trainer moves a member onto PT. */
+export interface PtConversion {
+  member_id: number;
+  member_name: string;
+  trainer_id: number;
+  trainer_name: string;
+  from_training_type: string;
+  to_training_type: string;
+  package: PTPackage;
+  converted_at: string;
+}
+
 export interface AvailabilitySlot {
   id: number;
   trainer_id: number;

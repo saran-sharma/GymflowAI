@@ -6,13 +6,14 @@ when a session is actually delivered, and it moves exactly once.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from conftest import make_member
 from sqlalchemy import select
 
-from app.core.clock import now_utc
+from app.core import clock
+from app.core.clock import UTC, branch_today, now_utc
 from app.db.models import Alert, PackageStatus, SessionStatus
 from app.services import journey_service, pt_service
 
@@ -174,9 +175,19 @@ def test_an_exhausted_package_completes_itself_and_prompts_a_renewal(db, world):
 
 
 def test_utilisation_reports_delivered_against_booked(db, world):
+    """Time-frozen deliberately.
+
+    `_session` schedules an hour from now, and `schedule_session` files a
+    session under its *branch-local* date. Run after 17:30 UTC that hour lands
+    past midnight in Asia/Kolkata, so the session belongs to tomorrow while the
+    assertion below asks about today — and the suite went red for six and a
+    half hours of every day. Freezing a mid-morning branch instant makes the
+    window unambiguous instead of depending on when CI happened to run.
+    """
+    clock.freeze(datetime(2026, 8, 17, 4, 0, tzinfo=UTC))  # 09:30 in Asia/Kolkata
     package = _package(db, world["member_ngk"])
     trainer = world["trainer_ngk"]
-    today = date.today()
+    today = branch_today(world["branches"]["ngk"].timezone)
 
     delivered = _session(db, package, trainer)
     pt_service.mark_arrival(db, session=delivered, who="member")

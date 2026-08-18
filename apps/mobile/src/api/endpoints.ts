@@ -206,6 +206,7 @@ import type {
   PTOffer,
   PTPackage,
   PTSession,
+  PtConversion,
   PTSplitView,
   RsvpAnswer,
   ScheduleItem,
@@ -521,6 +522,19 @@ export const updateSetting = (key: string, value: unknown, token: string) =>
 
 export const myClients = (token: string) =>
   request<import('./types').TrainerClient[]>('/trainers/me/clients', { token });
+
+/**
+ * Move a General Training member onto PT.
+ *
+ * `confirm` is required by the server and is not ceremony: this changes which
+ * programme is authoritative for a member, so a stray tap must not be able to
+ * do it. Send it only after the trainer has answered the confirmation.
+ */
+export const convertMemberToPt = (
+  memberId: number,
+  body: { sessions_total: number; confirm: true; note?: string },
+  token: string,
+) => request<PtConversion>(`/pt/members/${memberId}/convert`, { method: 'POST', body, token });
 
 export const myClientDetail = (memberId: number, token: string) =>
   request<import('./types').TrainerClientDetail>(`/trainers/me/clients/${memberId}`, { token });

@@ -11,12 +11,13 @@
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 
-import { OFFLINE_CODE } from '../../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
 import type { TrainerClientDetail } from '../../../src/api/types';
+import { ConvertToPt, conversionState } from '../../../src/components/conversion';
 import { JourneyBar, KindTag, NotConnected } from '../../../src/components/member';
 import {
   Avatar,
@@ -40,6 +41,7 @@ import {
   space,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
+import { useAuth } from '../../../src/store/AuthContext';
 import { dayLabel, timeOfDay } from '../../../src/utils/format';
 
 const SESSION_TONE: Record<string, 'positive' | 'caution' | 'critical' | 'neutral'> = {
@@ -56,9 +58,51 @@ export default function TrainerClientDetailScreen() {
   const router = useRouter();
   const memberId = Number(id);
 
+  const { withToken } = useAuth();
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+
   const detail = useApi<TrainerClientDetail>(
     (token) => api.myClientDetail(memberId, token),
     [memberId],
+  );
+  // The sizes this branch sells. The server refuses anything else, so the
+  // trainer is offered exactly what will be accepted.
+  const options = useApi<number[]>((token) => api.ptOptions(token), []);
+
+  /**
+   * Record the trainer's decision.
+   *
+   * The client is re-read rather than patched locally: conversion changes the
+   * package, the journey and which programme is authoritative, and a screen
+   * that guessed at that would be showing a state the server never confirmed.
+   * A 409 means somebody already converted them — which is a successful
+   * outcome from this screen's point of view, so it refreshes rather than
+   * complains.
+   */
+  const convert = useCallback(
+    async (sessionsTotal: number) => {
+      setConverting(true);
+      setConvertError(null);
+      try {
+        await withToken((token) =>
+          api.convertMemberToPt(memberId, { sessions_total: sessionsTotal, confirm: true }, token),
+        );
+        await detail.refresh();
+      } catch (caught) {
+        const failed = caught instanceof ApiError ? caught : null;
+        if (failed?.status === 409) {
+          await detail.refresh();
+        } else {
+          setConvertError(
+            failed?.message ?? 'That did not go through. Check your connection and try again.',
+          );
+        }
+      } finally {
+        setConverting(false);
+      }
+    },
+    [withToken, memberId, detail],
   );
 
   if (detail.loading) return <Loading label="Loading client" />;
@@ -71,7 +115,11 @@ export default function TrainerClientDetailScreen() {
         <ErrorState
           offline={offline}
           title={
-            offline ? undefined : forbidden ? 'Not one of your clients' : 'We could not load this client'
+            offline
+              ? undefined
+              : forbidden
+                ? 'Not one of your clients'
+                : 'We could not load this client'
           }
           detail={
             offline
@@ -143,6 +191,15 @@ export default function TrainerClientDetailScreen() {
             completionPct={journey.completion_pct}
           />
         ) : null}
+
+        <ConvertToPt
+          state={conversionState(journey, pack)}
+          memberName={client.full_name}
+          options={options.data ?? []}
+          busy={converting}
+          error={convertError}
+          onConvert={convert}
+        />
 
         {pack ? (
           <ProgressCard
