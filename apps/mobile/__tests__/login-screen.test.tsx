@@ -1,10 +1,11 @@
 /**
- * The login screen, rendered.
+ * The two-step login screen, rendered.
  *
- * Covers the things that break silently: the submit button's enabled state,
- * whether a failure reaches the user in words they can act on, that the
- * password toggle actually toggles, and that the role chip is a shortcut
- * rather than an authorization decision.
+ * Identify then authenticate: the first step only validates the shape of an
+ * email/mobile identifier and never claims an account exists, the second is
+ * the one call that actually authenticates. Error copy stays deliberately
+ * generic across bad-password and locked-account responses so neither
+ * account existence nor account state leaks before authentication succeeds.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -50,8 +51,14 @@ function signedInAs(role: string) {
   };
 }
 
+async function goToPasswordStep(identifier = 'owner@slam.demo') {
+  fireEvent.changeText(screen.getByTestId('login-identifier'), identifier);
+  fireEvent.press(screen.getByTestId('login-continue'));
+  await waitFor(() => expect(screen.getByTestId('login-password')).toBeTruthy());
+}
+
 async function fillCredentials(identifier = 'owner@slam.demo', password = 'SlamDemo2026!') {
-  fireEvent.changeText(screen.getByTestId('login-email'), identifier);
+  await goToPasswordStep(identifier);
   fireEvent.changeText(screen.getByTestId('login-password'), password);
 }
 
@@ -65,7 +72,7 @@ it('shows the SLAM logo, the product name and the positioning line', async () =>
   expect(screen.getByTestId('slam-logo')).toBeTruthy();
   expect(screen.getByLabelText('SLAM Fitness Studio')).toBeTruthy();
   expect(screen.getByText('GymFlow AI')).toBeTruthy();
-  expect(screen.getByText('Smart operations across every SLAM branch.')).toBeTruthy();
+  expect(screen.getByText('Your fitness journey, all in one place.')).toBeTruthy();
 });
 
 it('offers no role selector — the server decides who you are', async () => {
@@ -78,30 +85,31 @@ it('offers no role selector — the server decides who you are', async () => {
   }
 });
 
-it('draws the unbuilt sign-in routes and says why each is unavailable', async () => {
+it('keeps Continue disabled until the identifier is valid', async () => {
   await renderLogin();
+  expect(screen.getByTestId('login-continue').props.accessibilityState.disabled).toBe(true);
 
-  fireEvent.press(screen.getByTestId('passkey'));
-  expect(screen.getByText(/WebAuthn endpoint GymFlow does not have/)).toBeTruthy();
-
-  fireEvent.press(screen.getByTestId('social-google'));
-  expect(screen.getByText(/no OAuth client configured/)).toBeTruthy();
+  fireEvent.changeText(screen.getByTestId('login-identifier'), 'owner@slam.demo');
+  expect(screen.getByTestId('login-continue').props.accessibilityState.disabled).toBe(false);
 });
 
-it('does not offer Email as a social provider, which the password field already is', async () => {
+it('accepts a mobile number as well as an email', async () => {
   await renderLogin();
-  expect(screen.getByTestId('social-apple')).toBeTruthy();
-  expect(screen.getByTestId('social-google')).toBeTruthy();
-  expect(screen.queryByTestId('social-email')).toBeNull();
+  fireEvent.changeText(screen.getByTestId('login-identifier'), '9000012345');
+  expect(screen.getByTestId('login-continue').props.accessibilityState.disabled).toBe(false);
 });
 
-it('keeps submit disabled until both fields are usable', async () => {
+it('rejects an identifier that is neither an email nor a number', async () => {
   await renderLogin();
+  fireEvent.changeText(screen.getByTestId('login-identifier'), 'not an email');
+  expect(screen.getByTestId('login-continue').props.accessibilityState.disabled).toBe(true);
+});
+
+it('keeps Sign in disabled until the password is long enough', async () => {
+  await renderLogin();
+  await goToPasswordStep();
   const submit = screen.getByTestId('login-submit');
   expect(submit.props.accessibilityState.disabled).toBe(true);
-
-  fireEvent.changeText(screen.getByTestId('login-email'), 'owner@slam.demo');
-  expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
 
   fireEvent.changeText(screen.getByTestId('login-password'), 'short');
   expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
@@ -110,22 +118,20 @@ it('keeps submit disabled until both fields are usable', async () => {
   expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(false);
 });
 
-it('accepts a mobile number as well as an email', async () => {
+it('lets you change the identifier from the password step, clearing what was typed', async () => {
   await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), '9000012345');
+  await goToPasswordStep('owner@slam.demo');
   fireEvent.changeText(screen.getByTestId('login-password'), 'SlamDemo2026!');
-  expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(false);
-});
 
-it('rejects an identifier that is neither an email nor a number', async () => {
-  await renderLogin();
-  fireEvent.changeText(screen.getByTestId('login-email'), 'not an email');
-  fireEvent.changeText(screen.getByTestId('login-password'), 'SlamDemo2026!');
-  expect(screen.getByTestId('login-submit').props.accessibilityState.disabled).toBe(true);
+  fireEvent.press(screen.getByTestId('change-identifier'));
+
+  await waitFor(() => expect(screen.getByTestId('login-continue')).toBeTruthy());
+  expect(screen.queryByTestId('login-password')).toBeNull();
 });
 
 it('hides the password until the eye is tapped', async () => {
   await renderLogin();
+  await goToPasswordStep();
   const field = screen.getByTestId('login-password');
   expect(field.props.secureTextEntry).toBe(true);
 
@@ -144,7 +150,9 @@ it('routes on the role the server returns', async () => {
   await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(trainer)'));
+  // A brief success screen shows before the redirect fires.
+  await waitFor(() => expect(screen.getByText(/Karan/)).toBeTruthy());
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(trainer)'), { timeout: 2000 });
 });
 
 it('explains bad credentials without leaking anything technical', async () => {
@@ -154,9 +162,20 @@ it('explains bad credentials without leaking anything technical', async () => {
   fireEvent.press(screen.getByTestId('login-submit'));
 
   await waitFor(() =>
-    expect(screen.getByText('That email or password is not right. Try again.')).toBeTruthy(),
+    expect(screen.getByText('Invalid email/mobile number or password.')).toBeTruthy(),
   );
   expect(mockReplace).not.toHaveBeenCalled();
+});
+
+it('treats a locked account the same as bad credentials, so account state is not leaked', async () => {
+  mockLogin.mockRejectedValue(new ApiError(403, 'http_403', 'Account is temporarily locked'));
+  await renderLogin();
+  await fillCredentials();
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() =>
+    expect(screen.getByText('Invalid email/mobile number or password.')).toBeTruthy(),
+  );
 });
 
 it('reports a lost connection rather than a network stack trace', async () => {
@@ -167,41 +186,62 @@ it('reports a lost connection rather than a network stack trace', async () => {
 
   await waitFor(() =>
     expect(
-      screen.getByText('No connection to GymFlow. Check your network and try again.'),
+      screen.getByText("We couldn't reach GymFlow right now. Check your connection and try again."),
     ).toBeTruthy(),
   );
 });
 
-it('reports a server outage as an outage', async () => {
+it('folds a server outage into the same connection message', async () => {
   mockLogin.mockRejectedValue(new ApiError(503, 'http_503', 'Service Unavailable'));
   await renderLogin();
   await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
   await waitFor(() =>
-    expect(screen.getByText('GymFlow is unavailable right now. Try again shortly.')).toBeTruthy(),
+    expect(
+      screen.getByText("We couldn't reach GymFlow right now. Check your connection and try again."),
+    ).toBeTruthy(),
   );
 });
 
-it('reports a locked account as something the branch can fix', async () => {
-  mockLogin.mockRejectedValue(new ApiError(403, 'http_403', 'Account is temporarily locked'));
+it('reports rate limiting distinctly from bad credentials', async () => {
+  mockLogin.mockRejectedValue(new ApiError(429, 'http_429', 'Too Many Requests'));
   await renderLogin();
   await fillCredentials();
   fireEvent.press(screen.getByTestId('login-submit'));
 
   await waitFor(() =>
-    expect(screen.getByText('This account is locked. Contact your branch manager.')).toBeTruthy(),
+    expect(
+      screen.getByText('Too many attempts. Please wait a few minutes before trying again.'),
+    ).toBeTruthy(),
   );
 });
 
-it('offers a way to get help without leaving the screen', async () => {
+it('sends Forgot password to a reset step that is honest about not being wired up yet', async () => {
   await renderLogin();
+  await goToPasswordStep();
   fireEvent.press(screen.getByTestId('forgot-password'));
-  await waitFor(() => expect(screen.getByText(/Ask your SLAM branch manager/)).toBeTruthy());
+
+  await waitFor(() => expect(screen.getByTestId('reset-identifier')).toBeTruthy());
+  expect(
+    screen.getByText(/Password resets are arranged by your SLAM branch/),
+  ).toBeTruthy();
 });
 
-it('points at the branches by name from contact help', async () => {
+it('gets back to sign in from the reset step', async () => {
   await renderLogin();
-  fireEvent.press(screen.getByTestId('contact-branch'));
-  await waitFor(() => expect(screen.getByText(/Nagalkeni, Boganhalli and Alandur/)).toBeTruthy());
+  await goToPasswordStep();
+  fireEvent.press(screen.getByTestId('forgot-password'));
+  await waitFor(() => expect(screen.getByTestId('reset-back')).toBeTruthy());
+
+  fireEvent.press(screen.getByTestId('reset-back'));
+  await waitFor(() => expect(screen.getByTestId('login-continue')).toBeTruthy());
+});
+
+it('names the branch as the way to create an account, without a fake button', async () => {
+  await renderLogin();
+  expect(screen.getByText('Contact your SLAM branch')).toBeTruthy();
+  // Accounts are created by the branch, not from the app — there is nothing
+  // here for a member to press, unlike the old "Create account" affordance.
+  expect(screen.queryByTestId('contact-branch')).toBeNull();
 });
