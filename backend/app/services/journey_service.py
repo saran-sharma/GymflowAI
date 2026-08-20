@@ -683,7 +683,9 @@ def start_workout(
         select(WorkoutSession).where(
             WorkoutSession.member_id == member.id,
             WorkoutSession.session_date == session_date,
-            WorkoutSession.status.in_([SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS]),
+            WorkoutSession.status.in_(
+                [SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS, SessionStatus.COMPLETED]
+            ),
         )
     )
     if existing is not None:

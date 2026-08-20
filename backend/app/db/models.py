@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -885,7 +886,26 @@ class WorkoutSession(Base, TimestampMixin, DemoMixin):
     )
     member: Mapped[Member] = relationship()
 
-    __table_args__ = (Index("ix_workout_sessions_member_date", "member_id", "session_date"),)
+    __table_args__ = (
+        Index("ix_workout_sessions_member_date", "member_id", "session_date"),
+        # Partial: only SCHEDULED/IN_PROGRESS/COMPLETED collide. CANCELLED and
+        # NO_SHOW are deliberately excluded — start_workout() already treats
+        # them as non-blocking so a member can restart on the same day after
+        # a cancelled/no-show session, and this constraint must not forbid
+        # what the service layer already allows.
+        Index(
+            "uq_workout_sessions_member_active_day",
+            "member_id",
+            "session_date",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
+            ),
+            sqlite_where=text(
+                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
+            ),
+        ),
+    )
 
 
 class WorkoutSessionItem(Base, TimestampMixin):

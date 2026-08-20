@@ -21,10 +21,11 @@ from app.db.models import (
     PTPackage,
     SessionStatus,
     Task,
+    WorkoutSession,
     WorkoutSplit,
 )
 from app.domain import journey as journey_domain
-from app.services import journey_service, pt_service
+from app.services import activity_service, journey_service, pt_service
 
 # ------------------------------------------------------------ pure domain
 
@@ -168,6 +169,44 @@ def test_starting_a_workout_twice_in_a_day_reuses_the_open_session(db, world):
     first = journey_service.start_workout(db, member=world["member_ngk"])
     second = journey_service.start_workout(db, member=world["member_ngk"])
     assert first.id == second.id
+
+
+def test_starting_a_workout_after_completion_reuses_the_completed_session(db, world):
+    """A retried "start" after finishing must not mint a second workout for the
+    day — that would double the day's own_workouts count on top of an already
+    completed session."""
+    member = world["member_ngk"]
+    journey = _start(db, member, 5)
+    first = journey_service.start_workout(db, member=member)
+    journey_service.complete_workout(db, first)
+
+    second = journey_service.start_workout(db, member=member)
+
+    # The retried start must hand back the exact same session, not a new one.
+    assert second.id == first.id
+    assert second.status is SessionStatus.COMPLETED
+
+    # Only one WorkoutSession row exists for this member/date — no shadow
+    # duplicate left behind by the retried start.
+    sessions = db.scalars(
+        select(WorkoutSession).where(
+            WorkoutSession.member_id == member.id,
+            WorkoutSession.session_date == first.session_date,
+        )
+    ).all()
+    assert len(sessions) == 1
+
+    # The journey's completed-workout tally must not double-count the retry.
+    progress = journey_service.progress(db, journey)
+    assert progress.workouts_completed == 1
+    summary = journey_service.build_summary(db, journey)
+    assert summary["workouts_completed"] == 1
+
+    # The activity feed and the day-window counts must show one entry, not two.
+    timeline = activity_service.timeline(db, member)
+    own_workout_entries = [e for e in timeline if e.kind == activity_service.KIND_OWN_WORKOUT]
+    assert len(own_workout_entries) == 1
+    assert activity_service.counts(db, member)["own_workouts"] == 1
 
 
 # ------------------------------------------------------- day-45 automation
