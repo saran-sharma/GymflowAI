@@ -17,7 +17,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { Journey, PTPackage, WhoIsInside } from '../../src/api/types';
+import type { Branch, Journey, PTPackage, WhoIsInside } from '../../src/api/types';
 import { LiveGym } from '../../src/components/livegym';
 import { SplitBadge } from '../../src/components/programme';
 import {
@@ -30,6 +30,7 @@ import {
   ErrorState,
   Eyebrow,
   ProgressBar,
+  radii,
   Row,
   Screen,
   Section,
@@ -54,7 +55,17 @@ export default function OwnerMembersScreen() {
   const [tab, setTab] = useState<Tab>('journeys');
   const journeys = useApi<Journey[]>((token) => api.journeys(token), []);
   const packages = useApi<PTPackage[]>((token) => api.ptPackages(token), []);
-  const inside = useApi<WhoIsInside>((token) => api.whoIsInside(token), []);
+  const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
+
+  // "Who's inside" is scoped to one branch at a time — an owner spanning
+  // several branches has to say which floor, so a picker is what "the
+  // question an owner opens the page to answer" actually needs.
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const insideBranchId = selectedBranchId ?? branches.data?.[0]?.id ?? null;
+  const inside = useApi<WhoIsInside>(
+    (token) => api.whoIsInside(token, insideBranchId ?? undefined),
+    [insideBranchId],
+  );
 
   const active = useMemo(
     () => (journeys.data ?? []).filter((j) => j.status === 'active'),
@@ -95,6 +106,7 @@ export default function OwnerMembersScreen() {
             onRefresh={() => {
               void journeys.refresh();
               void packages.refresh();
+              void branches.refresh();
               void inside.refresh();
             }}
             tintColor={color.brand}
@@ -105,6 +117,27 @@ export default function OwnerMembersScreen() {
 
         {/* Live, and marked as such — the only figure here that moves. */}
         <Section title="Currently in gym">
+          {(branches.data?.length ?? 0) > 1 ? (
+            <Row style={styles.branchRow}>
+              {(branches.data ?? []).map((branch) => {
+                const selected = branch.id === insideBranchId;
+                return (
+                  <Text
+                    key={branch.id}
+                    variant="label"
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    testID={`inside-branch-${branch.id}`}
+                    tone={selected ? color.text : color.textTertiary}
+                    onPress={() => setSelectedBranchId(branch.id)}
+                    style={[styles.chip, selected && styles.chipSelected]}
+                  >
+                    {branch.name.replace(/^SLAM\s+/i, '')}
+                  </Text>
+                );
+              })}
+            </Row>
+          ) : null}
           {inside.loading ? (
             <Text variant="label" tone={color.textTertiary}>
               Checking the floor…
@@ -112,7 +145,7 @@ export default function OwnerMembersScreen() {
           ) : inside.error ? (
             <Text variant="label" tone={color.status.caution}>
               {inside.error.status === 400
-                ? 'Choose a branch to see who is currently in the gym.'
+                ? 'Pick a branch above to see who is currently in the gym.'
                 : 'The floor list did not load. Pull to refresh.'}
             </Text>
           ) : inside.data ? (
@@ -267,4 +300,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: color.border,
   },
+  branchRow: { gap: space.sm, flexWrap: 'wrap' },
+  chip: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: color.border,
+    backgroundColor: color.surfaceOverlay,
+    overflow: 'hidden',
+  },
+  chipSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
 });

@@ -55,6 +55,7 @@ from app.services import (
     attendance_service,
     audit,
     incentive_service,
+    journey_service,
     pt_service,
 )
 
@@ -332,6 +333,8 @@ def _client_out(db: Session, member: Member, trainer: Trainer) -> TrainerClientO
         .order_by(Journey.start_date.desc())
         .limit(1)
     )
+    if journey is not None:
+        journey_service.settle_journey(db, journey)
 
     package = db.scalar(
         select(PTPackage)
