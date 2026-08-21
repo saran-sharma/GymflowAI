@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.clock import branch_today
+from app.core.clock import branch_today, now_utc
 from app.core.deps import (
     assert_branch_access,
     get_current_user,
@@ -351,12 +351,19 @@ def client_out(db: Session, member: Member, trainer: Trainer | None = None) -> T
         pt_service.settle_package(db, package)
 
     if trainer is not None:
+        # Mirrors pt_service.next_session's window: without the lower bound,
+        # a session that was never transitioned out of SCHEDULED (a missed
+        # no-show, stale demo data) sorts first forever, and "next session"
+        # quietly becomes "earliest scheduled session ever", however far in
+        # the past. The 3-hour grace keeps a session already under way from
+        # disappearing the moment its start time ticks past.
         next_session = db.scalar(
             select(PTSession)
             .where(
                 PTSession.member_id == member.id,
                 PTSession.trainer_id == trainer.id,
-                PTSession.status == SessionStatus.SCHEDULED,
+                PTSession.status.in_([SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS]),
+                PTSession.scheduled_start >= now_utc() - timedelta(hours=3),
             )
             .order_by(PTSession.scheduled_start)
             .limit(1)

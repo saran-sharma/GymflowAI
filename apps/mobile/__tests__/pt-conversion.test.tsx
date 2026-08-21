@@ -15,10 +15,18 @@ import TrainerClientScreen from '../app/(trainer)/client/[id]';
 import { ApiError } from '../src/api/client';
 import type { Journey, PTPackage, TrainerClientDetail } from '../src/api/types';
 import { ConvertToPt, conversionState } from '../src/components/conversion';
+import { dayLabel } from '../src/utils/format';
 
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: mockBack, push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({
+    back: mockBack,
+    push: jest.fn(),
+    replace: mockReplace,
+    canGoBack: mockCanGoBack,
+  }),
   useLocalSearchParams: () => ({ id: '42' }),
 }));
 
@@ -336,5 +344,95 @@ describe('converting', () => {
     // `loading` disables the Button, so a second tap cannot double-convert.
     expect(screen.getByTestId('convert-to-pt').props.accessibilityState.disabled).toBe(true);
     release(null);
+  });
+});
+
+/* ---------------------------------------------------------------- last seen */
+
+describe('last seen', () => {
+  // The value used to be the date string split on its first space, showing
+  // a bare weekday fragment as the headline, with the same full date
+  // repeated a second time as the hint. Fixed once by showing one clean
+  // date instead of two fragments — but that date still carried a weekday,
+  // which is long enough at this card's 28px mono digits to clip against
+  // the narrow third of a three-across stat row on a real device. The
+  // value is now day + month only; the weekday's context lives in the
+  // "Yesterday" / "N days ago" hint instead, not dropped, just relocated.
+  it('renders a value short enough not to need a weekday', async () => {
+    mockDetail.mockResolvedValue(aDetail({ last_seen_on: '2026-08-19' }));
+    const full = dayLabel('2026-08-19');
+    await draw(<TrainerClientScreen />);
+    // Nothing repeats the weekday-bearing full date as the headline value.
+    expect(screen.queryByText(full)).toBeNull();
+    expect(screen.queryByText(full.split(' ')[0])).toBeNull();
+  });
+
+  it('still says which day, and how recently, without duplicating either', async () => {
+    mockDetail.mockResolvedValue(aDetail({ last_seen_on: '2026-08-19' }));
+    await draw(<TrainerClientScreen />);
+    // Day + month (no weekday) as the value, "days ago" as the hint —
+    // present exactly once each, not merged and not repeated.
+    expect(screen.getAllByText(/\b19\b/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/ago|Today|Yesterday/)).toBeTruthy();
+  });
+});
+
+/* --------------------------------------------------------- expired membership */
+
+describe('expired membership', () => {
+  it('reads as an explicit past-tense state rather than a negative countdown', async () => {
+    mockDetail.mockResolvedValue(
+      aDetail({ membership_status: 'expired', days_remaining: -5 }),
+    );
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('Expired 5 days ago')).toBeTruthy();
+    expect(screen.queryByText('-5 days remaining')).toBeNull();
+    expect(screen.queryByText(/^-5/)).toBeNull();
+  });
+
+  it('still counts down normally while active', async () => {
+    mockDetail.mockResolvedValue(aDetail({ days_remaining: 17 }));
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('17 days left')).toBeTruthy();
+  });
+});
+
+/* --------------------------------------------------------- InBody placeholder */
+
+describe('InBody placeholder copy', () => {
+  it('explains the gap in plain language, not implementation detail', async () => {
+    await draw(<TrainerClientScreen />);
+    expect(
+      screen.getByText(
+        "Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('never mentions the underlying schema or storage', async () => {
+    await draw(<TrainerClientScreen />);
+    for (const term of [/scan table/i, /nothing writes to it/i]) {
+      expect(screen.queryByText(term)).toBeNull();
+    }
+  });
+});
+
+/* ------------------------------------------------------------ back navigation */
+
+describe('back navigation', () => {
+  it('returns to whichever screen pushed this one', async () => {
+    mockCanGoBack.mockReturnValue(true);
+    await draw(<TrainerClientScreen />);
+    fireEvent.press(screen.getByText('Back to clients'));
+    expect(mockBack).toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Clients only when there is no history to unwind', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    await draw(<TrainerClientScreen />);
+    fireEvent.press(screen.getByText('Back to clients'));
+    expect(mockReplace).toHaveBeenCalledWith('/(trainer)/clients');
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });

@@ -330,7 +330,7 @@ export default function TrainerDeskScreen() {
             <NotConnected
               icon="cash-outline"
               title="Revenue and pending payments"
-              detail="GymFlow has no billing model — no invoice, payment or ledger table — so there is no figure to show. PT packages carry an optional price, but nothing records what was collected."
+              detail="GymFlow doesn't track payments yet. PT packages carry an optional price, but there's no figure for what was collected."
             />
             <NotConnected
               icon="pulse-outline"

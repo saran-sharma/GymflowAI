@@ -47,6 +47,10 @@ export default function PtSplitScreen() {
   const { withToken } = useAuth();
 
   const view = useApi<PTSplitView>((token) => api.ptSplitView(sessionId, token), [sessionId]);
+  // Reached from the Desk and from Sessions — back() already returns to
+  // whichever of those pushed this screen, via each tab's own history.
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace('/(trainer)/sessions' as never);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -104,7 +108,7 @@ export default function PtSplitScreen() {
         <ScreenHeader
           title="PT attendance"
           subtitle={`${dayLabel(session.session_date)} · ${timeOfDay(session.scheduled_start)}`}
-          onBack={() => router.back()}
+          onBack={goBack}
           action={<Badge label={meta.label} color={meta.color} />}
         />
 

@@ -11,6 +11,7 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 
 import {
   AlertCard,
@@ -33,6 +34,7 @@ import {
   Skeleton,
   StatCard,
   TappableCard,
+  Text,
   TimelineRow,
   entrance,
   renderTabBar,
@@ -311,6 +313,23 @@ describe('the reference-pattern components', () => {
     expect(onBack).toHaveBeenCalled();
     expect(screen.getByText('PT attendance')).toBeTruthy();
     expect(screen.getByText('Today · 07:00')).toBeTruthy();
+  });
+
+  // The trailing slot was sized for a 44pt icon button. A status word — PT
+  // attendance's own "In progress" / "Upcoming" — does not fit inside that,
+  // and the header cannot mark it `numberOfLines={1}` without deciding to
+  // clip somebody's session status, so the slot has to grow instead.
+  it('does not clip a text action in the trailing slot to icon-button width', async () => {
+    await draw(
+      <ScreenHeader
+        title="PT attendance"
+        onBack={jest.fn()}
+        action={<Text testID="status-word">In progress</Text>}
+      />,
+    );
+    expect(screen.getByText('In progress')).toBeTruthy();
+    const style = StyleSheet.flatten(screen.getByTestId('status-word').parent?.props.style);
+    expect(style?.width).toBeUndefined();
   });
 
   it('renders a person row as one tappable thing, not three', async () => {

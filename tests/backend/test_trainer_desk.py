@@ -12,7 +12,8 @@ from datetime import timedelta
 
 import pytest
 
-from app.core.clock import branch_today
+from app.core.clock import branch_today, now_utc
+from app.services import pt_service
 
 API = "/api/v1"
 
@@ -63,6 +64,39 @@ def test_client_detail_carries_the_history_a_trainer_needs(client, world, auth):
     assert isinstance(body["recent_sessions"], list)
     assert isinstance(body["recent_workouts"], list)
     assert isinstance(body["activity"], list)
+
+
+def test_next_pt_session_skips_a_stale_scheduled_session_in_the_past(client, db, world, auth):
+    """The trainer's own client-detail view built `next_pt_session` from the
+    earliest row still marked SCHEDULED, with no lower bound on its start
+    time — so a session that was never transitioned out of SCHEDULED (a
+    no-show nobody closed, or just old demo data) sorted first forever, and
+    "next session" quietly became "earliest scheduled session ever", however
+    far in the past. It must prefer a session that is actually still ahead.
+    """
+    member = world["member_ngk"]
+    package = pt_service.create_package(db, member=member, sessions_total=12)
+    stale = pt_service.schedule_session(
+        db,
+        package=package,
+        trainer_id=world["trainer_ngk"].id,
+        scheduled_start=now_utc() - timedelta(days=6),
+    )
+    upcoming = pt_service.schedule_session(
+        db,
+        package=package,
+        trainer_id=world["trainer_ngk"].id,
+        scheduled_start=now_utc() + timedelta(days=2),
+    )
+    db.commit()
+
+    headers = auth(world["trainer_ngk_user"])
+    body = client.get(f"{API}/trainers/me/clients/{member.id}", headers=headers).json()
+
+    next_session = body["client"]["next_pt_session"]
+    assert next_session is not None
+    assert next_session["id"] == upcoming.id
+    assert next_session["id"] != stale.id
 
 
 def test_client_detail_404s_for_a_member_that_does_not_exist(client, world, auth):

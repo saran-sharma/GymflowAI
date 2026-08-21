@@ -42,7 +42,22 @@ import {
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
-import { dayLabel, timeOfDay } from '../../../src/utils/format';
+import { dayLabel, daysAgoLabel, membershipDaysLabel, timeOfDay } from '../../../src/utils/format';
+
+/**
+ * "Last seen", short enough for a three-across stat row.
+ *
+ * `dayLabel`'s weekday makes it the one value in this row long enough to
+ * clip against `StatCard`'s 28px mono digits — the other two are one or two
+ * digits. Dropping the weekday (already implied by the "Yesterday" / "N
+ * days ago" hint underneath) keeps this card's value bounded the same way
+ * a visit count or workout count already is.
+ */
+function shortDayLabel(iso: string): string {
+  const date = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
 
 const SESSION_TONE: Record<string, 'positive' | 'caution' | 'critical' | 'neutral'> = {
   completed: 'positive',
@@ -138,6 +153,12 @@ export default function TrainerClientDetailScreen() {
   const journey = client.journey;
   const pack = client.pt_package;
 
+  // Reached only from Clients today, but back() should follow real history
+  // rather than assume that — the same guard used everywhere else a pushed
+  // detail screen needs a safe fallback for a no-history entry.
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace('/(trainer)/clients' as never);
+
   return (
     <Screen>
       <Body
@@ -175,9 +196,15 @@ export default function TrainerClientDetailScreen() {
           {client.days_remaining !== null ? (
             <Text
               variant="label"
-              tone={client.days_remaining <= 30 ? color.status.caution : color.textTertiary}
+              tone={
+                client.days_remaining < 0
+                  ? color.status.critical
+                  : client.days_remaining <= 30
+                    ? color.status.caution
+                    : color.textTertiary
+              }
             >
-              {client.days_remaining} days remaining
+              {membershipDaysLabel(client.days_remaining)}
             </Text>
           ) : null}
         </Card>
@@ -228,8 +255,8 @@ export default function TrainerClientDetailScreen() {
           />
           <StatCard
             label="Last seen"
-            value={client.last_seen_on ? dayLabel(client.last_seen_on).split(' ')[0] : '—'}
-            hint={client.last_seen_on ? dayLabel(client.last_seen_on) : 'never'}
+            value={client.last_seen_on ? shortDayLabel(client.last_seen_on) : 'Never'}
+            hint={client.last_seen_on ? daysAgoLabel(client.last_seen_on) : undefined}
             icon="time-outline"
           />
         </StatRow>
@@ -318,7 +345,7 @@ export default function TrainerClientDetailScreen() {
             <NotConnected
               icon="body-outline"
               title="No InBody history"
-              detail="The scan table exists but nothing writes to it. Body composition appears here once the InBody integration is switched on."
+              detail="Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym."
             />
             <NotConnected
               icon="card-outline"
@@ -333,7 +360,7 @@ export default function TrainerClientDetailScreen() {
           variant="label"
           tone={color.brandAccent}
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={goBack}
           style={styles.back}
         >
           Back to clients
