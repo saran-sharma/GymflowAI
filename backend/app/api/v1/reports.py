@@ -40,7 +40,11 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 def _summarise_branch(
-    db: Session, branch: Branch, on: date | None, include_occupancy: bool
+    db: Session,
+    branch: Branch,
+    on: date | None,
+    include_occupancy: bool,
+    member_count: int = 0,
 ) -> BranchSummaryOut:
     work_date = on or branch_today(branch.timezone)
     # Materialising the day first is what makes an absence visible: a trainer
@@ -67,6 +71,7 @@ def _summarise_branch(
         early_exit=early,
         missing_checkout=missing,
         punctuality_pct=round(on_time * 100 / present, 1) if present else 0.0,
+        member_count=member_count,
         occupancy=(
             OccupancyOut(**attendance_service.branch_occupancy(db, branch))
             if include_occupancy
@@ -89,7 +94,21 @@ def dashboard(
         stmt = stmt.where(Branch.id.in_(allowed))
     branches = list(db.scalars(stmt).all())
 
-    summaries = [_summarise_branch(db, b, on, include_occupancy=True) for b in branches]
+    member_counts_stmt = (
+        select(Member.branch_id, func.count())
+        .where(Member.is_active.is_(True))
+        .group_by(Member.branch_id)
+    )
+    if allowed is not None:
+        member_counts_stmt = member_counts_stmt.where(Member.branch_id.in_(allowed))
+    member_counts = dict(db.execute(member_counts_stmt).all())
+
+    summaries = [
+        _summarise_branch(
+            db, b, on, include_occupancy=True, member_count=member_counts.get(b.id, 0)
+        )
+        for b in branches
+    ]
 
     trainer_stmt = select(func.count()).select_from(Trainer).where(Trainer.is_active.is_(True))
     if allowed is not None:
@@ -105,6 +124,7 @@ def dashboard(
         work_date=on or branch_today(reference),
         server_time=now_utc(),
         total_trainers=int(total_trainers),
+        total_members=sum(member_counts.values()),
         scheduled=scheduled,
         present=present,
         late=sum(s.late for s in summaries),

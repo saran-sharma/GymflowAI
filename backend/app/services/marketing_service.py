@@ -25,6 +25,9 @@ from app.db.models import (
     Referral,
 )
 
+#: The funnel bucket for a member with no recorded acquisition source.
+UNRECORDED_SOURCE_KEY = "unrecorded"
+
 #: The sources SLAM asks about at registration. Seeded into the table, and
 #: editable from settings — the app never hardcodes this list.
 DEFAULT_SOURCES: list[tuple[str, str, bool]] = [
@@ -186,7 +189,7 @@ def funnel(
 
     def bucket_for(member: Member) -> SourceFunnel:
         source = sources.get(member.marketing_source_id) if member.marketing_source_id else None
-        key = source.key if source else "unrecorded"
+        key = source.key if source else UNRECORDED_SOURCE_KEY
         label = source.label if source else "Not recorded"
         return buckets.setdefault(key, SourceFunnel(source_key=key, source_label=label))
 

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.clock import now_utc
 from app.core.deps import (
     assert_branch_access,
     get_current_user,
@@ -33,6 +34,8 @@ from app.schemas.common import MessageOut
 from app.schemas.operations import (
     AlertActionRequest,
     AlertOut,
+    BroadcastRequest,
+    BroadcastResult,
     CorrectionOut,
     CorrectionRequestIn,
     CorrectionReviewIn,
@@ -97,6 +100,39 @@ def acknowledge_alert(
 ) -> Alert:
     alert = _load_alert(db, alert_id, user)
     return alert_service.acknowledge(db, alert, user, dismiss=payload.dismiss)
+
+
+@router.post("/alerts/broadcast", response_model=BroadcastResult)
+def broadcast(
+    payload: BroadcastRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> BroadcastResult:
+    """Send a message to an audience, through the alert inbox each of them already has.
+
+    There is no separate broadcast channel to build: this writes one `Alert`
+    per recipient, the same row shape and the same `GET /alerts` read path
+    every other alert in the product already uses.
+    """
+    if payload.branch_id is not None:
+        assert_branch_access(user, payload.branch_id)
+
+    recipients = alert_service.send_broadcast(
+        db,
+        sender=user,
+        audience=payload.audience,
+        branch_id=payload.branch_id,
+        broadcast_type=payload.broadcast_type,
+        title=payload.title,
+        body=payload.message,
+    )
+    return BroadcastResult(
+        recipients=recipients,
+        audience=payload.audience,
+        branch_id=payload.branch_id,
+        broadcast_type=payload.broadcast_type,
+        sent_at=now_utc(),
+    )
 
 
 # ------------------------------------------------------------------ tasks

@@ -48,6 +48,31 @@ class AlertActionRequest(BaseModel):
     dismiss: bool = False
 
 
+class BroadcastRequest(BaseModel):
+    """A message the owner sends to a whole audience at once.
+
+    Delivered through the existing in-app alert channel — one alert per
+    recipient, so it lands in the same inbox `GET /alerts` already reads.
+    There is no image field: nothing in GymFlow can store or serve one yet.
+    """
+
+    audience: str = Field(pattern="^(everyone|members|trainers)$")
+    branch_id: int | None = None
+    broadcast_type: str = Field(
+        pattern="^(announcement|urgent|training|membership|motivation|campaign)$"
+    )
+    title: str = Field(min_length=1, max_length=160)
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class BroadcastResult(BaseModel):
+    recipients: int
+    audience: str
+    branch_id: int | None = None
+    broadcast_type: str
+    sent_at: datetime
+
+
 class TaskOut(ORMModel):
     id: int
     branch_id: int

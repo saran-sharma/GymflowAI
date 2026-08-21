@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today
 from app.core.deps import (
@@ -33,7 +33,10 @@ from app.schemas.operations import (
     ReferralOut,
     SourceFunnelOut,
 )
+from app.schemas.training import TrainerClientOut
 from app.services import audit, marketing_service
+
+from .trainers import client_out
 
 router = APIRouter(prefix="/marketing", tags=["marketing"])
 
@@ -202,6 +205,44 @@ def dashboard(
         total_referrals=total_referrals,
         has_data=new_members > 0,
     )
+
+
+@router.get("/sources/{source_key}/members", response_model=list[TrainerClientOut])
+def source_members(
+    source_key: str,
+    branch_id: int | None = Query(default=None),
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> list[TrainerClientOut]:
+    """Who a source actually brought in — the drill-down under one funnel row.
+
+    ``source_key`` matches what the dashboard funnel already hands back, so
+    tapping a source needs no extra lookup. The date window and branch scope
+    mirror :func:`marketing_service.funnel` — the same window, the same rows.
+    """
+    allowed = scoped_branch_filter(user, branch_id)
+
+    stmt = select(Member).options(joinedload(Member.user), joinedload(Member.branch))
+    if source_key == marketing_service.UNRECORDED_SOURCE_KEY:
+        stmt = stmt.where(Member.marketing_source_id.is_(None))
+    else:
+        source = db.scalar(select(MarketingSource).where(MarketingSource.key == source_key))
+        if source is None:
+            raise HTTPException(status_code=404, detail="Marketing source not found")
+        stmt = stmt.where(Member.marketing_source_id == source.id)
+
+    if allowed is not None:
+        stmt = stmt.where(Member.branch_id.in_(allowed))
+    if start is not None:
+        stmt = stmt.where(func.coalesce(Member.registered_on, Member.joined_on) >= start)
+    if end is not None:
+        stmt = stmt.where(func.coalesce(Member.registered_on, Member.joined_on) <= end)
+    stmt = stmt.order_by(func.coalesce(Member.registered_on, Member.joined_on).desc())
+
+    members = db.scalars(stmt).all()
+    return [client_out(db, member) for member in members]
 
 
 @router.get("/referrals", response_model=list[ReferralOut])

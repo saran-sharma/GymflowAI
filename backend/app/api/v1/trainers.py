@@ -308,13 +308,18 @@ def _my_trainer(db: Session, user: User) -> Trainer:
     return trainer
 
 
-def _client_out(db: Session, member: Member, trainer: Trainer) -> TrainerClientOut:
+def client_out(db: Session, member: Member, trainer: Trainer | None = None) -> TrainerClientOut:
     """Assemble one client row from records that already exist.
 
     Nothing is computed here that a service already computes. The journey, the
     package and the next session all come back through the same builders the
     member's own screens use, so a trainer and their client are never looking
     at two different truths.
+
+    ``trainer`` scopes "next session" to one coach's calendar — the trainer
+    desk's own use. Owner/management screens pass no trainer and get the
+    member's next PT session with whoever it is with, the same answer
+    ``member_home`` already gives the member.
     """
     membership = (
         db.scalar(
@@ -345,16 +350,19 @@ def _client_out(db: Session, member: Member, trainer: Trainer) -> TrainerClientO
     if package is not None:
         pt_service.settle_package(db, package)
 
-    next_session = db.scalar(
-        select(PTSession)
-        .where(
-            PTSession.member_id == member.id,
-            PTSession.trainer_id == trainer.id,
-            PTSession.status == SessionStatus.SCHEDULED,
+    if trainer is not None:
+        next_session = db.scalar(
+            select(PTSession)
+            .where(
+                PTSession.member_id == member.id,
+                PTSession.trainer_id == trainer.id,
+                PTSession.status == SessionStatus.SCHEDULED,
+            )
+            .order_by(PTSession.scheduled_start)
+            .limit(1)
         )
-        .order_by(PTSession.scheduled_start)
-        .limit(1)
-    )
+    else:
+        next_session = pt_service.next_session(db, member.id)
 
     today = branch_today(member.branch.timezone if member.branch else None)
     since = today - timedelta(days=30)
@@ -409,7 +417,44 @@ def my_clients(
         .where(Member.assigned_trainer_id == trainer.id, Member.is_active.is_(True))
         .order_by(Member.member_code)
     ).all()
-    return [_client_out(db, member, trainer) for member in members]
+    return [client_out(db, member, trainer) for member in members]
+
+
+def client_detail_out(
+    db: Session, member: Member, trainer: Trainer | None = None
+) -> TrainerClientDetailOut:
+    """The client-detail payload: one client row plus their recent history.
+
+    ``trainer`` scopes PT session history to one coach, as the trainer desk
+    needs; owner/management screens (which pass no trainer) get every PT
+    session the member has had, with whichever trainer ran it.
+    """
+    if trainer is not None:
+        sessions = db.scalars(
+            select(PTSession)
+            .where(PTSession.member_id == member.id, PTSession.trainer_id == trainer.id)
+            .order_by(PTSession.scheduled_start.desc())
+            .limit(10)
+        ).all()
+    else:
+        sessions = pt_service.sessions_for_member(db, member.id, limit=10)
+
+    workouts = db.scalars(
+        select(WorkoutSession)
+        .where(WorkoutSession.member_id == member.id)
+        .order_by(WorkoutSession.session_date.desc())
+        .limit(10)
+    ).all()
+
+    return TrainerClientDetailOut(
+        client=client_out(db, member, trainer),
+        recent_sessions=[session_out(db, s) for s in sessions],
+        recent_workouts=[workout_out(db, w) for w in workouts],
+        activity=[
+            ActivityEntryOut(**entry.__dict__)
+            for entry in activity_service.timeline(db, member, limit=30)
+        ],
+    )
 
 
 @router.get("/me/clients/{member_id}", response_model=TrainerClientDetailOut)
@@ -435,29 +480,7 @@ def my_client_detail(
     if member.assigned_trainer_id != trainer.id:
         raise HTTPException(status_code=403, detail="This member is not one of your clients")
 
-    sessions = db.scalars(
-        select(PTSession)
-        .where(PTSession.member_id == member.id, PTSession.trainer_id == trainer.id)
-        .order_by(PTSession.scheduled_start.desc())
-        .limit(10)
-    ).all()
-
-    workouts = db.scalars(
-        select(WorkoutSession)
-        .where(WorkoutSession.member_id == member.id)
-        .order_by(WorkoutSession.session_date.desc())
-        .limit(10)
-    ).all()
-
-    return TrainerClientDetailOut(
-        client=_client_out(db, member, trainer),
-        recent_sessions=[session_out(db, s) for s in sessions],
-        recent_workouts=[workout_out(db, w) for w in workouts],
-        activity=[
-            ActivityEntryOut(**entry.__dict__)
-            for entry in activity_service.timeline(db, member, limit=30)
-        ],
-    )
+    return client_detail_out(db, member, trainer)
 
 
 # ------------------------------------------------------------- availability

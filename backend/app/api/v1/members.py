@@ -36,7 +36,7 @@ from app.schemas.common import (
     MessageOut,
     OccupancyOut,
 )
-from app.schemas.training import ActivityEntryOut, MemberHomeOut
+from app.schemas.training import ActivityEntryOut, MemberHomeOut, TrainerClientDetailOut
 from app.services import (
     activity_service,
     alert_service,
@@ -47,7 +47,8 @@ from app.services import (
     pt_service,
 )
 
-from .trainers import trainer_out
+from .journeys import assert_can_read_member
+from .trainers import client_detail_out, trainer_out
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -278,6 +279,36 @@ def member_attendance(
     )
     verb = "in" if payload.event_type is EventType.CHECK_IN else "out"
     return MessageOut(message=f"Checked {verb} at {branch.name}")
+
+
+@router.get("/{member_id}", response_model=TrainerClientDetailOut)
+def member_detail(
+    member_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TrainerClientDetailOut:
+    """A member's full operational picture, for staff who may read them.
+
+    The owner's Member Intelligence screen, and any other staff view that
+    needs one member in full, all read this — the same builder the trainer
+    desk's client-detail screen uses, generalised to any authorised reader
+    rather than one trainer's own clients. Membership, journey, PT package,
+    recent attendance and recent workouts come back together because that is
+    the whole picture staff actually need before acting on it.
+    """
+    member = db.scalar(
+        select(Member)
+        .options(
+            joinedload(Member.user),
+            joinedload(Member.branch),
+            joinedload(Member.assigned_trainer).joinedload(Trainer.user),
+        )
+        .where(Member.id == member_id)
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    assert_can_read_member(db, user, member)
+    return client_detail_out(db, member)
 
 
 __all__ = ["router"]

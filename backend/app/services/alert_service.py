@@ -9,19 +9,22 @@ with copies of one fact.
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import now_utc
 from app.db.models import (
     Alert,
     AlertSeverity,
     AlertStatus,
+    Member,
     RoleKey,
     Task,
+    Trainer,
     User,
 )
 
@@ -43,9 +46,15 @@ CLASS_ANNOUNCED = "class.announced"
 CLASS_LOW_ATTENDANCE = "class.low_attendance"
 MEMBERSHIP_EXPIRING = "membership.expiring"
 MARKETING_MILESTONE = "marketing.milestone"
+OWNER_BROADCAST = "owner.broadcast"
 
 #: Roles that read a branch-wide alert feed.
 MANAGEMENT_TARGET = "management"
+
+#: broadcast_type → severity. Everything but "urgent" reads as a normal
+#: in-app alert; a member or trainer should not learn to ignore this channel
+#: because most of what arrives on it is dressed as critical.
+_BROADCAST_SEVERITY = {"urgent": AlertSeverity.CRITICAL}
 
 
 def raise_alert(
@@ -145,6 +154,59 @@ def visible_alerts(
     return list(db.scalars(stmt.offset(offset).limit(limit)).all())
 
 
+def send_broadcast(
+    db: Session,
+    *,
+    sender: User,
+    audience: str,
+    branch_id: int | None,
+    broadcast_type: str,
+    title: str,
+    body: str,
+) -> int:
+    """Send one message to a whole audience, as individual alerts.
+
+    ``visible_alerts`` only ever shows a member or trainer alerts addressed to
+    *them* — there is no "everyone at this branch" row it will surface for
+    those roles. So a broadcast is not one alert; it is one alert per
+    recipient, each real enough to show up in that person's own inbox the
+    next time they open it. The shared ``broadcast_id`` in every dedupe_key
+    is what stops a retried request from paging the same person twice.
+    """
+    recipients: list[User] = []
+    if audience in ("everyone", "members"):
+        stmt = select(Member).options(joinedload(Member.user)).where(Member.is_active.is_(True))
+        if branch_id is not None:
+            stmt = stmt.where(Member.branch_id == branch_id)
+        recipients += [m.user for m in db.scalars(stmt).all() if m.user is not None]
+    if audience in ("everyone", "trainers"):
+        stmt = select(Trainer).options(joinedload(Trainer.user)).where(Trainer.is_active.is_(True))
+        if branch_id is not None:
+            stmt = stmt.where(Trainer.branch_id == branch_id)
+        recipients += [t.user for t in db.scalars(stmt).all() if t.user is not None]
+
+    broadcast_id = uuid.uuid4().hex
+    severity = _BROADCAST_SEVERITY.get(broadcast_type, AlertSeverity.INFO)
+    for user in recipients:
+        raise_alert(
+            db,
+            key=OWNER_BROADCAST,
+            dedupe_key=f"broadcast:{broadcast_id}:{user.id}",
+            title=title,
+            body=body,
+            severity=severity,
+            branch_id=branch_id,
+            target_role=None,
+            target_user_id=user.id,
+            payload={
+                "broadcast_type": broadcast_type,
+                "sent_by": sender.full_name,
+                "audience": audience,
+            },
+        )
+    return len(recipients)
+
+
 def acknowledge(db: Session, alert: Alert, user: User, *, dismiss: bool = False) -> Alert:
     alert.status = AlertStatus.DISMISSED if dismiss else AlertStatus.ACKNOWLEDGED
     alert.acknowledged_by_user_id = user.id
@@ -207,6 +269,7 @@ __all__ = [
     "MARKETING_MILESTONE",
     "MEMBERSHIP_EXPIRING",
     "MISSING_CHECKOUT",
+    "OWNER_BROADCAST",
     "PT_LOW_BALANCE",
     "PT_PACKAGE_COMPLETE",
     "UNWORKED_SHIFT",
@@ -215,5 +278,6 @@ __all__ = [
     "create_task",
     "raise_alert",
     "resolve_alert",
+    "send_broadcast",
     "visible_alerts",
 ]

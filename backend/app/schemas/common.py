@@ -358,6 +358,7 @@ class BranchSummaryOut(BaseModel):
     early_exit: int
     missing_checkout: int
     punctuality_pct: float
+    member_count: int = 0
     occupancy: OccupancyOut | None = None
 
 
@@ -365,6 +366,7 @@ class DashboardOut(BaseModel):
     work_date: date
     server_time: datetime
     total_trainers: int
+    total_members: int = 0
     scheduled: int
     present: int
     late: int
