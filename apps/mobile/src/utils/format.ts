@@ -20,6 +20,34 @@ export function dayLabel(iso: string | null | undefined): string {
   return date.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short' });
 }
 
+/** "Today" / "Yesterday" / "12 days ago" — a quiet companion to `dayLabel`. */
+export function daysAgoLabel(iso: string | null | undefined): string | undefined {
+  if (!iso) return undefined;
+  const date = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+/**
+ * A membership's day count, phrased for whichever side of zero it falls on.
+ *
+ * The API returns a signed integer — positive while active, negative once the
+ * plan has lapsed — so the same number reads as either a countdown or an
+ * elapsed time depending only on its sign. Showing "-5 days left" states both
+ * at once and reads as a bug; this picks one.
+ */
+export function membershipDaysLabel(daysRemaining: number): string {
+  if (daysRemaining < 0) {
+    const elapsed = Math.abs(daysRemaining);
+    return `Expired ${elapsed} day${elapsed === 1 ? '' : 's'} ago`;
+  }
+  return `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`;
+}
+
 export function longDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);

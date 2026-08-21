@@ -13,11 +13,15 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
+import { renderTabBar, roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
 
 export default function OwnerLayout() {
   return (
-    <Tabs screenOptions={tabScreenOptions({ compact: true, accent: roleAccent.owner })}>
+    <Tabs
+      backBehavior="history"
+      tabBar={renderTabBar(roleAccent.owner)}
+      screenOptions={tabScreenOptions({ compact: true, accent: roleAccent.owner })}
+    >
       <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: tabIcon('grid') }} />
       <Tabs.Screen
         name="members"

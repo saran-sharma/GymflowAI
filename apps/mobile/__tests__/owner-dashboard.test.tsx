@@ -1,13 +1,17 @@
 /**
  * The Owner Command Center dashboard.
  *
- * What's pinned here: the greeting reads the clock, not a hardcoded string;
- * the snapshot metrics come from real endpoint data, not placeholders; the
- * live-gym branch picker actually re-fetches for the branch tapped; and a
- * failed load says so instead of showing a blank or half-drawn screen.
+ * What's pinned here: the greeting reads the clock, not a hardcoded string,
+ * and is grouped into one accessible announcement rather than bleeding into
+ * the rest of the screen; the snapshot metrics come from real endpoint data,
+ * not placeholders; "who is inside" now points at Members' own "Currently in
+ * gym" list rather than duplicating it here; Attention is capped and
+ * summarized rather than dumping every item; Broadcast is reachable from a
+ * header action without a dedicated tab; and a failed load says so instead of
+ * showing a blank or half-drawn screen.
  */
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import OwnerDashboardScreen from '../app/(owner)/index';
@@ -15,11 +19,11 @@ import type {
   Branch,
   BranchPerformanceResponse,
   Dashboard,
+  Insight,
   MarketingDashboard,
   NeedsAttention,
   Renewals,
   RevenueSummary,
-  WhoIsInside,
 } from '../src/api/types';
 
 const mockPush = jest.fn();
@@ -37,7 +41,6 @@ const mockInsights = jest.fn();
 const mockRevenue = jest.fn();
 const mockMarketing = jest.fn();
 const mockBranches = jest.fn();
-const mockInside = jest.fn();
 
 jest.mock('../src/api/endpoints', () => ({
   dashboard: (...a: unknown[]) => mockDashboard(...a),
@@ -49,7 +52,6 @@ jest.mock('../src/api/endpoints', () => ({
   revenueSummary: (...a: unknown[]) => mockRevenue(...a),
   marketingDashboard: (...a: unknown[]) => mockMarketing(...a),
   listBranches: (...a: unknown[]) => mockBranches(...a),
-  whoIsInside: (...a: unknown[]) => mockInside(...a),
 }));
 
 const mockAuth = {
@@ -105,13 +107,13 @@ function aBranch(partial: Partial<Branch> = {}): Branch {
   } as Branch;
 }
 
-function aWhoIsInside(partial: Partial<WhoIsInside> = {}): WhoIsInside {
+function anInsight(partial: Partial<Insight> = {}): Insight {
   return {
-    branch_id: 1,
-    branch_name: 'SLAM Nagalkeni',
-    count: 0,
-    capacity: 90,
-    members: [],
+    key: 'late-marks',
+    title: 'SLAM Boganhalli: late marks above 20%',
+    detail: '15 of 54 rostered shifts this month started after the grace window.',
+    severity: 'warning',
+    data: {},
     ...partial,
   };
 }
@@ -164,27 +166,34 @@ beforeEach(() => {
     has_data: true,
   } satisfies MarketingDashboard);
   mockBranches.mockResolvedValue([aBranch({ id: 1, name: 'SLAM Nagalkeni' }), aBranch({ id: 2, name: 'SLAM Boganhalli' })]);
-  mockInside.mockResolvedValue(aWhoIsInside());
 });
 
 describe('greeting', () => {
+  // The greeting and its subtext are grouped into one accessible block —
+  // separate visual lines (the name set larger, as the screen's hero) but
+  // one announcement, so a screen reader does not stop on each fragment.
   it('greets by time of day and first name', async () => {
     jest.spyOn(Date.prototype, 'getHours').mockReturnValue(9);
     await draw();
-    expect(screen.getByText('Good morning, Karan')).toBeTruthy();
-    expect(screen.getByText("Here's what needs your attention today.")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Good morning, Karan. Here's what needs your attention today."),
+    ).toBeTruthy();
   });
 
   it('says good afternoon at midday', async () => {
     jest.spyOn(Date.prototype, 'getHours').mockReturnValue(14);
     await draw();
-    expect(screen.getByText('Good afternoon, Karan')).toBeTruthy();
+    expect(
+      screen.getByLabelText("Good afternoon, Karan. Here's what needs your attention today."),
+    ).toBeTruthy();
   });
 
   it('says good evening at night', async () => {
     jest.spyOn(Date.prototype, 'getHours').mockReturnValue(20);
     await draw();
-    expect(screen.getByText('Good evening, Karan')).toBeTruthy();
+    expect(
+      screen.getByLabelText("Good evening, Karan. Here's what needs your attention today."),
+    ).toBeTruthy();
   });
 });
 
@@ -205,29 +214,77 @@ describe('the operational snapshot', () => {
   });
 });
 
-describe('live gym branch selection', () => {
-  it('lets the owner switch branches and re-fetches who is inside', async () => {
+describe('who is inside', () => {
+  // Members already has a live "Currently in gym" list, branch picker
+  // included — the dashboard states the count and sends anyone who wants
+  // the names there, rather than keeping a second, thinner copy of it.
+  it('sends the owner to Members, where the live list actually lives', async () => {
     await draw();
-    await waitFor(() => expect(mockInside).toHaveBeenCalledWith('token', 1));
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('live-branch-2'));
-    });
-
-    await waitFor(() => expect(mockInside).toHaveBeenCalledWith('token', 2));
-  });
-
-  it('shows how many trainers are present at the selected branch', async () => {
-    await draw();
-    expect(screen.getByText('2/3 trainers present today')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Inside now: 5'));
+    expect(mockPush).toHaveBeenCalledWith('/(owner)/members');
   });
 });
 
 describe('broadcast entry point', () => {
-  it('is discoverable without a dedicated tab', async () => {
+  it('is discoverable from a header action without a dedicated tab', async () => {
     await draw();
-    fireEvent.press(screen.getByText('Send a broadcast'));
+    fireEvent.press(screen.getByTestId('dashboard-broadcast'));
     expect(mockPush).toHaveBeenCalledWith('/(owner)/broadcast');
+  });
+
+  it('names what the action does for assistive technology', async () => {
+    await draw();
+    expect(screen.getByLabelText('Send a broadcast')).toBeTruthy();
+  });
+});
+
+describe('attention', () => {
+  it('summarizes instead of dumping every item as its own card', async () => {
+    mockInsights.mockResolvedValue([
+      anInsight({ key: 'a', title: 'SLAM Nagalkeni: 4 unworked shift(s)', severity: 'critical' }),
+      anInsight({ key: 'b', title: 'SLAM Boganhalli: late marks above 20%', severity: 'warning' }),
+      anInsight({ key: 'c', title: 'SLAM Boganhalli: 1 unworked shift(s)', severity: 'warning' }),
+      anInsight({ key: 'd', title: 'SLAM Alandur: 1 unworked shift(s)', severity: 'warning' }),
+    ]);
+    await draw();
+
+    // The most severe items are shown, capped at three plus the pending
+    // corrections line, with a way to see the rest rather than five full
+    // cards competing with everything else for the same glance.
+    expect(screen.getByText('SLAM Nagalkeni: 4 unworked shift(s)')).toBeTruthy();
+    expect(screen.queryByText('SLAM Alandur: 1 unworked shift(s)')).toBeNull();
+    expect(screen.getByText('View all (5)')).toBeTruthy();
+  });
+
+  it('shows a calm empty state when nothing needs attention', async () => {
+    mockAttention.mockResolvedValue({ items: [], pt_ready_count: 0, pending_corrections: 0 } satisfies NeedsAttention);
+    mockInsights.mockResolvedValue([]);
+    await draw();
+    expect(screen.getByText('Nothing needs your attention')).toBeTruthy();
+  });
+
+  it('routes a named attention item to its action route', async () => {
+    mockAttention.mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          key: 'missed-shift',
+          severity: 'critical',
+          title: 'Rahul Deshpande did not work a rostered shift',
+          body: 'Rostered at SLAM Boganhalli on 2026-08-19 with no check-in.',
+          branch_id: 2,
+          entity_type: 'trainer',
+          entity_id: '5',
+          action_route: '/(owner)/trainer/5',
+          created_at: '2026-08-20T09:00:00Z',
+        },
+      ],
+      pt_ready_count: 2,
+      pending_corrections: 0,
+    } satisfies NeedsAttention);
+    await draw();
+    fireEvent.press(screen.getByText('Rahul Deshpande did not work a rostered shift'));
+    expect(mockPush).toHaveBeenCalledWith('/(owner)/trainer/5');
   });
 });
 

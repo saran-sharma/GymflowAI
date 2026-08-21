@@ -189,6 +189,13 @@ function ownerRows(): AccountRow[] {
       route: '/(owner)/payments',
     },
     {
+      key: 'broadcast',
+      label: 'Send a broadcast',
+      detail: 'Reach members or trainers with an announcement',
+      icon: 'megaphone-outline',
+      route: '/(owner)/broadcast',
+    },
+    {
       key: 'operations',
       label: 'Operations',
       detail: 'Business rules and automations',

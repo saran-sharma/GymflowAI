@@ -12,8 +12,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { MarketingDashboard } from '../../src/api/types';
-import { BarChart } from '../../src/components/programme';
+import type { MarketingDashboard, SourceFunnel } from '../../src/api/types';
 import {
   Badge,
   Body,
@@ -27,6 +26,7 @@ import {
   Row,
   Screen,
   Section,
+  Stack,
   StatCard,
   TappableCard,
   Text,
@@ -98,12 +98,7 @@ export default function OwnerMarketingScreen() {
 
             <Card>
               <Eyebrow>Source distribution</Eyebrow>
-              <BarChart
-                data={data.sources.slice(0, 8).map((source) => ({
-                  label: source.source_label.slice(0, 4),
-                  value: source.joined,
-                }))}
-              />
+              <SourceDistribution sources={data.sources.slice(0, 8)} />
             </Card>
 
             <Section title="Source → members → Day 45 → PT">
@@ -220,6 +215,43 @@ export default function OwnerMarketingScreen() {
   );
 }
 
+/**
+ * Where members came from, as a horizontal bar per source.
+ *
+ * A column chart cannot hold a real label at eight-across width — "Instagram"
+ * and "Facebook" cannot both fit under a 40px bar without truncating past
+ * recognition. A horizontal bar has nowhere to hide the label: it is read
+ * before the bar is, so every source is legible at any name length.
+ */
+function SourceDistribution({ sources }: { sources: SourceFunnel[] }) {
+  const max = Math.max(1, ...sources.map((source) => source.joined));
+  return (
+    <Stack gap="sm" style={styles.distribution}>
+      {sources.map((source) => (
+        <Row key={source.source_key} gap="md" align="center">
+          <Text variant="label" tone={color.textSecondary} style={styles.distributionLabel}>
+            {source.source_label}
+          </Text>
+          <View style={styles.distributionTrack}>
+            <View
+              style={[
+                styles.distributionBar,
+                {
+                  width: `${Math.max(source.joined ? 4 : 0, (source.joined / max) * 100)}%`,
+                  backgroundColor: source.joined ? color.brand : color.surfaceOverlay,
+                },
+              ]}
+            />
+          </View>
+          <Text variant="mono" tone={color.textTertiary} style={styles.distributionValue}>
+            {source.joined}
+          </Text>
+        </Row>
+      ))}
+    </Stack>
+  );
+}
+
 function FunnelStep({ label, value, tint }: { label: string; value: number; tint: string }) {
   return (
     <View style={styles.step}>
@@ -236,6 +268,17 @@ function FunnelStep({ label, value, tint }: { label: string; value: number; tint
 const styles = StyleSheet.create({
   grow: { flex: 1 },
   tiles: { flexDirection: 'row', gap: space.sm },
+  distribution: { paddingTop: space.xs },
+  distributionLabel: { width: 88 },
+  distributionTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: color.surfaceOverlay,
+    overflow: 'hidden',
+  },
+  distributionBar: { height: '100%', borderRadius: 4 },
+  distributionValue: { width: 28, textAlign: 'right' },
   cardHead: { justifyContent: 'space-between' },
   funnel: { justifyContent: 'space-between', paddingVertical: space.sm },
   step: { alignItems: 'flex-start', gap: 2, flex: 1 },

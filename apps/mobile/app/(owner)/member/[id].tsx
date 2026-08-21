@@ -46,7 +46,7 @@ import {
   space,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
-import { dayLabel, money } from '../../../src/utils/format';
+import { dayLabel, daysAgoLabel, membershipDaysLabel, money } from '../../../src/utils/format';
 
 const WORKOUT_TONE: Record<string, 'positive' | 'neutral'> = {
   completed: 'positive',
@@ -68,6 +68,14 @@ export default function OwnerMemberScreen() {
     [memberId],
   );
 
+  // A member is opened from Members, from a marketing source's acquisition
+  // list, and from search results elsewhere — `back()` already returns to
+  // whichever of those pushed this screen, via each tab's own history. The
+  // `canGoBack` guard only matters for the rare case of landing here directly
+  // (a deep link) with no history to unwind.
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace('/(owner)/members' as never);
+
   if (detail.loading) return <Loading label="Loading member" />;
 
   if (detail.error || !detail.data) {
@@ -75,7 +83,7 @@ export default function OwnerMemberScreen() {
     const forbidden = detail.error?.status === 403;
     return (
       <Screen>
-        <ScreenHeader title="Member" onBack={() => router.back()} />
+        <ScreenHeader title="Member" onBack={goBack} />
         <ErrorState
           offline={offline}
           title={offline ? undefined : forbidden ? 'Outside your branches' : 'We could not load this member'}
@@ -102,7 +110,7 @@ export default function OwnerMemberScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Member" onBack={() => router.back()} />
+      <ScreenHeader title="Member" onBack={goBack} />
       <Body
         refreshControl={
           <RefreshControl
@@ -145,9 +153,15 @@ export default function OwnerMemberScreen() {
               {client.days_remaining !== null ? (
                 <Text
                   variant="label"
-                  tone={client.days_remaining <= 30 ? color.status.caution : color.textTertiary}
+                  tone={
+                    client.days_remaining < 0
+                      ? color.status.critical
+                      : client.days_remaining <= 30
+                        ? color.status.caution
+                        : color.textTertiary
+                  }
                 >
-                  {client.days_remaining} days left
+                  {membershipDaysLabel(client.days_remaining)}
                 </Text>
               ) : null}
             </Row>
@@ -240,8 +254,8 @@ export default function OwnerMemberScreen() {
             />
             <StatCard
               label="Last seen"
-              value={client.last_seen_on ? dayLabel(client.last_seen_on).split(' ')[0] : '—'}
-              hint={client.last_seen_on ? dayLabel(client.last_seen_on) : 'never'}
+              value={client.last_seen_on ? dayLabel(client.last_seen_on) : 'Never'}
+              hint={client.last_seen_on ? daysAgoLabel(client.last_seen_on) : undefined}
               icon="time-outline"
             />
           </StatRow>
@@ -335,7 +349,7 @@ export default function OwnerMemberScreen() {
           <NotConnected
             icon="body-outline"
             title="No InBody history"
-            detail="The scan table exists but nothing writes to it yet. Body composition appears here once the InBody integration is switched on — this section is where it lands."
+            detail="Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym."
           />
         </Section>
       </Body>

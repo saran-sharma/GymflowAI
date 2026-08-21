@@ -50,13 +50,18 @@ export default function MarketingSourceScreen() {
   const funnel = dashboard.data?.sources.find((row) => row.source_key === sourceKey);
   const title = funnel?.source_label ?? (sourceKey === 'unrecorded' ? 'Not recorded' : sourceKey);
 
+  // Opened from the Marketing tab, so `back()` already returns there via its
+  // own history. The `canGoBack` guard only covers arriving here directly.
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace('/(owner)/marketing' as never);
+
   if (members.loading) return <Loading label="Loading source" />;
 
   if (members.error || !members.data) {
     const offline = members.error?.code === OFFLINE_CODE;
     return (
       <Screen>
-        <ScreenHeader title={title} onBack={() => router.back()} />
+        <ScreenHeader title={title} onBack={goBack} />
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load this source'}
@@ -69,7 +74,7 @@ export default function MarketingSourceScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title={title} onBack={() => router.back()} />
+      <ScreenHeader title={title} onBack={goBack} />
       <Body
         refreshControl={
           <RefreshControl

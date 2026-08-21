@@ -153,7 +153,11 @@ export default function LoginScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.hero, compact ? styles.heroCompact : null]}>
+          <View
+            style={[styles.hero, compact ? styles.heroCompact : null]}
+            accessible
+            accessibilityLabel="GymFlow AI. Train smarter, perform better. Your fitness journey, all in one place."
+          >
             <Row gap="md" align="center">
               <SlamLogo width={112} />
               <Text style={styles.wordmark}>GymFlow AI</Text>
@@ -178,7 +182,9 @@ export default function LoginScreen() {
               </Stack>
             ) : (
               <>
-                <Text style={styles.welcome}>{isReset ? 'Reset your password' : 'Welcome back.'}</Text>
+                <Text accessibilityRole="header" style={styles.welcome}>
+                  {isReset ? 'Reset your password' : 'Welcome back.'}
+                </Text>
                 {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
                 {errorText ? (
                   <Banner tone="critical" icon="alert-circle-outline" testID="login-error">

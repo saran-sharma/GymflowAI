@@ -14,11 +14,15 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
+import { renderTabBar, roleAccent, tabIcon, tabScreenOptions } from '../../src/design';
 
 export default function TrainerLayout() {
   return (
-    <Tabs screenOptions={tabScreenOptions({ compact: true, accent: roleAccent.trainer })}>
+    <Tabs
+      backBehavior="history"
+      tabBar={renderTabBar(roleAccent.trainer)}
+      screenOptions={tabScreenOptions({ compact: true, accent: roleAccent.trainer })}
+    >
       <Tabs.Screen name="index" options={{ title: 'Desk', tabBarIcon: tabIcon('grid') }} />
       <Tabs.Screen name="clients" options={{ title: 'Clients', tabBarIcon: tabIcon('people') }} />
       <Tabs.Screen

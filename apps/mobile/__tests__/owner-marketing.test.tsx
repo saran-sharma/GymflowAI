@@ -91,6 +91,33 @@ describe('tapping a source on the funnel', () => {
   });
 });
 
+describe('source distribution', () => {
+  // The bar chart used to slice each label to 4 characters to fit a column
+  // width — "Banner" became "Bann", "WhatsApp" became "What". A horizontal
+  // bar has nowhere to hide the label, so the full name is what should read.
+  it('shows the full source name, not a 4-character slice', async () => {
+    mockDashboard.mockResolvedValue(
+      aDashboard({
+        sources: [
+          { source_key: 'instagram', source_label: 'Instagram', joined: 5, reached_day_45: 3, pt_conversions: 2, referrals: 0, day45_pct: 60, pt_conversion_pct: 40, campaigns: [] },
+          { source_key: 'banner', source_label: 'Banner', joined: 2, reached_day_45: 0, pt_conversions: 0, referrals: 0, day45_pct: 0, pt_conversion_pct: 0, campaigns: [] },
+          { source_key: 'facebook', source_label: 'Facebook', joined: 1, reached_day_45: 0, pt_conversions: 0, referrals: 0, day45_pct: 0, pt_conversion_pct: 0, campaigns: [] },
+          { source_key: 'whatsapp', source_label: 'WhatsApp', joined: 1, reached_day_45: 0, pt_conversions: 0, referrals: 0, day45_pct: 0, pt_conversion_pct: 0, campaigns: [] },
+        ],
+      }),
+    );
+    await draw(<OwnerMarketingScreen />);
+    // Each label also appears in the funnel card below the chart, so assert
+    // presence rather than a single match.
+    expect(screen.getAllByText('Banner').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Facebook').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('WhatsApp').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Bann')).toBeNull();
+    expect(screen.queryByText('Face')).toBeNull();
+    expect(screen.queryByText('What')).toBeNull();
+  });
+});
+
 describe('a source opened', () => {
   it('shows the source name and funnel figures', async () => {
     mockSourceMembers.mockResolvedValue([aMember()]);

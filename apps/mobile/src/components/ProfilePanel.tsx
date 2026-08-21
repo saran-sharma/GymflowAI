@@ -20,7 +20,7 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 
-import { ApiError, resolveBaseUrl } from '../api/client';
+import { ApiError } from '../api/client';
 import * as api from '../api/endpoints';
 import type { Branch } from '../api/types';
 import {
@@ -289,17 +289,17 @@ export function ProfilePanel({
             <NotConnected
               icon="finger-print-outline"
               title="Biometric unlock"
-              detail="Not built into this app yet. It would unlock the session this phone already holds — it would never become a second way to prove who you are, and no fingerprint would leave the device."
+              detail="Not available in this version. Sign in with your password."
             />
             <NotConnected
               icon="logo-google"
               title="Google account"
-              detail="No OAuth client is configured for this build, and GymFlow has no endpoint to link an account to. Sign-in is email and password."
+              detail="Not available in this version. Sign in with your email or mobile number and password."
             />
             <NotConnected
               icon="phone-portrait-outline"
               title="Active sessions"
-              detail="The server tracks refresh tokens but exposes no endpoint listing them, so there is nothing to show. Changing your password revokes them all."
+              detail="Not available in this version. Changing your password signs every other device out."
             />
           </Stack>
         </Section>
@@ -323,7 +323,6 @@ export function ProfilePanel({
                 </Text>
               </Row>
             </Row>
-            <Detail label="Server" value={resolveBaseUrl()} />
             <Divider />
             <Text variant="label" tone={color.textTertiary}>
               Anything GymFlow cannot fix is a question for your SLAM branch

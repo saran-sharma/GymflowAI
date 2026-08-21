@@ -24,6 +24,24 @@ type IconName = keyof typeof Ionicons.glyphMap;
 export const TAB_BAR_HEIGHT = 64;
 
 /**
+ * The animated bar, pre-bound to a role's accent — pass directly as `<Tabs
+ * tabBar={renderTabBar(accent)}>`.
+ *
+ * `<Tabs>` only reads a custom bar from its own `tabBar` prop, never from
+ * `screenOptions` — the underlying navigator destructures `tabBar` off its
+ * own props with a stock fallback, and never looks at
+ * `descriptors[key].options.tabBar`. Putting it inside the `screenOptions`
+ * object earlier meant every role silently rendered the stock bar instead of
+ * this one, with the stock bar's own indicator answering a question about
+ * `state.index` that `AnimatedTabBar` was never asked.
+ */
+export function renderTabBar(accent: string) {
+  return function TabBar(props: BottomTabBarProps) {
+    return <AnimatedTabBar {...props} accent={accent} />;
+  };
+}
+
+/**
  * The `screenOptions` every role's `<Tabs>` should spread.
  *
  * `compact` drops the label size a step, for the five-tab layouts where six
@@ -35,11 +53,6 @@ export function tabScreenOptions({
 }: { compact?: boolean; accent?: string } = {}) {
   return {
     headerShown: false as const,
-    // All three role layouts already call this factory, so wiring the animated
-    // bar here rather than per layout is what keeps them from drifting apart.
-    // `accent` is how a role's colour reaches the bar without any component
-    // below needing to know that roles exist.
-    tabBar: (props: BottomTabBarProps) => <AnimatedTabBar {...props} accent={accent} />,
     tabBarActiveTintColor: accent,
     tabBarInactiveTintColor: color.textTertiary,
     tabBarStyle: {
@@ -547,8 +560,14 @@ export function AnimatedTabBar({
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
 
+  // A screen hidden from the bar (`href: null`) does not get `tabBarButton:
+  // null` — expo-router gives it `tabBarButton: () => null`, a function,
+  // which is never `=== null`. Filtering on that comparison let every hidden
+  // route leak into `visible`, so the pill's width and position were computed
+  // against the wrong denominator. Only a route this layout never assigned a
+  // custom button is a real tab.
   const visible = state.routes.filter(
-    (route) => descriptors[route.key]?.options.tabBarButton !== null,
+    (route) => descriptors[route.key]?.options.tabBarButton === undefined,
   );
   const activeIndex = visible.findIndex((route) => route.key === state.routes[state.index]?.key);
   const slot = visible.length ? width / visible.length : 0;

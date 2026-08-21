@@ -35,6 +35,8 @@ import {
   TappableCard,
   TimelineRow,
   entrance,
+  renderTabBar,
+  tabScreenOptions,
   alpha,
   color,
   radii,
@@ -456,5 +458,22 @@ describe('the animated tab bar', () => {
     const navigate = (props as unknown as { navigation: { navigate: jest.Mock } }).navigation
       .navigate;
     expect(navigate).toHaveBeenCalledWith('profile', undefined);
+  });
+
+  // expo-router's BottomTabView reads a custom bar from its own `tabBar`
+  // prop, never from `descriptors[key].options.tabBar` — so `tabBar` bundled
+  // into `screenOptions` is silently ignored and every role falls back to
+  // the stock bar instead of this one. `tabScreenOptions` must not carry it;
+  // `renderTabBar` is what a `<Tabs>` element passes as its own `tabBar` prop.
+  it('keeps the custom bar out of screenOptions, where expo-router would never read it', () => {
+    const options = tabScreenOptions({ accent: color.brand }) as Record<string, unknown>;
+    expect(options.tabBar).toBeUndefined();
+    expect(options.tabBarActiveTintColor).toBe(color.brand);
+  });
+
+  it('renders AnimatedTabBar with the given accent when used as a Tabs `tabBar` prop', async () => {
+    const TabBar = renderTabBar('#B4E052');
+    await draw(<TabBar {...tabProps(0)} />);
+    expect(screen.getByTestId('tab-index')).toBeTruthy();
   });
 });

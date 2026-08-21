@@ -7,14 +7,18 @@
  * silently shows one when the data says the other.
  */
 
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import OwnerMemberScreen from '../app/(owner)/member/[id]';
 import type { Journey, Payment, PTPackage, TrainerClientDetail } from '../src/api/types';
+import { dayLabel } from '../src/utils/format';
 
+const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), back: mockBack, replace: mockReplace, canGoBack: mockCanGoBack }),
   useLocalSearchParams: () => ({ id: '13' }),
 }));
 
@@ -181,6 +185,62 @@ describe('a PT member', () => {
     expect(screen.getByText('PT session')).toBeTruthy();
     expect(screen.getByText('8')).toBeTruthy();
     expect(screen.getByText(/Vikas Menon/)).toBeTruthy();
+  });
+});
+
+describe('last seen', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail({ last_seen_on: '2026-08-19' }));
+  });
+
+  // The value used to be the date string split on its first space — for a
+  // "Wed, Aug 19"-shaped label that is "Wed," alone — with the same full date
+  // repeated a second time as the hint. One clean date, one distinct hint.
+  it('renders one clean date rather than a split weekday plus a duplicate', async () => {
+    const full = dayLabel('2026-08-19');
+    const splitFragment = full.split(' ')[0];
+    await draw();
+    expect(screen.queryByText(splitFragment)).toBeNull();
+    expect(screen.getAllByText(full).length).toBe(1);
+  });
+});
+
+describe('expired membership', () => {
+  it('reads as an explicit past-tense state rather than a negative countdown', async () => {
+    mockGetMember.mockResolvedValue(
+      aDetail({ membership_status: 'expired', days_remaining: -5 }),
+    );
+    await draw();
+    expect(screen.getByText('Expired 5 days ago')).toBeTruthy();
+    expect(screen.queryByText('-5 days left')).toBeNull();
+  });
+
+  it('still counts down normally while active', async () => {
+    mockGetMember.mockResolvedValue(aDetail({ days_remaining: 17 }));
+    await draw();
+    expect(screen.getByText('17 days left')).toBeTruthy();
+  });
+});
+
+describe('back navigation', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail());
+  });
+
+  it('returns to whichever screen pushed this one', async () => {
+    mockCanGoBack.mockReturnValue(true);
+    await draw();
+    fireEvent.press(screen.getByLabelText('Back'));
+    expect(mockBack).toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Members only when there is no history to unwind', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    await draw();
+    fireEvent.press(screen.getByLabelText('Back'));
+    expect(mockReplace).toHaveBeenCalledWith('/(owner)/members');
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });
 

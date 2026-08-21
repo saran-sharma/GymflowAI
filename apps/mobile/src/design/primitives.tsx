@@ -72,7 +72,14 @@ export function Eyebrow({
   ...rest
 }: Omit<TextProps, 'variant' | 'caps'>) {
   return (
-    <Text variant="caption" tone={tone} caps style={style} {...rest}>
+    <Text
+      variant="caption"
+      tone={tone}
+      caps
+      accessibilityRole="header"
+      style={style}
+      {...rest}
+    >
       {children}
     </Text>
   );

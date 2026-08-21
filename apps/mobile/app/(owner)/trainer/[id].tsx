@@ -44,6 +44,11 @@ export default function TrainerDetailScreen() {
     [trainerId],
   );
 
+  // Reached from Trainers, from Incentives, and from an alert — `back()`
+  // already returns to whichever of those pushed this screen.
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace('/(owner)/trainers' as never);
+
   if (detail.loading) return <Loading label="Loading trainer" />;
   if (detail.error || !detail.data) {
     return (
@@ -81,7 +86,7 @@ export default function TrainerDetailScreen() {
           />
         }
       >
-        <BackLink onPress={() => router.back()} />
+        <BackLink onPress={goBack} />
 
         <View style={styles.identity}>
           <Txt variant="title">{data.trainer.full_name}</Txt>
