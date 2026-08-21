@@ -191,6 +191,8 @@ import type {
   Assessment,
   AttendanceCorrection,
   BranchPerformanceResponse,
+  BroadcastRequest,
+  BroadcastResult,
   CardioSession,
   ClassRosterEntry,
   CorrectionKind,
@@ -210,6 +212,8 @@ import type {
   PTSplitView,
   RsvpAnswer,
   ScheduleItem,
+  TrainerClient,
+  TrainerClientDetail,
   TrainerPerformance,
   WorkoutItem,
   WorkoutSession,
@@ -226,6 +230,14 @@ export const memberHome = (token: string) => request<MemberHome>('/members/me/ho
 
 export const memberActivity = (token: string, limit = 40, offset = 0) =>
   request<ActivityEntry[]>(`/members/me/activity?limit=${limit}&offset=${offset}`, { token });
+
+/**
+ * One member's full operational picture — the same builder the trainer
+ * desk's client-detail screen uses, opened up to any staff member allowed to
+ * read this member (owner, branch manager, or the branch's trainers).
+ */
+export const getMember = (memberId: number, token: string) =>
+  request<TrainerClientDetail>(`/members/${memberId}`, { token });
 
 export const memberActivityStats = (memberId: number, token: string, weeks = 8) =>
   request<MemberActivity>(`/performance/members/${memberId}/activity?weeks=${weeks}`, { token });
@@ -448,6 +460,10 @@ export const unreadAlertCount = (token: string) =>
 export const acknowledgeAlert = (alertId: number, dismiss: boolean, token: string) =>
   request<AppAlert>(`/alerts/${alertId}/ack`, { method: 'POST', body: { dismiss }, token });
 
+/** Sent as one alert per recipient — it lands in the inbox each of them already has. */
+export const sendBroadcast = (body: BroadcastRequest, token: string) =>
+  request<BroadcastResult>('/alerts/broadcast', { method: 'POST', body, token });
+
 export const listTasks = (token: string) => request<FollowUpTask[]>('/tasks', { token });
 
 export const completeTask = (taskId: number, token: string) =>
@@ -502,6 +518,13 @@ export const marketingDashboard = (token: string, branchId?: number) =>
 
 export const marketingSources = (token: string) =>
   request<import('./types').MarketingSource[]>('/marketing/sources', { token });
+
+/** Who a source actually brought in — the drill-down under one funnel row. */
+export const sourceMembers = (sourceKey: string, token: string, branchId?: number) =>
+  request<TrainerClient[]>(
+    `/marketing/sources/${sourceKey}/members${branchId ? `?branch_id=${branchId}` : ''}`,
+    { token },
+  );
 
 export const runAutomations = (token: string) =>
   request<{ ran_at: string; branches: unknown[] }>('/settings/automations/run', {
@@ -579,11 +602,18 @@ export const revenueSummary = (token: string, days = 30, branchId?: number) =>
 
 export const listPayments = (
   token: string,
-  filters: { status?: import('./types').PaymentStatus; kind?: import('./types').PaymentKind } = {},
+  filters: {
+    status?: import('./types').PaymentStatus;
+    kind?: import('./types').PaymentKind;
+    memberId?: number;
+    branchId?: number;
+  } = {},
 ) => {
   const query = new URLSearchParams();
   if (filters.status) query.set('status', filters.status);
   if (filters.kind) query.set('kind', filters.kind);
+  if (filters.memberId) query.set('member_id', String(filters.memberId));
+  if (filters.branchId) query.set('branch_id', String(filters.branchId));
   const suffix = query.toString();
   return request<import('./types').Payment[]>(`/payments${suffix ? `?${suffix}` : ''}`, { token });
 };

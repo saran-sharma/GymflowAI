@@ -200,6 +200,7 @@ export interface BranchSummary {
   early_exit: number;
   missing_checkout: number;
   punctuality_pct: number;
+  member_count: number;
   occupancy: Occupancy | null;
 }
 
@@ -207,6 +208,7 @@ export interface Dashboard {
   work_date: string;
   server_time: string;
   total_trainers: number;
+  total_members: number;
   scheduled: number;
   present: number;
   late: number;
@@ -918,4 +920,33 @@ export interface WhoIsInside {
   count: number;
   capacity: number | null;
   members: MemberInside[];
+}
+
+/* --------------------------------------------------------------- broadcast */
+
+export type BroadcastAudience = 'everyone' | 'members' | 'trainers';
+
+export type BroadcastType =
+  | 'announcement'
+  | 'urgent'
+  | 'training'
+  | 'membership'
+  | 'motivation'
+  | 'campaign';
+
+export interface BroadcastRequest {
+  audience: BroadcastAudience;
+  branch_id: number | null;
+  broadcast_type: BroadcastType;
+  title: string;
+  message: string;
+}
+
+/** What actually happened: delivered as one alert per recipient. */
+export interface BroadcastResult {
+  recipients: number;
+  audience: BroadcastAudience;
+  branch_id: number | null;
+  broadcast_type: BroadcastType;
+  sent_at: string;
 }

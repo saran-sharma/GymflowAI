@@ -1,53 +1,60 @@
 /**
- * The Owner Dashboard.
+ * The Owner Dashboard — the Command Center.
+ *
+ * A greeting, then what matters today, in the order an owner actually reads
+ * it: the operational snapshot (members, who's in the building, renewals,
+ * GT/PT), then TODAY's settled figures, then ATTENTION (what needs a
+ * decision), then the live floor, then a marketing pulse, then a way to
+ * reach everyone. Money and Performance-by-period keep their place — real,
+ * tested sections this rewrite does not remove, just reorders around.
  *
  * Three kinds of number live here and are kept visually apart, because an
- * owner acting on them acts on different timescales: what is true *right now*
- * (members inside), what is true *today* (trainers present, late), and what is
- * true *over a period* (punctuality, PT utilisation, member activity).
- * Conflating them is how a dashboard gets someone to phone a trainer about a
- * late mark from three weeks ago.
+ * owner acting on them acts on different timescales: what is true *right
+ * now* (members inside), what is true *today* (trainers present, late), and
+ * what is true *over a period* (punctuality, PT utilisation, member
+ * activity). Conflating them is how a dashboard gets someone to phone a
+ * trainer about a late mark from three weeks ago.
  *
- * Money is its own section rather than a tile among the operational ones,
- * because collected and outstanding answer to different clocks: collected is
- * bounded by the window, and outstanding never is — an invoice from March that
- * is still unpaid is this month's problem.
- *
- * InBody is deliberately not on this screen at all. Body composition is a
- * member and trainer concern; an owner running three branches does not need a
- * scan count, and a panel telling them to switch an integration on reads as a
+ * InBody is deliberately not on this screen. Body composition is a member
+ * and trainer concern; an owner running three branches does not need a scan
+ * count, and a panel telling them to switch an integration on reads as a
  * setup chore for something they never asked for.
  */
 
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type {
+  Branch,
   BranchPerformanceResponse,
   Dashboard,
   Insight,
+  MarketingDashboard,
   NeedsAttention,
   Occupancy,
   Renewals,
   RevenueSummary,
+  WhoIsInside,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
+import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
 import {
   AlertCard,
   Badge,
   Body,
   Card,
+  Chips,
   Divider,
   EmptyState,
   ErrorState,
   Eyebrow,
-  HeroCard,
   LinkButton,
   MetricRow,
+  NavRow,
   Row,
   Screen,
   SkeletonScreen,
@@ -63,6 +70,7 @@ import {
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
+import { useAuth } from '../../src/store/AuthContext';
 import { longDate, money, percent } from '../../src/utils/format';
 
 type Period = 'today' | 'week' | 'month';
@@ -89,8 +97,15 @@ const SEVERITY_TONE = {
   info: 'info',
 } as const;
 
+function greeting(hour: number): string {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function OwnerDashboardScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [period, setPeriod] = useState<Period>('week');
 
   const dashboard = useApi<Dashboard>((token) => api.dashboard(token), []);
@@ -105,6 +120,17 @@ export default function OwnerDashboardScreen() {
   const attention = useApi<NeedsAttention>((token) => api.needsAttention(token), []);
   const insights = useApi<Insight[]>((token) => api.insights(token), []);
   const revenue = useApi<RevenueSummary>((token) => api.revenueSummary(token, 30), []);
+  const marketing = useApi<MarketingDashboard>((token) => api.marketingDashboard(token), []);
+  const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
+
+  // "Currently in gym" is scoped to one branch at a time — the same reason
+  // Members needs a picker for it.
+  const [liveBranchId, setLiveBranchId] = useState<number | null>(null);
+  const effectiveLiveBranchId = liveBranchId ?? branches.data?.[0]?.id ?? null;
+  const live = useApi<WhoIsInside>(
+    (token) => api.whoIsInside(token, effectiveLiveBranchId ?? undefined),
+    [effectiveLiveBranchId],
+  );
 
   const refreshAll = useCallback(() => {
     void dashboard.refresh();
@@ -114,7 +140,10 @@ export default function OwnerDashboardScreen() {
     void attention.refresh();
     void insights.refresh();
     void revenue.refresh();
-  }, [dashboard, occupancy, renewals, performance, attention, insights, revenue]);
+    void marketing.refresh();
+    void branches.refresh();
+    void live.refresh();
+  }, [dashboard, occupancy, renewals, performance, attention, insights, revenue, marketing, branches, live]);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
   useFocusEffect(
@@ -149,9 +178,11 @@ export default function OwnerDashboardScreen() {
   const day = dashboard.data;
   const crowds = occupancy.data ?? [];
   const inside = crowds.reduce((total, branch) => total + branch.inside, 0);
-  const capacity = crowds.reduce((total, branch) => total + branch.capacity, 0);
   const items = attention.data?.items ?? [];
   const observations = insights.data ?? [];
+  const firstName = user?.full_name?.split(' ')[0] ?? '';
+  const liveBranch = day.branches.find((b) => b.branch_id === effectiveLiveBranchId);
+  const topSource = marketing.data?.sources[0];
 
   return (
     <Screen>
@@ -164,54 +195,56 @@ export default function OwnerDashboardScreen() {
           />
         }
       >
-        {/*
-          Right now, and only right now. The ring is occupancy against capacity
-          because that is the single figure an owner opens this screen for; the
-          three under it are the rest of the live picture. Everything settled
-          starts at "Today" below, and the "Live" badge is what keeps the two
-          from being read as one number.
-        */}
-        <Row gap="md">
+        {/* ---------------------------------------------------- greeting */}
+        <Row gap="md" align="center">
           <AccountAvatar size={40} />
-          <Spacer />
+          <Stack gap="xxs" style={styles.grow}>
+            <Text variant="heading" numberOfLines={1}>
+              {greeting(new Date().getHours())}
+              {firstName ? `, ${firstName}` : ''}
+            </Text>
+            <Text variant="label" tone={color.textTertiary}>
+              Here&apos;s what needs your attention today.
+            </Text>
+          </Stack>
         </Row>
 
-        <HeroCard
-          testID="owner-hero"
-          eyebrow="Right now"
-          title={`${inside} inside`}
-          subtitle={`${longDate(day.work_date)} · ${day.branches.length} branch${
-            day.branches.length === 1 ? '' : 'es'
-          }`}
-          status={{ label: 'Live', tone: 'critical', solid: true }}
-          ring={
-            capacity
-              ? {
-                  value: (inside / capacity) * 100,
-                  label: `${Math.round((inside / capacity) * 100)}%`,
-                  caption: 'full',
-                }
-              : undefined
-          }
-          metrics={[
-            {
-              label: 'Present',
-              value: `${day.present}/${day.total_trainers}`,
-              unit: 'trainers',
-              progress: day.total_trainers ? (day.present / day.total_trainers) * 100 : 0,
-              tone: day.present >= day.scheduled ? 'positive' : 'caution',
-            },
-            { label: 'Scheduled', value: day.scheduled, unit: 'shifts' },
-            {
-              label: 'Capacity',
-              value: capacity ? capacity : '—',
-              unit: capacity ? 'members' : 'not set',
-            },
-          ]}
-          onPress={() => router.push('/(owner)/members' as never)}
-        />
+        {/* ------------------------------------------------ the snapshot */}
+        <StatRow>
+          <StatCard
+            label="Members"
+            value={day.total_members}
+            icon="people-outline"
+            onPress={() => router.push('/(owner)/members' as never)}
+          />
+          <StatCard
+            label="Inside now"
+            value={inside}
+            hint="live"
+            tone="brand"
+            icon="body-outline"
+          />
+        </StatRow>
+        <StatRow>
+          <StatCard
+            label="Renewals due"
+            value={renewals.data?.count ?? '—'}
+            hint="next 30 days"
+            tone={(renewals.data?.count ?? 0) > 0 ? 'caution' : 'positive'}
+            icon="refresh-outline"
+            onPress={() => router.push('/(owner)/members' as never)}
+          />
+          <StatCard
+            label="Ready for PT"
+            value={attention.data?.pt_ready_count ?? '—'}
+            hint="Day 45 complete"
+            tone={(attention.data?.pt_ready_count ?? 0) > 0 ? 'brand' : 'neutral'}
+            icon="trending-up-outline"
+            onPress={() => router.push('/(owner)/members' as never)}
+          />
+        </StatRow>
 
-        {/* Today. Settled counts for the current business day. */}
+        {/* --------------------------------------------------------- today */}
         <Section title="Today">
           <StatRow>
             <StatCard
@@ -240,17 +273,152 @@ export default function OwnerDashboardScreen() {
             />
           </StatRow>
 
-          <StatCard
-            label="Renewals due"
-            value={renewals.data?.count ?? '—'}
-            hint="next 30 days"
-            tone={(renewals.data?.count ?? 0) > 0 ? 'caution' : 'neutral'}
-            icon="refresh-outline"
-            onPress={() => router.push('/(owner)/members' as never)}
-          />
+          {marketing.data ? (
+            <StatCard
+              label="New members"
+              value={marketing.data.new_members}
+              hint={`last ${Math.max(
+                1,
+                Math.round(
+                  (new Date(marketing.data.period_end).getTime() -
+                    new Date(marketing.data.period_start).getTime()) /
+                    86_400_000,
+                ),
+              )} days`}
+              icon="person-add-outline"
+              onPress={() => router.push('/(owner)/marketing' as never)}
+            />
+          ) : null}
         </Section>
 
-        {/* Money. Collected is bounded by the window; outstanding never is. */}
+        {/* ----------------------------------------------------- attention */}
+        <Section title="Attention">
+          {attention.data ? (
+            <StatRow>
+              <StatCard
+                label="Corrections"
+                value={attention.data.pending_corrections}
+                hint="pending review"
+                tone={attention.data.pending_corrections ? 'caution' : 'positive'}
+                icon="hand-left-outline"
+                onPress={() => router.push('/(owner)/corrections' as never)}
+              />
+              <StatCard
+                label="Ready for PT"
+                value={attention.data.pt_ready_count}
+                hint="Day 45 complete"
+                tone={attention.data.pt_ready_count ? 'brand' : 'positive'}
+                icon="flag-outline"
+                onPress={() => router.push('/(owner)/members' as never)}
+              />
+            </StatRow>
+          ) : null}
+
+          {observations.length === 0 && items.length === 0 ? (
+            <EmptyState
+              icon="checkmark-circle-outline"
+              title="Nothing else needs your attention"
+              detail="Late trainers, renewals and quiet periods show up here as the rules find them."
+            />
+          ) : null}
+
+          {observations.map((observation) => (
+            <AlertCard
+              key={observation.key}
+              title={observation.title}
+              body={observation.detail}
+              tone={SEVERITY_TONE[observation.severity] ?? 'info'}
+            />
+          ))}
+
+          {items.slice(0, 8).map((item) => (
+            <AlertCard
+              key={item.id}
+              title={item.title}
+              body={item.body}
+              tone={SEVERITY_TONE[item.severity] ?? 'info'}
+              onPress={
+                item.action_route ? () => router.push(item.action_route as never) : undefined
+              }
+            />
+          ))}
+        </Section>
+
+        {/* ---------------------------------------------------- live gym */}
+        <Section title="Live gym">
+          {(branches.data?.length ?? 0) > 1 ? (
+            <Chips
+              options={(branches.data ?? []).map((b) => ({
+                value: String(b.id),
+                label: b.name.replace(/^SLAM\s+/i, ''),
+              }))}
+              value={String(effectiveLiveBranchId ?? '')}
+              onChange={(value) => setLiveBranchId(Number(value))}
+              testIDPrefix="live-branch"
+            />
+          ) : null}
+
+          {liveBranch ? (
+            <Text variant="label" tone={color.textTertiary}>
+              {liveBranch.present}/{liveBranch.scheduled} trainers present today
+            </Text>
+          ) : null}
+
+          {live.loading ? (
+            <SkeletonCard />
+          ) : live.error ? (
+            <Text variant="label" tone={color.status.caution}>
+              The floor list did not load. Pull to refresh.
+            </Text>
+          ) : live.data ? (
+            <LiveGym
+              data={live.data}
+              emptyDetail="Members appear here the moment they scan in at this branch."
+            />
+          ) : null}
+        </Section>
+
+        {/* --------------------------------------------------- marketing */}
+        <Section
+          title="Marketing"
+          action={<LinkButton title="Detail" onPress={() => router.push('/(owner)/marketing' as never)} />}
+        >
+          {marketing.data && marketing.data.has_data ? (
+            <StatRow>
+              <StatCard
+                label="New members"
+                value={marketing.data.new_members}
+                hint={`${longDate(marketing.data.period_start)} –`}
+                icon="person-add-outline"
+              />
+              <StatCard
+                label="Top source"
+                value={topSource?.joined ?? 0}
+                hint={topSource?.source_label ?? '—'}
+                icon="megaphone-outline"
+              />
+            </StatRow>
+          ) : (
+            <Text variant="label" tone={color.textTertiary}>
+              No new members recorded in the last 90 days.
+            </Text>
+          )}
+        </Section>
+
+        {/* -------------------------------------------------- broadcast */}
+        <Section title="Broadcast">
+          <Card>
+            <NavRow
+              label="Send a broadcast"
+              detail="Reach members or trainers with an announcement"
+              icon="megaphone-outline"
+              testID="dashboard-broadcast"
+              onPress={() => router.push('/(owner)/broadcast' as never)}
+            />
+          </Card>
+        </Section>
+
+        {/* ------------------------------------------------------- money */}
         <Section
           title="Money"
           action={
@@ -313,7 +481,7 @@ export default function OwnerDashboardScreen() {
           )}
         </Section>
 
-        {/* Over a period. The only place a comparison is shown. */}
+        {/* ----------------------------------------------- performance */}
         <Section
           title="Performance"
           action={
@@ -372,48 +540,6 @@ export default function OwnerDashboardScreen() {
             <Text variant="label" tone={color.textTertiary}>
               {performance.data.note}
             </Text>
-          ) : null}
-        </Section>
-
-        {/* Insights: deterministic, from the rule-based provider. No model. */}
-        <Section title="Insights" action={<Badge label="Rule-based" tone="neutral" />}>
-          {observations.length === 0 && items.length === 0 ? (
-            <EmptyState
-              icon="checkmark-circle-outline"
-              title="Nothing needs your attention"
-              detail="Late trainers, renewals and quiet periods show up here as the rules find them."
-            />
-          ) : null}
-
-          {observations.map((observation) => (
-            <AlertCard
-              key={observation.key}
-              title={observation.title}
-              body={observation.detail}
-              tone={SEVERITY_TONE[observation.severity] ?? 'info'}
-            />
-          ))}
-
-          {items.slice(0, 8).map((item) => (
-            <AlertCard
-              key={item.id}
-              title={item.title}
-              body={item.body}
-              tone={SEVERITY_TONE[item.severity] ?? 'info'}
-              onPress={
-                item.action_route ? () => router.push(item.action_route as never) : undefined
-              }
-            />
-          ))}
-
-          {attention.data ? (
-            <Row gap="md">
-              <Text variant="label" tone={color.textTertiary} style={styles.grow}>
-                {attention.data.pt_ready_count} ready for PT · {attention.data.pending_corrections}{' '}
-                correction
-                {attention.data.pending_corrections === 1 ? '' : 's'} pending
-              </Text>
-            </Row>
           ) : null}
         </Section>
 
