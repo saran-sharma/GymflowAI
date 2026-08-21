@@ -244,6 +244,31 @@ describe('back navigation', () => {
   });
 });
 
+describe('InBody placeholder copy', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail());
+  });
+
+  // The original wording was an engineering note in disguise: "the scan
+  // table exists but nothing writes to it yet". This pins the honest,
+  // non-technical replacement and guards against the jargon coming back.
+  it('explains the gap in plain language, not implementation detail', async () => {
+    await draw();
+    expect(
+      screen.getByText(
+        "Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('never mentions the underlying schema or storage', async () => {
+    await draw();
+    for (const term of [/scan table/i, /database/i, /nothing writes to it/i, /endpoint/i]) {
+      expect(screen.queryByText(term)).toBeNull();
+    }
+  });
+});
+
 describe('loading and error states', () => {
   it('shows a loading state before the member loads', () => {
     mockGetMember.mockReturnValue(new Promise(() => {}));
