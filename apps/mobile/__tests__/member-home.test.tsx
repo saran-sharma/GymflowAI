@@ -12,7 +12,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import MemberHomeScreen from '../app/(member)/index';
-import type { Journey, MemberHome, WorkoutItem, WorkoutSession } from '../src/api/types';
+import type {
+  Journey,
+  MemberHome,
+  PTPackage,
+  PTSession,
+  WorkoutItem,
+  WorkoutSession,
+} from '../src/api/types';
 
 const mockPush = jest.fn();
 
@@ -98,6 +105,51 @@ function aWorkout(items: WorkoutItem[], partial: Partial<WorkoutSession> = {}): 
     items,
     completed_items: items.filter((i) => i.status === 'completed').length,
     total_items: items.length,
+    ...partial,
+  };
+}
+
+function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
+  return {
+    id: 9,
+    member_id: 2,
+    member_name: 'Aditya Rao',
+    branch_id: 1,
+    trainer_id: 5,
+    trainer_name: 'Kiran Prasad',
+    sessions_total: 12,
+    sessions_used: 3,
+    sessions_remaining: 9,
+    status: 'active',
+    start_date: '2026-08-17',
+    expiry_date: null,
+    origin: 'trainer_conversion',
+    price_amount: null,
+    currency: null,
+    low_balance: false,
+    ...partial,
+  };
+}
+
+function aPtSession(partial: Partial<PTSession> = {}): PTSession {
+  return {
+    id: 1,
+    package_id: 9,
+    member_id: 2,
+    member_name: 'Aditya Rao',
+    trainer_id: 5,
+    trainer_name: 'Kiran Prasad',
+    branch_id: 1,
+    session_date: '2026-08-25',
+    scheduled_start: '2026-08-25T18:00:00Z',
+    scheduled_end: null,
+    session_number: 4,
+    package_size: 12,
+    status: 'scheduled',
+    member_checked_in_at: null,
+    trainer_checked_in_at: null,
+    completed_at: null,
+    notes: null,
     ...partial,
   };
 }
@@ -338,5 +390,151 @@ describe('the rest of home is left alone', () => {
     await openHome();
     expect(screen.getByText('Streak')).toBeTruthy();
     expect(screen.getByText('Workouts')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------- an inactive journey */
+
+describe('a journey that is no longer active', () => {
+  // `start_workout` resolves the member's plan from their *active* journey.
+  // Off that phase it silently opens a bare, unassigned session instead of
+  // refusing — so the Today card must never offer to start one once the
+  // journey reports "complete", regardless of what day 45 happened to plan.
+  it('never offers to start a workout once the programme has finished', async () => {
+    mockHome.mockResolvedValue(
+      aHome({ journey: aJourney({ status: 'completed', phase: 'complete', split_today: 'push' }) }),
+    );
+    await openHome();
+    expect(screen.queryByTestId('today-card')).toBeNull();
+    expect(screen.queryByText(/Start today.s workout/)).toBeNull();
+    expect(screen.getByText('General Training complete')).toBeTruthy();
+  });
+
+  it('never offers a rest card either, once the programme has finished', async () => {
+    // Day 45 could just as easily have planned a rest day — that must not
+    // read as "come back tomorrow" when there is no programme left to train.
+    mockHome.mockResolvedValue(
+      aHome({ journey: aJourney({ status: 'completed', phase: 'complete', split_today: 'rest' }) }),
+    );
+    await openHome();
+    expect(screen.queryByTestId('today-card')).toBeNull();
+    expect(screen.getByText('General Training complete')).toBeTruthy();
+  });
+
+  it('still opens a booked PT session today even after the programme is done', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: aJourney({ status: 'completed', phase: 'complete', pt_converted: true }),
+        next_pt_session: aPtSession({
+          session_number: 1,
+          session_date: new Date().toISOString().slice(0, 10),
+          scheduled_start: new Date().toISOString(),
+        }),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('Open your PT session')).toBeTruthy();
+  });
+});
+
+/* --------------------------------------------------------- the PT package */
+
+describe("a converted member's PT package", () => {
+  it('is shown on Home even with nothing booked yet', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: aJourney({ status: 'completed', phase: 'complete', pt_converted: true }),
+        pt_package: aPackage({ sessions_remaining: 9, sessions_total: 12 }),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('PT with Kiran Prasad')).toBeTruthy();
+    expect(screen.getByText('of 12 sessions left')).toBeTruthy();
+  });
+
+  it('gives way to the next-session card once one is booked, rather than repeating it', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: aJourney({ status: 'completed', phase: 'complete', pt_converted: true }),
+        pt_package: aPackage(),
+        next_pt_session: aPtSession(),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('Next PT session')).toBeTruthy();
+    expect(screen.queryByText('PT with Kiran Prasad')).toBeNull();
+  });
+
+  it('says nothing when there is no active package', async () => {
+    await openHome();
+    expect(screen.queryByText(/of \d+ sessions left/)).toBeNull();
+  });
+});
+
+/* -------------------------------------------------- PT with no GT journey */
+
+describe('a member trained entirely on PT, with no General Training journey', () => {
+  // A package can be created with no `journey_id` at all — PT on its own is a
+  // real, first-class programme, not only something a finished GT journey
+  // converts into. `journey: null` must never read as "nothing has started".
+
+  it('opens a same-day PT session rather than claiming nothing has started', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: null,
+        next_pt_session: aPtSession({
+          session_date: new Date().toISOString().slice(0, 10),
+          scheduled_start: new Date().toISOString(),
+        }),
+        pt_package: aPackage(),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('Open your PT session')).toBeTruthy();
+    expect(screen.queryByText('Your programme has not started')).toBeNull();
+  });
+
+  it('says there is no session today, not that nothing has started, when the next one is later', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: null,
+        next_pt_session: aPtSession(),
+        pt_package: aPackage(),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('No session today')).toBeTruthy();
+    expect(screen.queryByText('Your programme has not started')).toBeNull();
+    expect(screen.getByText('Next PT session')).toBeTruthy();
+  });
+
+  it('points at PT rather than GT when only an active package exists, nothing booked', async () => {
+    mockHome.mockResolvedValue(aHome({ journey: null, pt_package: aPackage() }));
+    await openHome();
+    expect(screen.getByText('No session today')).toBeTruthy();
+    expect(screen.queryByText('Your programme has not started')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------ days left */
+
+describe('a lapsed membership', () => {
+  // `ends_on` can fall behind `membership_status` by a day or two, so
+  // `days_remaining` can go negative while the status card above still reads
+  // "active". A plain signed number in the "Days left" tile — "-5" — reads as
+  // a broken count, not as "expired".
+  it('reads as expired rather than as a negative count', async () => {
+    mockHome.mockResolvedValue(aHome({ days_remaining: -5 }));
+    await openHome();
+    expect(screen.getByText('Expired')).toBeTruthy();
+    expect(screen.queryByText('-5')).toBeNull();
+    expect(screen.queryByText('on plan')).toBeNull();
+  });
+
+  it('still shows the real count while time remains', async () => {
+    mockHome.mockResolvedValue(aHome({ days_remaining: 12 }));
+    await openHome();
+    expect(screen.getByText('12')).toBeTruthy();
+    expect(screen.getByText('on plan')).toBeTruthy();
   });
 });

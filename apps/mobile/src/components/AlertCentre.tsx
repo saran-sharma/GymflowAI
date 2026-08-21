@@ -72,11 +72,17 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
   const alerts = useApi<AppAlert[]>((token) => api.listAlerts(token), []);
   const [error, setError] = useState<string | null>(null);
 
-  const dismiss = useCallback(
-    async (alert: AppAlert) => {
+  /* An alert that opens a screen is still acted on when it does — the member
+   * read it and went where it pointed. Only an alert with nowhere to go is a
+   * true dismissal. Acknowledging both the same way (`dismiss: true`) would
+   * leave every actionable alert `OPEN` forever: it would keep reappearing in
+   * this list and keep the unread badge on Home lit after the member had
+   * already dealt with it. */
+  const act = useCallback(
+    async (alert: AppAlert, dismiss: boolean) => {
       setError(null);
       try {
-        await withToken((token) => api.acknowledgeAlert(alert.id, true, token));
+        await withToken((token) => api.acknowledgeAlert(alert.id, dismiss, token));
         await alerts.refresh();
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : 'Could not update that.');
@@ -136,7 +142,14 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
                   title={alert.title}
                   body={alert.body}
                   meta={dayLabel(alert.created_at)}
-                  onPress={target ? () => router.push(target as never) : () => void dismiss(alert)}
+                  onPress={
+                    target
+                      ? () => {
+                          void act(alert, false);
+                          router.push(target as never);
+                        }
+                      : () => void act(alert, true)
+                  }
                 />
               );
             })

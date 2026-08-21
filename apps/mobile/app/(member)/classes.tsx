@@ -20,15 +20,17 @@ import {
   Divider,
   EmptyState,
   ErrorState,
-  Eyebrow,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
-import { SkeletonScreen } from '../../src/design';
+  Section,
+  SkeletonScreen,
+  Spacer,
+  Stack,
+  Text,
+  color,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
-import { colors, spacing } from '../../src/theme';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 export default function MemberClassesScreen() {
@@ -57,13 +59,13 @@ export default function MemberClassesScreen() {
 
   if (classes.loading) return <SkeletonScreen cards={4} stats={false} />;
   if (classes.error) {
-    const offline = classes.error?.code === OFFLINE_CODE;
+    const offline = classes.error.code === OFFLINE_CODE;
     return (
       <Screen>
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load your classes'}
-          detail={offline ? undefined : classes.error?.message}
+          detail={offline ? undefined : classes.error.message}
           onRetry={classes.reload}
         />
       </Screen>
@@ -79,11 +81,22 @@ export default function MemberClassesScreen() {
           <RefreshControl
             refreshing={classes.refreshing}
             onRefresh={() => void classes.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        {error ? <Banner tone="danger">{error}</Banner> : null}
+        <Stack gap="xxs">
+          <Text variant="title">Group classes</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            Say yes to hold your place. Your trainer records who actually attends.
+          </Text>
+        </Stack>
+
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
 
         {rows.length === 0 ? (
           <EmptyState
@@ -92,87 +105,106 @@ export default function MemberClassesScreen() {
             detail="Your branch will announce classes here."
           />
         ) : (
-          rows.map((row) => {
-            const answered = row.my_response === 'yes' || row.my_response === 'no';
-            const full = row.available <= 0 && row.my_response !== 'yes';
-            return (
-              <Card key={row.id}>
-                <Row style={styles.cardHead}>
-                  <Txt variant="heading">{row.name}</Txt>
-                  {row.my_response === 'yes' ? (
-                    <Badge label="Going" color={colors.onTime} filled />
-                  ) : row.my_response === 'no' ? (
-                    <Badge label="Not going" color={colors.textFaint} />
-                  ) : (
-                    <Badge label="Reply" color={colors.late} />
-                  )}
-                </Row>
-                <Txt variant="body" color={colors.textMuted}>
-                  {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
-                  {row.trainer_name ? ` · ${row.trainer_name}` : ''}
-                </Txt>
-                {row.description ? (
-                  <Txt variant="label" color={colors.textFaint}>
-                    {row.description}
-                  </Txt>
-                ) : null}
-
-                <Divider />
-                <Row style={styles.counts}>
-                  <Txt variant="label" color={colors.textMuted}>
-                    {row.yes_count} going
-                  </Txt>
-                  <Txt variant="label" color={colors.textFaint}>
-                    {row.available} of {row.capacity} places left
-                  </Txt>
-                </Row>
-
-                <View style={styles.actions}>
-                  <View style={styles.action}>
-                    <Button
-                      title="YES"
-                      variant={row.my_response === 'yes' ? 'primary' : 'secondary'}
-                      loading={busyId === row.id}
-                      disabled={full && row.my_response !== 'yes'}
-                      onPress={() => void answer(row.id, 'yes')}
-                    />
-                  </View>
-                  <View style={styles.action}>
-                    <Button
-                      title="NO"
-                      variant={row.my_response === 'no' ? 'danger' : 'secondary'}
-                      loading={busyId === row.id}
-                      onPress={() => void answer(row.id, 'no')}
-                    />
-                  </View>
-                </View>
-
-                {full ? (
-                  <Txt variant="label" color={colors.late}>
-                    This class is full.
-                  </Txt>
-                ) : !answered ? (
-                  <Txt variant="label" color={colors.textFaint}>
-                    Let your branch know so they can plan the floor.
-                  </Txt>
-                ) : null}
-              </Card>
-            );
-          })
+          <Section title="Upcoming">
+            {rows.map((row) => (
+              <ClassCard
+                key={row.id}
+                row={row}
+                busy={busyId === row.id}
+                onAnswer={(response) => void answer(row.id, response)}
+              />
+            ))}
+          </Section>
         )}
-
-        <Txt variant="label" color={colors.textFaint} style={styles.footnote}>
-          Saying yes holds your place. Your trainer records who actually attends after the class.
-        </Txt>
       </Body>
     </Screen>
   );
 }
 
+function ClassCard({
+  row,
+  busy,
+  onAnswer,
+}: {
+  row: GroupClass;
+  busy: boolean;
+  onAnswer: (response: RsvpAnswer) => void;
+}) {
+  const answered = row.my_response === 'yes' || row.my_response === 'no';
+  const full = row.available <= 0 && row.my_response !== 'yes';
+
+  return (
+    <Card>
+      <Row gap="sm">
+        <Text variant="heading" style={styles.grow}>
+          {row.name}
+        </Text>
+        {row.my_response === 'yes' ? (
+          <Badge label="Going" tone="positive" solid />
+        ) : row.my_response === 'no' ? (
+          <Badge label="Not going" tone="neutral" />
+        ) : (
+          <Badge label="Reply" tone="caution" />
+        )}
+      </Row>
+
+      <Text variant="label" tone={color.textSecondary}>
+        {dayLabel(row.class_date)} · {timeOfDay(row.starts_at)}
+        {row.trainer_name ? ` · ${row.trainer_name}` : ''}
+      </Text>
+
+      {row.description ? (
+        <Text variant="label" tone={color.textTertiary}>
+          {row.description}
+        </Text>
+      ) : null}
+
+      <Divider />
+
+      <Row gap="sm">
+        <Text variant="label" tone={color.textSecondary}>
+          {row.yes_count} going
+        </Text>
+        <Spacer />
+        <Text variant="label" tone={color.textTertiary}>
+          {row.available} of {row.capacity} places left
+        </Text>
+      </Row>
+
+      <Row gap="sm">
+        <View style={styles.action}>
+          <Button
+            title="Yes"
+            variant={row.my_response === 'yes' ? 'primary' : 'secondary'}
+            loading={busy}
+            disabled={full && row.my_response !== 'yes'}
+            onPress={() => onAnswer('yes')}
+          />
+        </View>
+        <View style={styles.action}>
+          <Button
+            title="No"
+            variant={row.my_response === 'no' ? 'destructive' : 'secondary'}
+            loading={busy}
+            onPress={() => onAnswer('no')}
+          />
+        </View>
+      </Row>
+
+      {full ? (
+        <Text variant="label" tone={color.status.caution}>
+          This class is full.
+        </Text>
+      ) : !answered ? (
+        <Text variant="label" tone={color.textTertiary}>
+          Let your branch know so they can plan the floor.
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
-  cardHead: { justifyContent: 'space-between' },
-  counts: { justifyContent: 'space-between' },
-  actions: { flexDirection: 'row', gap: spacing.sm },
+  grow: { flex: 1 },
   action: { flex: 1 },
-  footnote: { textAlign: 'center', lineHeight: 18, marginTop: spacing.md },
 });

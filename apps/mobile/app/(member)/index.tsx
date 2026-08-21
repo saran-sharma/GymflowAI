@@ -24,14 +24,7 @@ import type {
   WorkoutSession,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
-import {
-  NotConnected,
-  PtLine,
-  TodayCard,
-  WeekStrip,
-  journeyToday,
-  type SessionKind,
-} from '../../src/components/member';
+import { NotConnected, PtLine, TodayCard, WeekStrip, journeyToday } from '../../src/components/member';
 import {
   Badge,
   Body,
@@ -140,16 +133,24 @@ export default function MemberHomeScreen() {
   const journey = me.journey;
   const workout = me.today_workout;
   const pt = me.next_pt_session;
+  const pack = me.pt_package;
 
   const ptToday = pt ? isToday(pt.scheduled_start) : false;
   const restDay = journey?.split_today === 'rest';
   const journeyDone = journey?.status === 'completed';
-  const expiringSoon = me.days_remaining !== null && me.days_remaining <= 30;
+  // The server reports "complete" for any journey that is not actively being
+  // trained — finished, paused or cancelled — which is also the one signal
+  // `start_workout` itself honours: off this phase it will not resolve the
+  // member's real plan and instead opens a bare, unassigned session. Gating
+  // the Today card on the same flag keeps the CTA from ever promising a
+  // workout the server will not actually build.
+  const journeyInactive = journey?.phase === 'complete';
+  const daysRemaining = me.days_remaining;
+  const membershipLapsed = daysRemaining !== null && daysRemaining < 0;
+  const expiringSoon = daysRemaining !== null && daysRemaining <= 30;
   const membershipExpired = me.membership_status !== null && me.membership_status !== 'active';
   const owed = (payments.data ?? []).filter((row) => row.status === 'pending');
   const outstanding = owed.reduce((total, row) => total + row.amount, 0);
-
-  const kind: SessionKind = ptToday ? 'pt_session' : restDay ? 'rest' : 'own_workout';
 
   return (
     <Screen>
@@ -247,6 +248,20 @@ export default function MemberHomeScreen() {
           </Section>
         ) : null}
 
+        {/* An active PT package with nothing booked yet still says so — a
+            converted member should never land on Home and see no sign they
+            are on PT at all. */}
+        {!pt && pack && pack.status === 'active' ? (
+          <StatCard
+            label={pack.trainer_name ? `PT with ${pack.trainer_name}` : 'Personal training'}
+            value={pack.sessions_remaining}
+            hint={`of ${pack.sessions_total} sessions left`}
+            tone={pack.low_balance ? 'caution' : 'brand'}
+            icon="person"
+            onPress={() => router.push('/(member)/pt' as never)}
+          />
+        ) : null}
+
         {/* How am I doing — three numbers, no more. */}
         <StatRow>
           <MetricTile
@@ -264,9 +279,13 @@ export default function MemberHomeScreen() {
           />
           <MetricTile
             label="Days left"
-            value={me.days_remaining ?? '—'}
-            unit="on plan"
-            tone={expiringSoon ? 'caution' : undefined}
+            // `ends_on` can fall behind `membership_status` for a day or two,
+            // so a lapsed plan is caught here too rather than trusting the
+            // status card above alone — and a negative count reads as a typo,
+            // not as "expired", if it is shown as a plain signed number.
+            value={daysRemaining === null ? '—' : membershipLapsed ? 'Expired' : daysRemaining}
+            unit={membershipLapsed ? undefined : 'on plan'}
+            tone={membershipLapsed ? 'critical' : expiringSoon ? 'caution' : undefined}
             icon="calendar"
           />
         </StatRow>
@@ -320,18 +339,11 @@ export default function MemberHomeScreen() {
    * "no journey yet" is stated rather than dressed up as a workout.
    */
   function renderToday() {
-    if (!journey) {
-      return (
-        <Card>
-          <Eyebrow>Today</Eyebrow>
-          <Text variant="heading">Your programme has not started</Text>
-          <Text variant="body" tone={color.textSecondary}>
-            Your trainer sets up your training programme with you at {me.branch_name}.
-          </Text>
-        </Card>
-      );
-    }
-
+    // A same-day PT session outranks everything else on the card, including
+    // "no General Training journey" below — a member can be on PT with no GT
+    // journey at all (a package created with no `journey_id`), and one whose
+    // session is today should never be told their programme "has not
+    // started" while it is, quite literally, starting in a few hours.
     if (ptToday && pt) {
       return (
         <TodayCard
@@ -348,6 +360,42 @@ export default function MemberHomeScreen() {
         />
       );
     }
+
+    if (!journey) {
+      // Still true when there is no GT journey to speak of, but PT on its own
+      // is a programme too — "has not started" would be false for a member
+      // several sessions into PT. The full detail already lives in the
+      // "Next PT session" section (or the package summary) further down, so
+      // this only needs to say there is nothing to do today specifically.
+      if (pt || (pack && pack.status === 'active')) {
+        return (
+          <Card>
+            <Eyebrow>Today</Eyebrow>
+            <Text variant="heading">No session today</Text>
+            <Text variant="body" tone={color.textSecondary}>
+              {pt
+                ? 'Your next PT session is below.'
+                : 'Nothing booked yet. Ask your branch to schedule your next PT session.'}
+            </Text>
+          </Card>
+        );
+      }
+      return (
+        <Card>
+          <Eyebrow>Today</Eyebrow>
+          <Text variant="heading">Your programme has not started</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            Your trainer sets up your training programme with you at {me.branch_name}.
+          </Text>
+        </Card>
+      );
+    }
+
+    // Nothing left to start. A completed journey is covered by the
+    // "Programme complete" card below; a paused or cancelled one has no card
+    // to fall back to, and showing nothing here is more honest than a CTA
+    // that would open an empty, unassigned session.
+    if (journeyInactive) return null;
 
     if (restDay) {
       return (

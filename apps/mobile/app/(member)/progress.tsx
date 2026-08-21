@@ -39,6 +39,24 @@ import {
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
 
+/**
+ * A bar's x-axis caption on the consistency chart: the week-starting day of
+ * month, e.g. "17".
+ *
+ * This used to be `dayLabel(...).split(' ')[1]`, which reads a fixed word
+ * position out of a string built for a sentence, not a table column.
+ * `dayLabel` orders its parts by locale — day-then-month in some, month-then-
+ * day in others (`Intl` renders it "Mon, Aug 17" in this app's default
+ * locale) — so that split pulled out the month abbreviation instead of the
+ * day number in most locales the app actually runs in, repeating the same
+ * caption across every bar within a month and leaving the chart's x-axis
+ * telling the member nothing about which week is which.
+ */
+function weekLabel(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? '' : String(date.getDate());
+}
+
 /** The timeline's kinds, mapped onto the shared session vocabulary. */
 const TIMELINE: Record<ActivityEntry['kind'], { label: string; hue: string }> = {
   gym_visit: { label: 'Gym visit', hue: color.status.info },
@@ -147,7 +165,7 @@ export default function MemberProgressScreen() {
             <Eyebrow>Consistency — last {weekly.length} weeks</Eyebrow>
             <BarChart
               data={weekly.map((week) => ({
-                label: dayLabel(week.week_start).split(' ')[1] ?? '',
+                label: weekLabel(week.week_start),
                 value: week.total,
               }))}
             />

@@ -157,6 +157,13 @@ export default function MemberWorkoutScreen() {
 
   const inAssessment = plan.phase === 'assessment';
   const restDay = plan.split_today === 'rest';
+  // "complete" covers a finished, paused or cancelled journey alike — none of
+  // them has a real plan for the server to build a session from, so none of
+  // them gets a Start button. Starting one anyway used to be possible: the
+  // server would silently fall back to a bare, unassigned workout instead of
+  // rejecting the request.
+  const journeyInactive = plan.phase === 'complete';
+  const journeyDone = plan.status === 'completed';
   const done = session?.status === 'completed';
   const history = (days.data ?? [])
     .filter((day) => day.day_number < plan.current_day)
@@ -207,8 +214,23 @@ export default function MemberWorkoutScreen() {
           </Card>
         ) : null}
 
+        {/* General Training is over — nothing here to start or rest from. */}
+        {journeyInactive && !inAssessment ? (
+          <Card>
+            <Eyebrow>{journeyDone ? 'Programme complete' : 'Programme paused'}</Eyebrow>
+            <Text variant="title">
+              {journeyDone ? 'General Training complete' : 'General Training is on hold'}
+            </Text>
+            <Text variant="body" tone={color.textSecondary}>
+              {journeyDone
+                ? `${plan.workouts_completed} workouts recorded. Your trainer plans what comes next.`
+                : 'Speak to your trainer at your branch about resuming your programme.'}
+            </Text>
+          </Card>
+        ) : null}
+
         {/* Rest is a prescription, not a gap in the plan. */}
-        {restDay && !inAssessment ? (
+        {restDay && !inAssessment && !journeyInactive ? (
           <TodayCard
             kind="rest"
             title="Rest & recovery"
@@ -220,7 +242,7 @@ export default function MemberWorkoutScreen() {
         ) : null}
 
         {/* The chart. */}
-        {!restDay && !inAssessment ? (
+        {!restDay && !inAssessment && !journeyInactive ? (
           !session ? (
             <Card>
               <Row gap="sm">

@@ -94,3 +94,44 @@ describe('which tab reads as active', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(REAL_TABS.length);
   });
 });
+
+describe('standing on a hidden route right now', () => {
+  // `rawIndex` is -1 here — the *current* route (not just older ones in
+  // history) has no tab button of its own. That used to fall through
+  // `Math.max(0, -1)` straight onto tab 0, lighting up whichever tab
+  // happened to be first regardless of where the member actually was.
+  it('keeps the tab it was pushed from selected, not tab zero, once on a hidden route', () => {
+    // Land on "trainers" first, then push a hidden detail screen from there.
+    const { routes, index: trainersIndex } = buildRoutes('trainers');
+    const hiddenIndex = routes.findIndex((r) => r.name === HIDDEN_ROUTES[1]);
+    const descriptors = buildDescriptors(routes);
+    const navigation = { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() };
+
+    const { rerender } = render(
+      <AnimatedTabBar
+        state={{ routes, index: trainersIndex } as never}
+        descriptors={descriptors as never}
+        navigation={navigation as never}
+        insets={{ top: 0, bottom: 0, left: 0, right: 0 }}
+      />,
+    );
+    expect(screen.getByRole('tab', { name: 'Trainers' }).props.accessibilityState.selected).toBe(
+      true,
+    );
+
+    rerender(
+      <AnimatedTabBar
+        state={{ routes, index: hiddenIndex } as never}
+        descriptors={descriptors as never}
+        navigation={navigation as never}
+        insets={{ top: 0, bottom: 0, left: 0, right: 0 }}
+      />,
+    );
+    expect(screen.getByRole('tab', { name: 'Trainers' }).props.accessibilityState.selected).toBe(
+      true,
+    );
+    expect(screen.getByRole('tab', { name: 'Dashboard' }).props.accessibilityState.selected).toBe(
+      false,
+    );
+  });
+});

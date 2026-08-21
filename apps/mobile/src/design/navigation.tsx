@@ -9,7 +9,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -188,7 +188,12 @@ const styles = StyleSheet.create({
   dayPressed: { backgroundColor: color.surfaceOverlay },
   dayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
   header: { minHeight: HIT_TARGET },
-  headerSide: { width: 44 },
+  // A fixed width keeps the title centred, but a trailing `action` is not
+  // always a 44pt icon button — a status badge ("In progress", "Upcoming")
+  // needs to say its own word. `minWidth` still reserves the icon-button
+  // spacing on the leading side, but lets the trailing side grow for its
+  // content instead of wrapping into single-letter lines.
+  headerSide: { minWidth: 44 },
   headerTrailing: { alignItems: 'flex-end' },
   headerButton: {
     width: 40,
@@ -569,12 +574,25 @@ export function AnimatedTabBar({
   const visible = state.routes.filter(
     (route) => descriptors[route.key]?.options.tabBarButton === undefined,
   );
-  const activeIndex = visible.findIndex((route) => route.key === state.routes[state.index]?.key);
+  const rawIndex = visible.findIndex((route) => route.key === state.routes[state.index]?.key);
+
+  // The route the member is actually looking at is itself hidden (a pushed
+  // detail screen — Classes, Alerts, Attendance, an exercise) whenever
+  // `rawIndex` comes back -1: it has no button of its own to have been
+  // found. `Math.max(0, -1)` used to fall through that straight onto tab 0,
+  // so every hidden screen — regardless of which tab it was actually pushed
+  // from — lit up whichever tab happened to be first. Remembering the last
+  // real tab instead keeps the bar showing where the member came from, the
+  // same as any stack navigator leaves its header title alone under a
+  // pushed screen.
+  const lastRealIndex = useRef(0);
+  if (rawIndex !== -1) lastRealIndex.current = rawIndex;
+  const activeIndex = rawIndex === -1 ? lastRealIndex.current : rawIndex;
   const slot = visible.length ? width / visible.length : 0;
 
   const pill = useAnimatedStyle(() => ({
     width: slot,
-    transform: [{ translateX: withSpring(Math.max(0, activeIndex) * slot, motion.press) }],
+    transform: [{ translateX: withSpring(activeIndex * slot, motion.press) }],
   }));
 
   return (

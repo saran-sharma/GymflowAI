@@ -64,7 +64,7 @@ function anItem(partial: Partial<WorkoutItem> = {}): WorkoutItem {
   };
 }
 
-function aJourney(): Journey {
+function aJourney(partial: Partial<Journey> = {}): Journey {
   return {
     id: 3,
     member_id: 2,
@@ -82,6 +82,8 @@ function aJourney(): Journey {
     assessment_status: 'completed',
     cardio_completed: 3,
     cardio_required: 3,
+    workouts_completed: 30,
+    ...partial,
   } as Journey;
 }
 
@@ -208,5 +210,42 @@ describe('coming back from the exercise screen', () => {
     await comeBack();
     expect(mockJourney).toHaveBeenCalledTimes(1);
     expect(mockDays).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a journey that is no longer active', () => {
+  // `start_workout` only resolves the member's plan from an *active* journey.
+  // Off that phase it used to fall back to a bare, unassigned session instead
+  // of refusing — so the chart must never offer to start one once the
+  // journey reports "complete", whatever split day 45 happened to land on.
+  it('replaces the Start button with a completion card once training is done', async () => {
+    mockJourney.mockResolvedValue(
+      aJourney({ status: 'completed', phase: 'complete', split_today: 'push' }),
+    );
+    mockToday.mockResolvedValue(null);
+    await openChart();
+    expect(screen.getByText('General Training complete')).toBeTruthy();
+    expect(screen.queryByText('Start today’s workout')).toBeNull();
+  });
+
+  it('does not offer a rest card either, once training is done', async () => {
+    mockJourney.mockResolvedValue(
+      aJourney({ status: 'completed', phase: 'complete', split_today: 'rest' }),
+    );
+    mockToday.mockResolvedValue(null);
+    await openChart();
+    expect(screen.getByText('General Training complete')).toBeTruthy();
+    expect(screen.queryByText('Nothing to do today')).toBeNull();
+  });
+
+  it('says "on hold" rather than "complete" for a paused or cancelled journey', async () => {
+    mockJourney.mockResolvedValue(
+      aJourney({ status: 'paused', phase: 'complete', split_today: 'push' }),
+    );
+    mockToday.mockResolvedValue(null);
+    await openChart();
+    expect(screen.getByText('General Training is on hold')).toBeTruthy();
+    expect(screen.queryByText('General Training complete')).toBeNull();
+    expect(screen.queryByText('Start today’s workout')).toBeNull();
   });
 });

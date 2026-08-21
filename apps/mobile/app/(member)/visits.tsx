@@ -146,8 +146,8 @@ export default function MemberAttendanceScreen() {
               </Text>
             </Row>
             <Text variant="body" tone={color.textSecondary}>
-              {journey.workouts_completed} workouts completed · {journey.workouts_completed}{' '}
-              workouts recorded
+              {journey.days_completed} of {journey.duration_days} days completed ·{' '}
+              {journey.workouts_completed} workouts recorded
             </Text>
           </Card>
         ) : null}
