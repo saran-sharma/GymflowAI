@@ -6,6 +6,7 @@
  * that looks like a result.
  */
 
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -27,6 +28,7 @@ import {
   Screen,
   Section,
   StatCard,
+  TappableCard,
   Text,
   color,
   space,
@@ -35,6 +37,7 @@ import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
 
 export default function OwnerMarketingScreen() {
+  const router = useRouter();
   const marketing = useApi<MarketingDashboard>((token) => api.marketingDashboard(token), []);
 
   if (marketing.loading) return <Loading label="Loading marketing activity" />;
@@ -105,7 +108,14 @@ export default function OwnerMarketingScreen() {
 
             <Section title="Source → members → Day 45 → PT">
               {data.sources.map((source) => (
-                <Card key={source.source_key}>
+                <TappableCard
+                  key={source.source_key}
+                  testID={`marketing-source-${source.source_key}`}
+                  accessibilityLabel={`Open ${source.source_label}`}
+                  onPress={() =>
+                    router.push(`/(owner)/marketing/${source.source_key}` as never)
+                  }
+                >
                   <Row style={styles.cardHead}>
                     <Text variant="heading">{source.source_label}</Text>
                     <Badge label={`${source.joined} joined`} colorOverride={color.brand} />
@@ -144,7 +154,7 @@ export default function OwnerMarketingScreen() {
                       Campaigns: {source.campaigns.join(', ')}
                     </Text>
                   ) : null}
-                </Card>
+                </TappableCard>
               ))}
             </Section>
 

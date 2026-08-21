@@ -12,6 +12,7 @@
  * This is also where a `/owner/member/...` alert lands.
  */
 
+import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -29,6 +30,7 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  PersonRow,
   ProgressBar,
   radii,
   Row,
@@ -37,6 +39,7 @@ import {
   Segmented,
   SkeletonScreen,
   StatCard,
+  TappableCard,
   Text,
   color,
   space,
@@ -52,6 +55,7 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 export default function OwnerMembersScreen() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('journeys');
   const journeys = useApi<Journey[]>((token) => api.journeys(token), []);
   const packages = useApi<PTPackage[]>((token) => api.ptPackages(token), []);
@@ -186,7 +190,12 @@ export default function OwnerMembersScreen() {
                   .slice()
                   .sort((a, b) => b.current_day - a.current_day)
                   .map((journey) => (
-                    <Card key={journey.id}>
+                    <TappableCard
+                      key={journey.id}
+                      accessibilityLabel={`Open ${journey.member_name}`}
+                      testID={`member-journey-${journey.member_id}`}
+                      onPress={() => router.push(`/(owner)/member/${journey.member_id}` as never)}
+                    >
                       <Row style={styles.cardHead}>
                         <Text variant="heading">{journey.member_name}</Text>
                         {journey.is_demo ? <DemoTag /> : null}
@@ -205,27 +214,29 @@ export default function OwnerMembersScreen() {
                           : `${journey.workouts_completed} workouts recorded`}
                         {journey.assigned_trainer_name ? ` · ${journey.assigned_trainer_name}` : ''}
                       </Text>
-                    </Card>
+                    </TappableCard>
                   ))
               )}
             </Section>
 
             {finished.length ? (
               <Section title={`Completed (${finished.length})`}>
-                {finished.map((journey) => (
-                  <Row key={journey.id} style={styles.historyRow}>
-                    <View style={styles.grow}>
-                      <Text variant="body">{journey.member_name}</Text>
-                      <Text variant="label" tone={color.textTertiary}>
-                        Finished {dayLabel(journey.completed_on ?? journey.end_date)}
-                      </Text>
-                    </View>
-                    <Badge
-                      label={journey.pt_converted ? 'PT started' : 'Ready for PT'}
-                      colorOverride={journey.pt_converted ? color.status.positive : color.brand}
-                      solid={!journey.pt_converted}
-                    />
-                  </Row>
+                {finished.map((journey, index) => (
+                  <PersonRow
+                    key={journey.id}
+                    index={index}
+                    name={journey.member_name}
+                    detail={`Finished ${dayLabel(journey.completed_on ?? journey.end_date)}`}
+                    testID={`member-completed-${journey.member_id}`}
+                    trailing={
+                      <Badge
+                        label={journey.pt_converted ? 'PT started' : 'Ready for PT'}
+                        colorOverride={journey.pt_converted ? color.status.positive : color.brand}
+                        solid={!journey.pt_converted}
+                      />
+                    }
+                    onPress={() => router.push(`/(owner)/member/${journey.member_id}` as never)}
+                  />
                 ))}
               </Section>
             ) : null}
@@ -250,7 +261,12 @@ export default function OwnerMembersScreen() {
                 />
               ) : (
                 livePackages.map((pack) => (
-                  <Card key={pack.id}>
+                  <TappableCard
+                    key={pack.id}
+                    accessibilityLabel={`Open ${pack.member_name ?? 'member'}`}
+                    testID={`member-pt-${pack.member_id}`}
+                    onPress={() => router.push(`/(owner)/member/${pack.member_id}` as never)}
+                  >
                     <Row style={styles.cardHead}>
                       <Text variant="heading">{pack.member_name ?? 'Member'}</Text>
                       {pack.low_balance ? (
@@ -278,7 +294,7 @@ export default function OwnerMembersScreen() {
                       {pack.origin === 'journey_conversion' ? 'converted from Day 45' : 'direct'}
                       {pack.expiry_date ? ` · expires ${dayLabel(pack.expiry_date)}` : ''}
                     </Text>
-                  </Card>
+                  </TappableCard>
                 ))
               )}
             </Section>

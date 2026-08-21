@@ -35,6 +35,9 @@ export default function OwnerLayout() {
       {/* Pushed on top of the tabs. */}
       <Tabs.Screen name="branch/[id]" options={{ href: null }} />
       <Tabs.Screen name="trainer/[id]" options={{ href: null }} />
+      <Tabs.Screen name="member/[id]" options={{ href: null }} />
+      <Tabs.Screen name="marketing/[source]" options={{ href: null }} />
+      <Tabs.Screen name="broadcast" options={{ href: null }} />
       <Tabs.Screen name="payments" options={{ href: null }} />
       <Tabs.Screen name="incentives" options={{ href: null }} />
       <Tabs.Screen name="performance" options={{ href: null }} />
