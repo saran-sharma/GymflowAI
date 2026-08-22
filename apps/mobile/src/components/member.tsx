@@ -12,13 +12,14 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Badge,
   Card,
   Eyebrow,
+  LinkButton,
   ProgressBar,
   ProgressRing,
   Row,
@@ -33,8 +34,15 @@ import {
   space,
   type Tone,
 } from '../design';
-import type { Feeling, JourneyDay, WorkoutSplit } from '../api/types';
-import { splitMeta } from './programme';
+import type {
+  BodyComposition,
+  BodyCompositionHistory,
+  Feeling,
+  JourneyDay,
+  StrengthTrend,
+  WorkoutSplit,
+} from '../api/types';
+import { BarChart, splitMeta } from './programme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -569,7 +577,276 @@ export function NotConnected({
   );
 }
 
+/**
+ * A compact, chart-free view of a member's strength trend — for a trainer or
+ * owner glancing at one member, not the member's own richer Progress screen
+ * (`app/(member)/progress.tsx`, which charts each lift). Same data
+ * (`journey_service.strength_trend`), read across every role rather than
+ * duplicated per screen.
+ */
+export function RecentStrength({ trend }: { trend: StrengthTrend }) {
+  if (trend.exercises.length === 0) {
+    return (
+      <NotConnected
+        icon="trending-up-outline"
+        title="No sets logged yet"
+        detail="Strength trends appear here once this member logs sets on their own workouts."
+      />
+    );
+  }
+  return (
+    <Stack gap="sm">
+      {trend.exercises.map((exercise) => (
+        <Row key={exercise.exercise} gap="sm">
+          <Text variant="body" style={styles.grow}>
+            {exercise.exercise}
+          </Text>
+          {exercise.is_recent_pr ? <Badge label="PR" tone="brand" solid /> : null}
+          <Spacer />
+          <Text variant="label" tone={color.textTertiary}>
+            best {exercise.heaviest_kg}kg
+          </Text>
+        </Row>
+      ))}
+    </Stack>
+  );
+}
+
+/** "22 Aug" — the date format the body-composition history uses, with no
+ * weekday: a scan is a point on a timeline, not an appointment. */
+function scanDateLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString([], { day: '2-digit', month: 'short' });
+}
+
+/** One history row's numbers, each omitted individually when this scan does
+ * not have it — never a placeholder dash standing in for a real field. */
+function scanSummary(scan: BodyComposition): string {
+  const parts: string[] = [];
+  if (scan.weight_kg != null) parts.push(`${scan.weight_kg}kg`);
+  if (scan.body_fat_pct != null) parts.push(`${scan.body_fat_pct}% BF`);
+  if (scan.muscle_mass_kg != null) parts.push(`${scan.muscle_mass_kg}kg SMM`);
+  return parts.join(' · ');
+}
+
+/**
+ * Chronological, most-recent-first — the "22 Aug / 10 Aug / 01 Aug" list
+ * both the member's own Progress screen and the trainer/owner compact card
+ * expand into. Never interpolated: a gap between two real scans is just a
+ * gap.
+ */
+export function BodyCompositionHistoryList({
+  measurements,
+}: {
+  measurements: BodyComposition[];
+}) {
+  const rows = [...measurements].reverse();
+  return (
+    <Stack gap="sm">
+      {rows.map((scan) => (
+        <Row key={scan.measured_at} gap="sm">
+          <Text variant="label" tone={color.textTertiary} style={styles.scanDate}>
+            {scanDateLabel(scan.measured_at)}
+          </Text>
+          <Text variant="body" style={styles.grow}>
+            {scanSummary(scan) || '—'}
+          </Text>
+        </Row>
+      ))}
+    </Stack>
+  );
+}
+
+const EMPTY_BODY_COMPOSITION = {
+  icon: 'body-outline' as const,
+  title: 'No InBody measurements yet',
+};
+
+/**
+ * The member's own Body Composition — snapshot, then a trend once there is
+ * more than one scan to trend, then the full history. A single measurement
+ * shows the snapshot alone; charting one point would only ever be a flat
+ * line pretending to be a trend. Labels stay neutral ("Weight trend", not
+ * "Weight — improving") because whether a change in any of these numbers is
+ * good news depends on the member's own goal, which GymFlow does not know.
+ */
+export function BodyCompositionSection({ history }: { history: BodyCompositionHistory }) {
+  if (!history.latest) {
+    return (
+      <NotConnected
+        icon={EMPTY_BODY_COMPOSITION.icon}
+        title={EMPTY_BODY_COMPOSITION.title}
+        detail="Once your next scan is synced, your measurements will appear here."
+      />
+    );
+  }
+  const latest = history.latest;
+  const trendable = history.measurements.length > 1;
+
+  return (
+    <Stack gap="md">
+      <Row gap="lg" wrap>
+        {latest.weight_kg != null ? (
+          <Stack gap="xxs">
+            <Text variant="label" tone={color.textTertiary}>
+              Weight
+            </Text>
+            <Text variant="heading">{latest.weight_kg} kg</Text>
+          </Stack>
+        ) : null}
+        {latest.muscle_mass_kg != null ? (
+          <Stack gap="xxs">
+            <Text variant="label" tone={color.textTertiary}>
+              Skeletal muscle
+            </Text>
+            <Text variant="heading">{latest.muscle_mass_kg} kg</Text>
+          </Stack>
+        ) : null}
+        {latest.body_fat_pct != null ? (
+          <Stack gap="xxs">
+            <Text variant="label" tone={color.textTertiary}>
+              Body fat
+            </Text>
+            <Text variant="heading">{latest.body_fat_pct}%</Text>
+          </Stack>
+        ) : null}
+        {latest.bmi != null ? (
+          <Stack gap="xxs">
+            <Text variant="label" tone={color.textTertiary}>
+              BMI
+            </Text>
+            <Text variant="heading">{latest.bmi}</Text>
+          </Stack>
+        ) : null}
+      </Row>
+      <Text variant="label" tone={color.textTertiary}>
+        Measured {scanDateLabel(latest.measured_at)}
+      </Text>
+
+      {trendable ? (
+        <Stack gap="md">
+          {latest.weight_kg != null ? (
+            <Stack gap="xxs">
+              <Eyebrow>Weight trend</Eyebrow>
+              <BarChart
+                data={history.measurements
+                  .filter((m) => m.weight_kg != null)
+                  .map((m) => ({
+                    label: scanDateLabel(m.measured_at),
+                    value: m.weight_kg as number,
+                  }))}
+                height={50}
+              />
+            </Stack>
+          ) : null}
+          {latest.body_fat_pct != null ? (
+            <Stack gap="xxs">
+              <Eyebrow>Body fat trend</Eyebrow>
+              <BarChart
+                data={history.measurements
+                  .filter((m) => m.body_fat_pct != null)
+                  .map((m) => ({
+                    label: scanDateLabel(m.measured_at),
+                    value: m.body_fat_pct as number,
+                  }))}
+                tint={color.status.info}
+                height={50}
+              />
+            </Stack>
+          ) : null}
+          {latest.muscle_mass_kg != null ? (
+            <Stack gap="xxs">
+              <Eyebrow>Skeletal muscle trend</Eyebrow>
+              <BarChart
+                data={history.measurements
+                  .filter((m) => m.muscle_mass_kg != null)
+                  .map((m) => ({
+                    label: scanDateLabel(m.measured_at),
+                    value: m.muscle_mass_kg as number,
+                  }))}
+                tint={color.status.notable}
+                height={50}
+              />
+            </Stack>
+          ) : null}
+        </Stack>
+      ) : null}
+
+      <Stack gap="xs">
+        <Eyebrow>History</Eyebrow>
+        <BodyCompositionHistoryList measurements={history.measurements} />
+      </Stack>
+    </Stack>
+  );
+}
+
+/**
+ * The compact version for a trainer or owner glancing at one member — three
+ * numbers and when they were taken, with the full history tucked behind
+ * "View history" rather than shown by default. Same data
+ * (`body_composition_service`), same empty-state honesty, less real estate.
+ */
+export function CompactBodyComposition({ history }: { history: BodyCompositionHistory }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!history.latest) {
+    return (
+      <NotConnected
+        icon={EMPTY_BODY_COMPOSITION.icon}
+        title={EMPTY_BODY_COMPOSITION.title}
+        detail="Once this member's next scan is synced, their measurements will appear here."
+      />
+    );
+  }
+  const latest = history.latest;
+
+  return (
+    <Stack gap="sm">
+      {latest.weight_kg != null ? (
+        <Row gap="sm">
+          <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+            Weight
+          </Text>
+          <Text variant="body">{latest.weight_kg} kg</Text>
+        </Row>
+      ) : null}
+      {latest.muscle_mass_kg != null ? (
+        <Row gap="sm">
+          <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+            Skeletal muscle
+          </Text>
+          <Text variant="body">{latest.muscle_mass_kg} kg</Text>
+        </Row>
+      ) : null}
+      {latest.body_fat_pct != null ? (
+        <Row gap="sm">
+          <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+            Body fat
+          </Text>
+          <Text variant="body">{latest.body_fat_pct}%</Text>
+        </Row>
+      ) : null}
+      <Text variant="label" tone={color.textTertiary}>
+        Last measured: {scanDateLabel(latest.measured_at)}
+      </Text>
+
+      {history.measurements.length > 1 ? (
+        expanded ? (
+          <Stack gap="sm">
+            <BodyCompositionHistoryList measurements={history.measurements} />
+            <LinkButton title="Hide history" onPress={() => setExpanded(false)} />
+          </Stack>
+        ) : (
+          <LinkButton title="View history →" onPress={() => setExpanded(true)} />
+        )
+      ) : null}
+    </Stack>
+  );
+}
+
 const styles = StyleSheet.create({
+  scanDate: { width: 64 },
   weekDay: { flex: 1 },
   weekPip: { width: 18, height: 18, borderRadius: 9 },
   grow: { flex: 1 },

@@ -990,6 +990,85 @@ def previous_performance(
     return history.sessions[0] if history.sessions else None
 
 
+# ------------------------------------------------------------ strength trend
+
+TREND_EXERCISES = 6
+TREND_SESSIONS = 8
+
+
+@dataclass
+class ExerciseTrendPoint:
+    session_date: date
+    top_weight_kg: float
+    volume_kg: float
+
+
+@dataclass
+class ExerciseTrend:
+    exercise: str
+    points: list[ExerciseTrendPoint]  # oldest first, so a chart reads left-to-right
+    heaviest_kg: float
+    is_recent_pr: bool
+
+
+def trained_exercises(db: Session, *, member_id: int, limit: int = TREND_EXERCISES) -> list[str]:
+    """Exercise names this member has actually logged sets for, most recently
+    trained first. An exercise on the plan that a member has never done has
+    no trend to show, so it never appears here."""
+    rows = db.execute(
+        select(WorkoutSessionItem.exercise, func.max(WorkoutSession.session_date))
+        .join(WorkoutSession, WorkoutSessionItem.session_id == WorkoutSession.id)
+        .join(WorkoutSet, WorkoutSet.session_item_id == WorkoutSessionItem.id)
+        .where(WorkoutSession.member_id == member_id)
+        .group_by(WorkoutSessionItem.exercise)
+        .order_by(func.max(WorkoutSession.session_date).desc())
+        .limit(limit)
+    ).all()
+    return [row[0] for row in rows]
+
+
+def strength_trend(
+    db: Session,
+    *,
+    member_id: int,
+    exercises_limit: int = TREND_EXERCISES,
+    sessions_limit: int = TREND_SESSIONS,
+) -> list[ExerciseTrend]:
+    """Real strength progression, built from sets the member actually logged —
+    the same ``exercise_history`` the mid-workout logging modal already uses,
+    read across every recently-trained lift instead of just the one on screen.
+
+    Nothing here is invented: no exercise appears without logged sets, no
+    session is synthesised to fill a gap, and "heaviest ever" always looks at
+    the member's complete history for that exercise, never just the window of
+    points returned for the chart.
+    """
+    trends = []
+    for exercise in trained_exercises(db, member_id=member_id, limit=exercises_limit):
+        history = exercise_history(db, member_id=member_id, exercise=exercise, limit=sessions_limit)
+        if not history.sessions:
+            continue
+        points = [
+            ExerciseTrendPoint(
+                session_date=entry.session.session_date,
+                top_weight_kg=entry.top_weight_kg,
+                volume_kg=entry.volume_kg,
+            )
+            for entry in reversed(history.sessions)
+        ]
+        heaviest_kg = history.heaviest.weight_kg if history.heaviest else 0.0
+        latest = history.sessions[0]
+        trends.append(
+            ExerciseTrend(
+                exercise=exercise,
+                points=points,
+                heaviest_kg=heaviest_kg,
+                is_recent_pr=bool(heaviest_kg) and latest.top_weight_kg >= heaviest_kg,
+            )
+        )
+    return trends
+
+
 # --------------------------------------------------------- personal records
 
 

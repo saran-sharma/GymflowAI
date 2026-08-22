@@ -43,9 +43,13 @@ from app.schemas.common import MessageOut
 from app.schemas.training import (
     AssessmentOut,
     AssessmentRequest,
+    BodyCompositionHistoryOut,
+    BodyCompositionOut,
     CardioRequest,
     CardioSessionOut,
     ExerciseSessionOut,
+    ExerciseTrendOut,
+    ExerciseTrendPointOut,
     JourneyDayOut,
     JourneyOut,
     PersonalRecordOut,
@@ -53,6 +57,7 @@ from app.schemas.training import (
     PlanItemUpsert,
     StartJourneyRequest,
     StartWorkoutRequest,
+    StrengthTrendOut,
     WorkoutItemOut,
     WorkoutItemUpdate,
     WorkoutPlanOut,
@@ -63,7 +68,7 @@ from app.schemas.training import (
     WorkoutSetOut,
     WorkoutSetUpdate,
 )
-from app.services import audit, journey_service
+from app.services import audit, body_composition_service, journey_service
 
 router = APIRouter(prefix="/journeys", tags=["journeys"])
 
@@ -495,6 +500,105 @@ def complete_workout(
     assert_can_read_member(db, user, member)
     journey_service.complete_workout(db, session)
     return workout_out(db, session)
+
+
+def _strength_trend_out(db: Session, member_id: int) -> StrengthTrendOut:
+    trends = journey_service.strength_trend(db, member_id=member_id)
+    return StrengthTrendOut(
+        exercises=[
+            ExerciseTrendOut(
+                exercise=trend.exercise,
+                points=[
+                    ExerciseTrendPointOut(
+                        session_date=point.session_date,
+                        top_weight_kg=point.top_weight_kg,
+                        volume_kg=point.volume_kg,
+                    )
+                    for point in trend.points
+                ],
+                heaviest_kg=trend.heaviest_kg,
+                is_recent_pr=trend.is_recent_pr,
+            )
+            for trend in trends
+        ]
+    )
+
+
+@router.get("/me/progress/strength", response_model=StrengthTrendOut)
+def my_strength_trend(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StrengthTrendOut:
+    """Recent progression on the lifts this member actually trains, most
+    recently trained exercise first. See `journey_service.strength_trend` —
+    nothing here is computed beyond what the mid-workout logging modal already
+    shows one exercise at a time."""
+    member = current_member(db, user)
+    return _strength_trend_out(db, member.id)
+
+
+@router.get("/members/{member_id}/progress/strength", response_model=StrengthTrendOut)
+def member_strength_trend(
+    member_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StrengthTrendOut:
+    """Same as `my_strength_trend`, for a trainer or owner looking at one
+    member — Member Intelligence and the trainer client-detail screen."""
+    member = _load_member(db, member_id)
+    assert_can_read_member(db, user, member)
+    return _strength_trend_out(db, member.id)
+
+
+def _body_composition_out(
+    reading: body_composition_service.BodyCompositionReading,
+) -> BodyCompositionOut:
+    return BodyCompositionOut(
+        measured_at=reading.measured_at,
+        source=reading.source,
+        weight_kg=reading.weight_kg,
+        body_fat_pct=reading.body_fat_pct,
+        muscle_mass_kg=reading.muscle_mass_kg,
+        bmi=reading.bmi,
+        visceral_fat=reading.visceral_fat,
+        bmr_kcal=reading.bmr_kcal,
+        body_water_pct=reading.body_water_pct,
+    )
+
+
+def _body_composition_history_out(db: Session, member_id: int) -> BodyCompositionHistoryOut:
+    readings = body_composition_service.get_body_composition_history(db, member_id=member_id)
+    return BodyCompositionHistoryOut(
+        latest=_body_composition_out(readings[-1]) if readings else None,
+        measurements=[_body_composition_out(r) for r in readings],
+    )
+
+
+@router.get("/me/progress/body-composition", response_model=BodyCompositionHistoryOut)
+def my_body_composition(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BodyCompositionHistoryOut:
+    """This member's InBody history. See `body_composition_service` — the
+    same read model every role reads from, so a member and their trainer are
+    never looking at two different truths about the same scans."""
+    member = current_member(db, user)
+    return _body_composition_history_out(db, member.id)
+
+
+@router.get(
+    "/members/{member_id}/progress/body-composition", response_model=BodyCompositionHistoryOut
+)
+def member_body_composition(
+    member_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BodyCompositionHistoryOut:
+    """Same as `my_body_composition`, for a trainer or owner looking at one
+    member — Member Intelligence and the trainer client-detail screen."""
+    member = _load_member(db, member_id)
+    assert_can_read_member(db, user, member)
+    return _body_composition_history_out(db, member.id)
 
 
 @router.get("/members/{member_id}/plan", response_model=WorkoutPlanOut | None)

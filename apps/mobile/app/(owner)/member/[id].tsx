@@ -21,8 +21,19 @@ import { RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
-import type { ActivityEntry, Payment, TrainerClientDetail } from '../../../src/api/types';
-import { JourneyBar, KindTag, NotConnected } from '../../../src/components/member';
+import type {
+  ActivityEntry,
+  BodyCompositionHistory,
+  Payment,
+  StrengthTrend,
+  TrainerClientDetail,
+} from '../../../src/api/types';
+import {
+  CompactBodyComposition,
+  JourneyBar,
+  KindTag,
+  RecentStrength,
+} from '../../../src/components/member';
 import {
   Avatar,
   Badge,
@@ -31,6 +42,7 @@ import {
   Divider,
   ErrorState,
   Eyebrow,
+  LinkButton,
   Loading,
   ProgressCard,
   Row,
@@ -65,6 +77,14 @@ export default function OwnerMemberScreen() {
   // builder, which the trainer desk also uses and has no payment concept.
   const payments = useApi<Payment[]>(
     (token) => api.listPayments(token, { memberId }),
+    [memberId],
+  );
+  const strength = useApi<StrengthTrend>(
+    (token) => api.memberStrengthTrend(memberId, token),
+    [memberId],
+  );
+  const bodyComposition = useApi<BodyCompositionHistory>(
+    (token) => api.memberBodyComposition(memberId, token),
     [memberId],
   );
 
@@ -110,7 +130,22 @@ export default function OwnerMemberScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Member" onBack={goBack} />
+      <ScreenHeader
+        title="Member"
+        onBack={goBack}
+        action={
+          <LinkButton
+            title="Message"
+            testID="message-member"
+            onPress={() =>
+              router.push({
+                pathname: '/(owner)/broadcast',
+                params: { memberId: String(client.member_id), memberName: client.full_name },
+              } as never)
+            }
+          />
+        }
+      />
       <Body
         refreshControl={
           <RefreshControl
@@ -118,6 +153,8 @@ export default function OwnerMemberScreen() {
             onRefresh={() => {
               void detail.refresh();
               void payments.refresh();
+              void strength.refresh();
+              void bodyComposition.refresh();
             }}
             tintColor={color.brand}
           />
@@ -221,8 +258,8 @@ export default function OwnerMemberScreen() {
               value={pack.sessions_remaining}
               total={pack.sessions_total}
               percent={pack.sessions_total ? (pack.sessions_used / pack.sessions_total) * 100 : 0}
-              caption={`${pack.trainer_name ?? 'No trainer assigned'} · ${pack.status}`}
-              tone={pack.low_balance ? 'caution' : 'brand'}
+              caption={`${pack.trainer_name ?? 'No trainer assigned'} · ${pack.effective_status_label}`}
+              tone={pack.effective_status === 'pt_active' ? (pack.low_balance ? 'caution' : 'brand') : 'caution'}
               trailing={<Badge label="left" tone="neutral" />}
             />
           ) : journey && !journey.pt_converted && journey.status === 'completed' ? (
@@ -346,11 +383,11 @@ export default function OwnerMemberScreen() {
             </StatRow>
           ) : null}
 
-          <NotConnected
-            icon="body-outline"
-            title="No InBody history"
-            detail="Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym."
-          />
+          {strength.data ? <RecentStrength trend={strength.data} /> : null}
+        </Section>
+
+        <Section title="Body composition">
+          {bodyComposition.data ? <CompactBodyComposition history={bodyComposition.data} /> : null}
         </Section>
       </Body>
     </Screen>

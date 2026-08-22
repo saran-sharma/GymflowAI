@@ -17,16 +17,21 @@ import { dayLabel } from '../src/utils/format';
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: mockBack, replace: mockReplace, canGoBack: mockCanGoBack }),
+  useRouter: () => ({ push: mockPush, back: mockBack, replace: mockReplace, canGoBack: mockCanGoBack }),
   useLocalSearchParams: () => ({ id: '13' }),
 }));
 
 const mockGetMember = jest.fn();
 const mockListPayments = jest.fn();
+const mockStrength = jest.fn();
+const mockBodyComposition = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   getMember: (...a: unknown[]) => mockGetMember(...a),
   listPayments: (...a: unknown[]) => mockListPayments(...a),
+  memberStrengthTrend: (...a: unknown[]) => mockStrength(...a),
+  memberBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -81,6 +86,8 @@ function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
     price_amount: null,
     currency: null,
     low_balance: false,
+    effective_status: 'pt_active',
+    effective_status_label: 'PT active',
     ...partial,
   };
 }
@@ -98,6 +105,8 @@ function aDetail(partial: Partial<TrainerClientDetail['client']> = {}): TrainerC
       days_remaining: 17,
       journey: aJourney(),
       pt_package: null,
+      effective_pt_status: 'no_pt',
+      effective_pt_status_label: 'No PT package',
       next_pt_session: null,
       last_seen_on: '2026-08-20',
       visits_last_30: 13,
@@ -145,6 +154,8 @@ async function draw() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockListPayments.mockResolvedValue([aPayment()]);
+  mockStrength.mockResolvedValue({ exercises: [] });
+  mockBodyComposition.mockResolvedValue({ latest: null, measurements: [] });
 });
 
 describe('a General Training member', () => {
@@ -254,9 +265,10 @@ describe('InBody placeholder copy', () => {
   // non-technical replacement and guards against the jargon coming back.
   it('explains the gap in plain language, not implementation detail', async () => {
     await draw();
+    expect(screen.getByText('No InBody measurements yet')).toBeTruthy();
     expect(
       screen.getByText(
-        "Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym.",
+        "Once this member's next scan is synced, their measurements will appear here.",
       ),
     ).toBeTruthy();
   });
@@ -266,6 +278,95 @@ describe('InBody placeholder copy', () => {
     for (const term of [/scan table/i, /database/i, /nothing writes to it/i, /endpoint/i]) {
       expect(screen.queryByText(term)).toBeNull();
     }
+  });
+});
+
+describe('the compact body composition card', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail());
+  });
+
+  it('shows weight, skeletal muscle and body fat, and when it was measured', async () => {
+    mockBodyComposition.mockResolvedValue({
+      latest: {
+        measured_at: '2026-08-22T09:00:00Z',
+        source: 'inbody',
+        weight_kg: 78.4,
+        body_fat_pct: 18.7,
+        muscle_mass_kg: 32.1,
+        bmi: 24.6,
+        visceral_fat: null,
+        bmr_kcal: null,
+        body_water_pct: null,
+      },
+      measurements: [
+        {
+          measured_at: '2026-08-22T09:00:00Z',
+          source: 'inbody',
+          weight_kg: 78.4,
+          body_fat_pct: 18.7,
+          muscle_mass_kg: 32.1,
+          bmi: 24.6,
+          visceral_fat: null,
+          bmr_kcal: null,
+          body_water_pct: null,
+        },
+      ],
+    });
+    await draw();
+    expect(screen.getByText('78.4 kg')).toBeTruthy();
+    expect(screen.getByText('32.1 kg')).toBeTruthy();
+    expect(screen.getByText('18.7%')).toBeTruthy();
+    expect(screen.getByText(/Last measured:/)).toBeTruthy();
+    // Compact by design — no BMI row and no chart, unlike the member's own screen.
+    expect(screen.queryByText('24.6')).toBeNull();
+    expect(screen.queryByText('Weight trend')).toBeNull();
+  });
+
+  it('expands into the full history behind "View history"', async () => {
+    mockBodyComposition.mockResolvedValue({
+      latest: {
+        measured_at: '2026-08-22T09:00:00Z',
+        source: 'inbody',
+        weight_kg: 78.4,
+        body_fat_pct: 18.7,
+        muscle_mass_kg: 32.1,
+        bmi: 24.6,
+        visceral_fat: null,
+        bmr_kcal: null,
+        body_water_pct: null,
+      },
+      measurements: [
+        {
+          measured_at: '2026-08-10T09:00:00Z',
+          source: 'inbody',
+          weight_kg: 79.2,
+          body_fat_pct: 19.4,
+          muscle_mass_kg: 31.8,
+          bmi: 25.0,
+          visceral_fat: null,
+          bmr_kcal: null,
+          body_water_pct: null,
+        },
+        {
+          measured_at: '2026-08-22T09:00:00Z',
+          source: 'inbody',
+          weight_kg: 78.4,
+          body_fat_pct: 18.7,
+          muscle_mass_kg: 32.1,
+          bmi: 24.6,
+          visceral_fat: null,
+          bmr_kcal: null,
+          body_water_pct: null,
+        },
+      ],
+    });
+    await draw();
+
+    expect(screen.queryByText('79.2kg · 19.4% BF · 31.8kg SMM')).toBeNull();
+    fireEvent.press(screen.getByText('View history →'));
+    expect(screen.getByText('79.2kg · 19.4% BF · 31.8kg SMM')).toBeTruthy();
+    expect(screen.getByText('78.4kg · 18.7% BF · 32.1kg SMM')).toBeTruthy();
   });
 });
 
@@ -287,5 +388,41 @@ describe('loading and error states', () => {
     mockGetMember.mockRejectedValue(new Error('network down'));
     await draw();
     expect(screen.getByText('We could not load this member')).toBeTruthy();
+  });
+});
+
+describe('the strength trend in Progress', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail());
+  });
+
+  it('shows a lift with a PR badge when the server flags one', async () => {
+    mockStrength.mockResolvedValue({
+      exercises: [{ exercise: 'Bench press', points: [], heaviest_kg: 60, is_recent_pr: true }],
+    });
+    await draw();
+    expect(screen.getByText('Bench press')).toBeTruthy();
+    expect(screen.getByText('best 60kg')).toBeTruthy();
+    expect(screen.getByText('PR')).toBeTruthy();
+  });
+
+  it('says plainly when nothing has been logged yet', async () => {
+    await draw();
+    expect(screen.getByText('No sets logged yet')).toBeTruthy();
+  });
+});
+
+describe('messaging a member directly', () => {
+  beforeEach(() => {
+    mockGetMember.mockResolvedValue(aDetail());
+  });
+
+  it('opens Broadcast pre-filled to this one member', async () => {
+    await draw();
+    fireEvent.press(screen.getByTestId('message-member'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(owner)/broadcast',
+      params: { memberId: '13', memberName: 'Rahul Iyer' },
+    });
   });
 });

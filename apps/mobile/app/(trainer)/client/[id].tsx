@@ -16,13 +16,20 @@ import { RefreshControl, StyleSheet } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
-import type { TrainerClientDetail } from '../../../src/api/types';
+import type { BodyCompositionHistory, StrengthTrend, TrainerClientDetail } from '../../../src/api/types';
 import { ConvertToPt, conversionState } from '../../../src/components/conversion';
-import { JourneyBar, KindTag, NotConnected } from '../../../src/components/member';
+import {
+  CompactBodyComposition,
+  JourneyBar,
+  KindTag,
+  NotConnected,
+  RecentStrength,
+} from '../../../src/components/member';
 import {
   Avatar,
   Badge,
   Body,
+  Button,
   Card,
   Divider,
   ErrorState,
@@ -84,6 +91,14 @@ export default function TrainerClientDetailScreen() {
   // The sizes this branch sells. The server refuses anything else, so the
   // trainer is offered exactly what will be accepted.
   const options = useApi<number[]>((token) => api.ptOptions(token), []);
+  const strength = useApi<StrengthTrend>(
+    (token) => api.memberStrengthTrend(memberId, token),
+    [memberId],
+  );
+  const bodyComposition = useApi<BodyCompositionHistory>(
+    (token) => api.memberBodyComposition(memberId, token),
+    [memberId],
+  );
 
   /**
    * Record the trainer's decision.
@@ -165,7 +180,11 @@ export default function TrainerClientDetailScreen() {
         refreshControl={
           <RefreshControl
             refreshing={detail.refreshing}
-            onRefresh={() => void detail.refresh()}
+            onRefresh={() => {
+              void detail.refresh();
+              void strength.refresh();
+              void bodyComposition.refresh();
+            }}
             tintColor={color.brand}
           />
         }
@@ -308,6 +327,18 @@ export default function TrainerClientDetailScreen() {
         </Section>
 
         <Section title="Recent workouts">
+          <Button
+            title="Edit programming"
+            variant="secondary"
+            icon="create-outline"
+            onPress={() =>
+              router.push({
+                pathname: '/(trainer)/plan/[id]',
+                params: { id: String(memberId), name: client.full_name },
+              } as never)
+            }
+            testID="edit-programming"
+          />
           {workouts.length === 0 ? (
             <Text variant="label" tone={color.textTertiary}>
               No own workouts recorded yet.
@@ -335,17 +366,20 @@ export default function TrainerClientDetailScreen() {
           )}
         </Section>
 
+        <Section title="Progress">
+          {strength.data ? <RecentStrength trend={strength.data} /> : null}
+        </Section>
+
+        <Section title="Body composition">
+          {bodyComposition.data ? <CompactBodyComposition history={bodyComposition.data} /> : null}
+        </Section>
+
         <Section title="Not available">
           <Stack gap="sm">
             <NotConnected
               icon="medkit-outline"
               title="No medical or injury record"
               detail="GymFlow has no model for medical history or injury notes, so there is nothing to show or withhold here yet."
-            />
-            <NotConnected
-              icon="body-outline"
-              title="No InBody history"
-              detail="Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym."
             />
             <NotConnected
               icon="card-outline"

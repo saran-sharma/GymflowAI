@@ -10,7 +10,12 @@
  * The member is never shown the 45-day counter. It is a real rule — it decides
  * when a trainer is asked to review somebody for PT — but it is the gym's rule,
  * and a deadline the member was never told about and cannot act on only reads
- * as pressure. They see their week instead.
+ * as pressure.
+ *
+ * This screen answers "what am I supposed to do" — today's prescription and
+ * recent sessions. The week-at-a-glance consistency strip lives on Progress
+ * instead, which answers "how am I improving"; showing it here too would be
+ * the same fact rendered twice.
  *
  * The chart is a list, not a workspace. Each exercise opens its own screen for
  * logging, because weight and reps are entered between sets with one hand and
@@ -27,7 +32,7 @@ import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Journey, JourneyDay, WorkoutItem, WorkoutSession } from '../../src/api/types';
-import { KindTag, TodayCard, WeekStrip, journeyToday } from '../../src/components/member';
+import { KindTag, TodayCard } from '../../src/components/member';
 import {
   Badge,
   Banner,
@@ -323,9 +328,6 @@ export default function MemberWorkoutScreen() {
             </>
           )
         ) : null}
-
-        {/* The week, in place of the internal day counter. */}
-        <WeekStrip days={days.data ?? []} today={journeyToday(plan)} />
 
         <Section title="Recent sessions">
           {history.length === 0 ? (

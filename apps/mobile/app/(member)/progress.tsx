@@ -7,8 +7,9 @@
  * a PT session and a group class are different commitments and are counted
  * separately.
  *
- * Body composition has a place here and nothing in it. Those numbers come from
- * InBody, which is not connected to GymFlow, and are not guessed.
+ * Body composition reads from the same InBody pipeline as everywhere else:
+ * real scans only, via `body_composition_service` — no fabricated numbers,
+ * no interpolated points between two real measurements.
  */
 
 import React, { useCallback } from 'react';
@@ -16,10 +17,23 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { ActivityEntry, Journey, JourneyDay, MemberActivity } from '../../src/api/types';
+import type {
+  ActivityEntry,
+  BodyCompositionHistory,
+  Journey,
+  JourneyDay,
+  MemberActivity,
+  StrengthTrend,
+} from '../../src/api/types';
 import { BarChart } from '../../src/components/programme';
-import { NotConnected, WeekStrip, journeyToday, kindMeta } from '../../src/components/member';
 import {
+  BodyCompositionSection,
+  WeekStrip,
+  journeyToday,
+  kindMeta,
+} from '../../src/components/member';
+import {
+  Badge,
   Body,
   Card,
   EmptyState,
@@ -29,6 +43,7 @@ import {
   Row,
   Screen,
   Section,
+  Spacer,
   StatCard,
   StatRow,
   Stack,
@@ -73,12 +88,19 @@ export default function MemberProgressScreen() {
     const me = await api.memberMe(token);
     return api.memberActivityStats(me.member_id, token, 8);
   }, []);
+  const strength = useApi<StrengthTrend>((token) => api.myStrengthTrend(token), []);
+  const bodyComposition = useApi<BodyCompositionHistory>(
+    (token) => api.myBodyComposition(token),
+    [],
+  );
 
   const refreshAll = useCallback(() => {
     void journey.refresh();
     void timeline.refresh();
     void stats.refresh();
-  }, [journey, timeline, stats]);
+    void strength.refresh();
+    void bodyComposition.refresh();
+  }, [journey, timeline, stats, strength, bodyComposition]);
 
   if (timeline.loading && stats.loading) return <Loading label="Loading your progress" />;
 
@@ -121,16 +143,6 @@ export default function MemberProgressScreen() {
 
         {plan ? <WeekStrip days={days.data ?? []} today={journeyToday(plan)} /> : null}
 
-        {/* Reserved for InBody. Deliberately empty rather than filled with
-            plausible-looking numbers nobody measured. */}
-        <Section title="Body composition">
-          <NotConnected
-            icon="body-outline"
-            title="No scan on file"
-            detail="Weight, body fat, skeletal muscle, BMI and the change since your last scan appear here once your branch connects its InBody machine to GymFlow."
-          />
-        </Section>
-
         {totals ? (
           <Section title="Your activity">
             <StatRow>
@@ -157,6 +169,45 @@ export default function MemberProgressScreen() {
                 colorOverride={kindMeta.group_class.hue}
               />
             </StatRow>
+          </Section>
+        ) : null}
+
+        {strength.data && strength.data.exercises.length > 0 ? (
+          <Section title="Strength">
+            {strength.data.exercises.map((trend) => (
+              <Card key={trend.exercise}>
+                <Row gap="sm">
+                  <Text variant="body" style={styles.grow}>
+                    {trend.exercise}
+                  </Text>
+                  {trend.is_recent_pr ? <Badge label="PR" tone="brand" solid /> : null}
+                  <Spacer />
+                  <Text variant="label" tone={color.textTertiary}>
+                    {trend.heaviest_kg > 0 ? `best ${trend.heaviest_kg}kg` : ''}
+                  </Text>
+                </Row>
+                {trend.points.length > 1 ? (
+                  <BarChart
+                    data={trend.points.map((point) => ({
+                      label: weekLabel(point.session_date),
+                      value: point.top_weight_kg,
+                    }))}
+                    tint={color.status.notable}
+                    height={60}
+                  />
+                ) : (
+                  <Text variant="label" tone={color.textTertiary}>
+                    One session logged so far — a trend needs at least two.
+                  </Text>
+                )}
+              </Card>
+            ))}
+          </Section>
+        ) : null}
+
+        {bodyComposition.data ? (
+          <Section title="Body composition">
+            <BodyCompositionSection history={bodyComposition.data} />
           </Section>
         ) : null}
 
