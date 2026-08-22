@@ -12,9 +12,11 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today, now_utc, to_branch_time
+from app.core.config import settings
 from app.core.security import verify_pin
 from app.db.models import (
     AttendanceEvent,
@@ -86,6 +88,22 @@ def verify_branch_credential(
     if method is CaptureMethod.PIN:
         if not pin or not verify_pin(pin, user.pin_hash):
             raise AttendanceError("Incorrect PIN.", "invalid_pin", status.HTTP_401_UNAUTHORIZED)
+        return
+
+    if method is CaptureMethod.FINGERPRINT:
+        if not settings.access_control_enabled:
+            raise AttendanceError(
+                f"{method.value} capture is not available in this version",
+                "method_unsupported",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        # Nothing left to check here: identity (which member scanned) and
+        # device authenticity (which terminal, with what secret) are both
+        # already established upstream, before this function is ever
+        # reached — see app/api/v1/hardware.py and
+        # app/integrations/access_control/x2008.py. This function only
+        # confirms the branch has opted the method into
+        # attendance.methods_enabled, which the check above already did.
         return
 
     raise AttendanceError(
@@ -440,6 +458,56 @@ def trainer_check_out(
 # --------------------------------------------------------- member presence
 
 
+def _write_member_event(
+    db: Session,
+    *,
+    user: User,
+    member: Member,
+    branch: Branch,
+    event_type: EventType,
+    method: CaptureMethod,
+    request: Request | None = None,
+    device_info: str | None = None,
+    external_event_id: str | None = None,
+) -> AttendanceEvent:
+    """The one place a member `AttendanceEvent` row is actually constructed.
+
+    Both the interactive app path (`member_event`, below) and the hardware
+    push path (`record_fingerprint_scan`) call this after they have each done
+    their own, different, credential/identity check — so there is exactly one
+    write path for a member attendance event, not two that could drift apart.
+    """
+    moment = now_utc()
+    work_date = branch_today(branch.timezone)
+    event = AttendanceEvent(
+        branch_id=branch.id,
+        person_type=PersonType.MEMBER,
+        user_id=user.id,
+        event_type=event_type,
+        method=method,
+        occurred_at=moment,
+        work_date=work_date,
+        source_ip=audit.client_ip(request),
+        device_info=(device_info or "")[:255] or None,
+        external_event_id=external_event_id,
+    )
+    db.add(event)
+    db.flush()
+    audit.record(
+        db,
+        action=(
+            audit.ACTION_CHECK_IN if event_type is EventType.CHECK_IN else audit.ACTION_CHECK_OUT
+        ),
+        actor=user,
+        entity_type="member",
+        entity_id=member.id,
+        branch_id=branch.id,
+        request=request,
+        details={"method": method.value},
+    )
+    return event
+
+
 def member_event(
     db: Session,
     *,
@@ -451,7 +519,12 @@ def member_event(
     qr_token: str | None = None,
     pin: str | None = None,
     request: Request | None = None,
+    device_info: str | None = None,
 ) -> AttendanceEvent:
+    """Interactive path: the member's own phone (or a staff-witnessed
+    action) tells us what happened, so a second check-in while already
+    inside is a mistake worth rejecting with a clear message.
+    """
     if member.branch_id != branch.id:
         raise AttendanceError(
             "You are not registered at this branch.",
@@ -469,31 +542,106 @@ def member_event(
     if event_type is EventType.CHECK_OUT and not inside:
         raise AttendanceError("You are not checked in.", "not_checked_in")
 
-    moment = now_utc()
-    event = AttendanceEvent(
-        branch_id=branch.id,
-        person_type=PersonType.MEMBER,
-        user_id=user.id,
+    return _write_member_event(
+        db,
+        user=user,
+        member=member,
+        branch=branch,
         event_type=event_type,
         method=method,
-        occurred_at=moment,
-        work_date=work_date,
-        source_ip=audit.client_ip(request),
-    )
-    db.add(event)
-    db.flush()
-    audit.record(
-        db,
-        action=(
-            audit.ACTION_CHECK_IN if event_type is EventType.CHECK_IN else audit.ACTION_CHECK_OUT
-        ),
-        actor=user,
-        entity_type="member",
-        entity_id=member.id,
-        branch_id=branch.id,
         request=request,
-        details={"method": method.value},
+        device_info=device_info,
     )
+
+
+def record_fingerprint_scan(
+    db: Session,
+    *,
+    member: Member,
+    branch: Branch,
+    device_info: str | None,
+    external_event_id: str,
+    request: Request | None = None,
+) -> AttendanceEvent:
+    """Write one attendance event from an already-authenticated,
+    already-identity-resolved fingerprint scan.
+
+    Called only by the ADMS push receiver (``app/api/v1/hardware.py``), after
+    it has (a) authenticated the terminal via the shared secret / device
+    registry and (b) resolved the scan's enrolled-id to a GymFlow member
+    through ``FingerprintEnrollment`` — this function never sees a
+    fingerprint template, only the member that identifier already resolved
+    to.
+
+    Two things differ deliberately from ``member_event``:
+
+    * **Idempotent by `external_event_id`.** ADMS terminals routinely resend
+      their attendance backlog (a dropped connection, a retried batch); a
+      duplicate delivery must return the same row rather than a second visit.
+      Guarded with a nested transaction so a duplicate found by one record in
+      a batch cannot roll back the records already written earlier in the
+      same batch/request.
+    * **Direction is inferred, not asserted.** A passive terminal has no
+      screen to show "you are already checked in" to, so instead of
+      `member_event`'s reject-on-mismatch behaviour, the event type toggles
+      off whichever state the member is currently in — the same "latest
+      event wins" definition `is_inside`/`branch_occupancy` already use to
+      read occupancy back out.
+    """
+    if not settings.access_control_enabled:
+        raise AttendanceError(
+            "fingerprint capture is not available in this version",
+            "method_unsupported",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    if member.branch_id != branch.id:
+        raise AttendanceError(
+            "Member is not registered at this branch.",
+            "branch_mismatch",
+            status.HTTP_403_FORBIDDEN,
+        )
+    verify_branch_credential(
+        db,
+        branch=branch,
+        user=member.user,
+        method=CaptureMethod.FINGERPRINT,
+        qr_token=None,
+        pin=None,
+    )
+
+    existing = db.scalar(
+        select(AttendanceEvent).where(AttendanceEvent.external_event_id == external_event_id)
+    )
+    if existing is not None:
+        return existing
+
+    work_date = branch_today(branch.timezone)
+    inside = is_inside(db, member.user_id, branch.id, work_date)
+    event_type = EventType.CHECK_OUT if inside else EventType.CHECK_IN
+
+    try:
+        with db.begin_nested():
+            event = _write_member_event(
+                db,
+                user=member.user,
+                member=member,
+                branch=branch,
+                event_type=event_type,
+                method=CaptureMethod.FINGERPRINT,
+                request=request,
+                device_info=device_info,
+                external_event_id=external_event_id,
+            )
+    except IntegrityError:
+        # A concurrent request (or an earlier record in the same batch,
+        # already committed to this savepoint) won the race on the same
+        # external_event_id — resolve to that row instead of erroring.
+        existing = db.scalar(
+            select(AttendanceEvent).where(AttendanceEvent.external_event_id == external_event_id)
+        )
+        if existing is not None:
+            return existing
+        raise
     return event
 
 
@@ -658,6 +806,7 @@ __all__ = [
     "get_or_create_day",
     "is_inside",
     "member_event",
+    "record_fingerprint_scan",
     "recompute",
     "scheduled_shift_for",
     "shift_rules_for",

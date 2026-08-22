@@ -102,11 +102,14 @@ def rate_limit(scope: str, rule: str) -> Callable[[Request], None]:
 
 login_rate_limit = rate_limit("auth", settings.rate_limit_login)
 checkin_rate_limit = rate_limit("checkin", settings.rate_limit_checkin)
+# Keyed by source IP only (no bearer token — the device push has none).
+hardware_push_rate_limit = rate_limit("hardware_push", settings.rate_limit_hardware_push)
 
 __all__ = [
     "RateLimiter",
     "checkin_rate_limit",
     "client_key",
+    "hardware_push_rate_limit",
     "limiter",
     "login_rate_limit",
     "rate_limit",

@@ -12,7 +12,7 @@ Each one sits behind a `Protocol` in `backend/app/integrations/base.py`:
 | `ITrainerProvider` | `LocalMemberProvider` | Yoactiv |
 | `IAttendanceProvider` | GymFlow's own events | Yoactiv |
 | `IBodyCompositionProvider` | `NullBodyCompositionProvider` | InBody — writes to the empty `body_compositions` table |
-| `IAccessControlProvider` | `SoftwareAccessControlProvider` (QR + PIN) | Turnstile / fingerprint / RFID / face |
+| `IAccessControlProvider` | `SoftwareAccessControlProvider` (QR + PIN) | `X2008FingerprintProvider` — best-effort, **not yet verified against real device traffic** |
 | `INotificationProvider` | `OutboxNotificationProvider` (in-app) | WhatsApp, Expo push |
 | `IIntelligenceProvider` | `RuleBasedIntelligenceProvider` (deterministic) | A model |
 
@@ -69,21 +69,138 @@ does not disturb anything.
 
 ---
 
-## Access control (fingerprint / RFID / face) — ACTION REQUIRED
+## Access control (fingerprint / RFID / face) — X2008 confirmed, protocol unverified
 
 V1 uses a rotating branch QR code and a PIN. Both are validated inside GymFlow.
+A third method, fingerprint, now has a real device and a best-effort provider
+behind it — off by default, and honest about what has and has not been
+confirmed.
 
 **Hard rule, enforced by the interface: GymFlow never receives, stores or
 transmits a biometric template.** A hardware provider matches on its own device
-and returns only an identifier plus an allow/deny decision.
+and returns only an identifier plus an allow/deny decision. Nothing below
+changes that — the terminal resolves a scan to its own numeric "enroll ID" on
+its own hardware, and that small identifier is the only thing GymFlow ever
+sees.
 
-**Exact values/access needed:**
+### The confirmed device
 
-1. Vendor and model of the turnstile / reader controller at each branch
-2. Whether it exposes a local API, a cloud API, or only a file/DB export
-3. How it identifies a person to an external system (employee code? card ID?)
-4. Whether it can push events, or must be polled
-5. Network access from the GymFlow server to the controller
+One SLAM branch has a physically inspected ZKTeco **X2008** fingerprint
+attendance terminal:
+
+| Fact | Value |
+| --- | --- |
+| Serial | `CUB7250201499` |
+| MAC | `00:17:61:10:15:f2` |
+| Device ID (ADMS) | `1` |
+| LAN IP / TCP port | `192.168.0.5` / `4370` |
+| Fingerprint algorithm | Finger VX10.0 |
+| Platform / MCU | ZMM200_TFT / 14 |
+| Server mode | **ADMS** (push) |
+| ADMS Server currently configured on the device | `http://biometric.yoactiv.com` |
+| Communication Key | `0` (factory default / unset) |
+
+These facts are real (confirmed from the unit), not inferred. This
+environment has no network path to the device, so nothing below has been
+tested against it — only against the documented shape of the protocol family.
+
+### What "ADMS" means, and what is/isn't built
+
+ADMS is ZKTeco's standard *push* protocol: the terminal periodically POSTs its
+attendance log to a configured server URL, conventionally under
+`/iclock/cdata`, as tab-delimited text. It is a widely published protocol
+family, not proprietary — but this repository has **never seen real traffic
+from serial CUB7250201499**, and firmware revisions are known to vary in
+field-level detail (delimiter, optional columns, whether a handshake is
+required before the terminal will start pushing).
+
+Given that, this PR builds:
+
+* The full configuration/adapter boundary (device registry, member↔enrolled-id
+  mapping, `IAccessControlProvider` conformance) — this part is not
+  protocol-dependent and is fully tested.
+* A best-effort parser for the classic tab-delimited `ATTLOG` push body
+  (`app/integrations/access_control/x2008.py::parse_adms_attlog`), clearly
+  commented as unverified, tolerant of malformed lines, and reachable only
+  when `ACCESS_CONTROL_ENABLED=true`.
+* A receiver endpoint (`POST /api/v1/hardware/fingerprint/x2008/{secret}/iclock/cdata`)
+  authenticated by a GymFlow-controlled shared secret embedded in the URL the
+  device is configured to push to (see below) — **not** the device's own
+  Communication Key, which stays in `FINGERPRINT_COMM_KEY` for whatever
+  future protocol path actually needs it.
+
+**Explicitly NOT built:** the ADMS handshake some firmware requires before it
+will begin POSTing at all (`GET /iclock/cdata` option negotiation,
+`/iclock/getrequest` command polling, `/iclock/devicecmd` acknowledgement).
+The GET route that exists today answers "OK" and nothing more. If the X2008's
+firmware needs more than that, attendance batches may simply never arrive
+until this is built and verified against real device logs. **This must be
+confirmed against actual traffic from the unit before flipping
+`ACCESS_CONTROL_ENABLED` on in production.**
+
+### Authenticating the device push
+
+The device has no GymFlow account and cannot carry a bearer token. Two
+secrets are involved and must not be confused:
+
+* `FINGERPRINT_COMM_KEY` — the terminal's own Communication Key (currently
+  `0`/unset on the real unit). This authenticates GymFlow *to the device* for
+  older SDK/pull-style protocols. **Do not change the value configured on the
+  physical device from this PR or any code it ships.**
+* `FINGERPRINT_ADMS_SHARED_SECRET` — a secret GymFlow generates and controls,
+  required in the push URL before a batch is accepted. This is what
+  authenticates the push request *to GymFlow*.
+
+The device's "ADMS Server" setting is a base URL; standard firmware appends a
+fixed `/iclock/cdata` suffix and query parameters (at minimum `SN=<serial>`)
+to whatever base is configured. The intended setup is to configure that base
+URL as:
+
+```
+https://<api-host>/api/v1/hardware/fingerprint/x2008/<FINGERPRINT_ADMS_SHARED_SECRET>
+```
+
+so the secret travels as a URL path segment we control entirely, independent
+of whatever query parameters the firmware happens to append. **This exact
+appending behaviour is the same unverified-protocol-shape assumption as
+everything else in this section** — confirm it against the real device before
+relying on it. IP allowlisting was considered and rejected as the *primary*
+mechanism: the device's LAN IP (`192.168.0.5`) is behind SLAM's router, and
+the ADMS server it currently talks to is a public host
+(`biometric.yoactiv.com`), so GymFlow would see the branch's NAT egress IP,
+not the device's LAN address.
+
+### What is now built
+
+* `fingerprint_devices` / `fingerprint_enrollments` tables — see the
+  docstrings on `FingerprintDevice`/`FingerprintEnrollment` in
+  `backend/app/db/models.py` for why this is a bespoke table rather than
+  `Member.external_ref` (reserved for Yoactiv) or a `Setting` JSON blob.
+* `attendance_events.external_event_id` — nullable, unique when present, so a
+  redelivered ADMS batch (normal behaviour for this protocol family) resolves
+  to the same row instead of a duplicate visit.
+* `X2008FingerprintProvider` (`backend/app/integrations/access_control/x2008.py`)
+  — satisfies `IAccessControlProvider`; `open_gate()` returns `False` for real
+  reasons, not as a stub: the X2008 is a standalone attendance recorder with
+  no actuator, not a turnstile controller.
+* `attendance_service.record_fingerprint_scan()` — the device-facing write
+  path, sharing its actual row-construction code
+  (`_write_member_event`) with the existing interactive `member_event()` so
+  there remains exactly one place a member `AttendanceEvent` is written.
+* Staff admin endpoints under `/api/v1/hardware/fingerprint/` to register a
+  device and map a member to their enrolled ID — ordinary bearer-token API,
+  unrelated to the device-push trust model above.
+
+**Still required before enabling in production:**
+
+1. Real ADMS traffic from serial CUB7250201499 to confirm the ATTLOG field
+   order/delimiter and whether the option-negotiation handshake is required.
+2. A decision on whether the device's own Communication Key needs to be set
+   to something other than the factory default for whatever future
+   pull-style path might use it — out of scope for this PR, and nothing here
+   changes it.
+3. `FINGERPRINT_ADMS_SHARED_SECRET` generated and set, and the device's ADMS
+   Server URL updated to embed it, by whoever has hands-on access to the unit.
 
 ---
 
