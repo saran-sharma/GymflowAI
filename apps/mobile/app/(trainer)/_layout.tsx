@@ -46,6 +46,7 @@ export default function TrainerLayout() {
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="pt/[id]" options={{ href: null }} />
       <Tabs.Screen name="client/[id]" options={{ href: null }} />
+      <Tabs.Screen name="plan/[id]" options={{ href: null }} />
     </Tabs>
   );
 }
