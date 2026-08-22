@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     rate_limit_login: str = "10/minute"
     rate_limit_checkin: str = "20/minute"
     rate_limit_default: str = "240/minute"
+    # The ADMS push endpoint has no user session to key a per-trainer bucket
+    # off, so it gets its own, deliberately generous, scope.
+    rate_limit_hardware_push: str = "60/minute"
 
     # ------------------------------------------------------------- clients
     cors_origins: str = "*"
@@ -66,11 +69,33 @@ class Settings(BaseSettings):
     # work with all of these off; turning one on only swaps a mock provider for
     # a real one behind the same interface.
     yoactiv_enabled: bool = False
+    # Placeholder config slots only — nothing reads these yet. Yoactiv's real
+    # base URL and auth scheme are not documented to us (see the "Yoactiv —
+    # ACTION REQUIRED" section of docs/INTEGRATIONS.md). Do not invent a
+    # value; leave both empty until that documentation exists.
+    yoactiv_base_url: str = ""
+    yoactiv_api_key: str = ""
     inbody_enabled: bool = False
     access_control_enabled: bool = False
     whatsapp_enabled: bool = False
     intelligence_enabled: bool = False
     push_enabled: bool = False
+
+    # ------------------------------------------- fingerprint / X2008 (ADMS)
+    # SLAM's confirmed real device (X2008, serial CUB7250201499) authenticates
+    # itself to GymFlow's older-style "pull" protocols with a numeric
+    # Communication Key set on the terminal. It is a secret, never hardcoded,
+    # never logged, and never written into the DB-readable `Setting` table —
+    # see docs/INTEGRATIONS.md. The device is currently configured with the
+    # factory default (0 / unset); this field holds whatever SLAM's IT sets it
+    # to and is never written here without one.
+    fingerprint_comm_key: str | None = None
+    # A secret GymFlow itself controls and requires in the ADMS push URL
+    # before it will accept a batch. This is a different secret from the
+    # comm key above: it authenticates the *push* HTTP request to us, not
+    # GymFlow to the device. See docs/INTEGRATIONS.md for exactly how it is
+    # meant to be embedded in the device's configured "ADMS Server" URL.
+    fingerprint_adms_shared_secret: str | None = None
 
     # ---------------------------------------------------------------- demo
     seed_demo_data: bool = True
@@ -103,6 +128,10 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS must list explicit origins")
         if self.seed_demo_data:
             problems.append("SEED_DEMO_DATA must be false")
+        if self.access_control_enabled and not self.fingerprint_adms_shared_secret:
+            problems.append(
+                "FINGERPRINT_ADMS_SHARED_SECRET must be set when ACCESS_CONTROL_ENABLED is true"
+            )
         if problems:
             raise RuntimeError(
                 "Refusing to start in " f"{self.environment}: " + "; ".join(problems)

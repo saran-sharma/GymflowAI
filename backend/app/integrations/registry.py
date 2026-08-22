@@ -40,7 +40,7 @@ def body_composition_provider():
 
 @lru_cache
 def access_control_provider():
-    return access_control.build_provider()
+    return access_control.build_provider(SessionLocal)
 
 
 @lru_cache

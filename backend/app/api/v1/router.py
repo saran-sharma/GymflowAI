@@ -10,6 +10,7 @@ from app.api.v1 import (
     auth,
     branches,
     classes,
+    hardware,
     incentives,
     journeys,
     marketing,
@@ -45,5 +46,6 @@ api_router.include_router(marketing.router)
 api_router.include_router(performance.router)
 api_router.include_router(alerts.router)
 api_router.include_router(settings.router)
+api_router.include_router(hardware.router)
 
 __all__ = ["api_router"]

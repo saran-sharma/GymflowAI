@@ -78,6 +78,38 @@ class AccessDecision:
 
 
 @dataclass(frozen=True)
+class AccessEvent:
+    """One access-control scan, normalized to what a device can actually
+    tell us — the shape every hardware adapter (X2008 today; a future
+    RFID/face terminal tomorrow) converts its own wire format into before a
+    Member Resolver ever sees it.
+
+    Deliberately excludes anything the hardware does not genuinely provide:
+
+    * ``event_type`` is ``None`` here on purpose for a passive attendance
+      terminal like the X2008 — it has no "in" or "out" button, only a scan.
+      Whether a given scan is a check-in or check-out is inferred downstream
+      from the member's current state (see
+      ``attendance_service.record_fingerprint_scan``), not asserted by the
+      device, so this field is never fabricated to look more certain than
+      the source data is.
+    * ``device_occurred_at`` is the device's own clock, kept for traceability
+      only — GymFlow's attendance record is timestamped by ``received_at``
+      (the server clock), the same "never trust a client/device clock"
+      principle ``app.core.clock`` already applies everywhere else.
+    """
+
+    device_id: str  # the device's own serial/identifier, not GymFlow's PK
+    device_user_id: str  # the enrolled-id the device assigned this person
+    device_occurred_at: datetime | None
+    received_at: datetime
+    branch_code: str | None = None
+    event_type: str | None = None
+    reference_id: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class NotificationMessage:
     to: str
     title: str
@@ -176,6 +208,7 @@ class IntegrationDisabled(RuntimeError):
 
 __all__ = [
     "AccessDecision",
+    "AccessEvent",
     "BodyCompositionReading",
     "DeliveryReceipt",
     "ExternalAttendanceEvent",

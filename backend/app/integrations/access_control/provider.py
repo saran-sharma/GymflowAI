@@ -87,12 +87,19 @@ class HardwareAccessControlProvider:
         }
 
 
-def build_provider():
-    return (
-        HardwareAccessControlProvider()
-        if settings.access_control_enabled
-        else SoftwareAccessControlProvider()
-    )
+def build_provider(session_factory: Any | None = None):
+    """SLAM's only confirmed access-control hardware today is the X2008
+    fingerprint terminal, so turning ``access_control_enabled`` on swaps in
+    that best-effort provider — the same one-flag-one-swap shape
+    ``yoactiv_enabled``/``inbody_enabled`` already use elsewhere in this
+    package. ``HardwareAccessControlProvider`` stays exported as the generic
+    placeholder for RFID/face hardware nobody has connected yet.
+    """
+    if settings.access_control_enabled:
+        from app.integrations.access_control.x2008 import X2008FingerprintProvider
+
+        return X2008FingerprintProvider(session_factory)
+    return SoftwareAccessControlProvider()
 
 
 __all__ = [
