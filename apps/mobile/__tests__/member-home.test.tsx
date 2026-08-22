@@ -13,6 +13,7 @@ import React from 'react';
 
 import MemberHomeScreen from '../app/(member)/index';
 import type {
+  Assessment,
   Journey,
   MemberHome,
   PTPackage,
@@ -34,10 +35,14 @@ jest.mock('expo-router', () => ({
 const mockHome = jest.fn();
 const mockPayments = jest.fn();
 const mockDays = jest.fn();
+const mockAssessment = jest.fn();
+const mockSubmitCheckIn = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   memberHome: (...a: unknown[]) => mockHome(...a),
   myPayments: (...a: unknown[]) => mockPayments(...a),
   myJourneyDays: (...a: unknown[]) => mockDays(...a),
+  myAssessment: (...a: unknown[]) => mockAssessment(...a),
+  submitCheckIn: (...a: unknown[]) => mockSubmitCheckIn(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -131,6 +136,20 @@ function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
   };
 }
 
+function anAssessment(partial: Partial<Assessment> = {}): Assessment {
+  return {
+    id: 1,
+    status: 'completed',
+    goal: 'Fat loss',
+    height_cm: 178,
+    weight_kg: 82.4,
+    notes: null,
+    trainer_id: 5,
+    recorded_at: '2026-08-15T09:00:00Z',
+    ...partial,
+  };
+}
+
 function aPtSession(partial: Partial<PTSession> = {}): PTSession {
   return {
     id: 1,
@@ -173,6 +192,7 @@ function aHome(partial: Partial<MemberHome> = {}): MemberHome {
     occupancy: null,
     unread_alerts: 0,
     streak_days: 3,
+    today_checkin: null,
     ...partial,
   };
 }
@@ -198,6 +218,13 @@ beforeEach(() => {
   mockPayments.mockResolvedValue([]);
   mockDays.mockResolvedValue([]);
   mockHome.mockResolvedValue(aHome());
+  mockAssessment.mockResolvedValue(null);
+  mockSubmitCheckIn.mockResolvedValue({
+    id: 1,
+    work_date: '2026-08-22',
+    feeling: 'good',
+    created_at: '2026-08-22T09:00:00Z',
+  });
 });
 
 /* ------------------------------------------------------------ not started */
@@ -536,5 +563,108 @@ describe('a lapsed membership', () => {
     await openHome();
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getByText('on plan')).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------------- the greeting */
+
+describe('the greeting', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('says Good Morning before noon', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-22T08:00:00'));
+    await openHome();
+    expect(screen.getByText('Good Morning, Aditya')).toBeTruthy();
+  });
+
+  it('says Good Afternoon from noon to five', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-22T14:00:00'));
+    await openHome();
+    expect(screen.getByText('Good Afternoon, Aditya')).toBeTruthy();
+  });
+
+  it('says Good Evening after five', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-22T19:00:00'));
+    await openHome();
+    expect(screen.getByText('Good Evening, Aditya')).toBeTruthy();
+  });
+
+  it('uses the first name only, not the full name', async () => {
+    mockHome.mockResolvedValue(aHome({ full_name: 'Aditya Rao' }));
+    await openHome();
+    expect(screen.queryByText(/Good \w+, Aditya Rao/)).toBeNull();
+  });
+});
+
+/* --------------------------------------------------------------- weight */
+
+describe('current weight', () => {
+  // The only real source is a single hand-measured Day 1–3 assessment — one
+  // point, never a series — so this states when it was recorded rather than
+  // implying today's number, and draws no trend the data cannot back up.
+  it('shows the recorded weight with when it was recorded, not a trend', async () => {
+    mockAssessment.mockResolvedValue(anAssessment({ weight_kg: 82.4, recorded_at: '2026-08-15T09:00:00Z' }));
+    await openHome();
+    await waitFor(() => expect(screen.getByText('82.4 kg')).toBeTruthy());
+    expect(screen.getByText(/Recorded/)).toBeTruthy();
+    expect(screen.queryByText(/↓|↑/)).toBeNull();
+  });
+
+  it('says plainly when nothing has been recorded, rather than inventing a number', async () => {
+    mockAssessment.mockResolvedValue(null);
+    await openHome();
+    await waitFor(() => expect(screen.getByText('Not recorded yet')).toBeTruthy());
+  });
+
+  it('also says so when an assessment exists but was never weighed', async () => {
+    mockAssessment.mockResolvedValue(anAssessment({ weight_kg: null }));
+    await openHome();
+    await waitFor(() => expect(screen.getByText('Not recorded yet')).toBeTruthy());
+  });
+});
+
+/* ------------------------------------------------------------ daily feeling */
+
+describe('the daily feeling check-in', () => {
+  it('offers the picker when nothing has been submitted today', async () => {
+    await openHome();
+    expect(screen.getByText('How are you feeling today?')).toBeTruthy();
+    expect(screen.getByLabelText('Great')).toBeTruthy();
+    expect(screen.getByLabelText('Good')).toBeTruthy();
+    expect(screen.getByLabelText('Okay')).toBeTruthy();
+    expect(screen.getByLabelText('Tired')).toBeTruthy();
+    expect(screen.getByLabelText('Low')).toBeTruthy();
+  });
+
+  it('submits the tapped feeling and shows the quiet confirmation, not a form', async () => {
+    await openHome();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Good'));
+    });
+    expect(mockSubmitCheckIn).toHaveBeenCalledWith('good', 'token');
+    await waitFor(() => expect(screen.getByText(/Feeling good today/)).toBeTruthy());
+    expect(screen.queryByText('How are you feeling today?')).toBeNull();
+  });
+
+  it('shows the confirmation directly when today was already answered', async () => {
+    mockHome.mockResolvedValue(
+      aHome({
+        today_checkin: { id: 9, work_date: '2026-08-22', feeling: 'low', created_at: '2026-08-22T07:00:00Z' },
+      }),
+    );
+    await openHome();
+    expect(screen.getByText(/Feeling low today/)).toBeTruthy();
+    expect(screen.queryByText('How are you feeling today?')).toBeNull();
+    expect(mockSubmitCheckIn).not.toHaveBeenCalled();
+  });
+
+  it('reports an error and keeps the picker when the save fails', async () => {
+    mockSubmitCheckIn.mockRejectedValue(new Error('offline'));
+    await openHome();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Tired'));
+    });
+    expect(screen.getByText('That did not save. Try again.')).toBeTruthy();
+    expect(screen.getByText('How are you feeling today?')).toBeTruthy();
   });
 });

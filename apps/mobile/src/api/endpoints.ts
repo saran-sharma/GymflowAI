@@ -196,12 +196,14 @@ import type {
   CardioSession,
   ClassRosterEntry,
   CorrectionKind,
+  Feeling,
   FollowUpTask,
   GroupClass,
   Journey,
   JourneyDay,
   MarketingDashboard,
   MemberActivity,
+  MemberCheckIn,
   MemberHome,
   NeedsAttention,
   OccupancyForecast,
@@ -227,6 +229,10 @@ import type {
 /* ------------------------------------------------------------ member home */
 
 export const memberHome = (token: string) => request<MemberHome>('/members/me/home', { token });
+
+/** Today's "how are you feeling" answer. A same-day resubmit updates it. */
+export const submitCheckIn = (feeling: Feeling, token: string) =>
+  request<MemberCheckIn>('/members/me/checkin', { method: 'POST', body: { feeling }, token });
 
 export const memberActivity = (token: string, limit = 40, offset = 0) =>
   request<ActivityEntry[]>(`/members/me/activity?limit=${limit}&offset=${offset}`, { token });

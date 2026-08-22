@@ -33,7 +33,7 @@ import {
   space,
   type Tone,
 } from '../design';
-import type { JourneyDay, WorkoutSplit } from '../api/types';
+import type { Feeling, JourneyDay, WorkoutSplit } from '../api/types';
 import { splitMeta } from './programme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -465,6 +465,77 @@ export function PtLine({
   );
 }
 
+/* ------------------------------------------------------------- daily feeling */
+
+export const FEELING_META: Record<Feeling, { emoji: string; label: string }> = {
+  great: { emoji: '😊', label: 'Great' },
+  good: { emoji: '🙂', label: 'Good' },
+  okay: { emoji: '😐', label: 'Okay' },
+  tired: { emoji: '😓', label: 'Tired' },
+  low: { emoji: '😴', label: 'Low' },
+};
+
+/**
+ * "How are you feeling today?" — a daily check-in, not a form.
+ *
+ * One tap answers it. Once answered it collapses to a single quiet line
+ * rather than staying interactive, because there is nothing more honest to
+ * ask a member who already told the app how their day is going — and
+ * re-showing five buttons next to their own answer would read as not having
+ * heard it.
+ */
+export function FeelingCheckIn({
+  value,
+  busy = false,
+  onSelect,
+}: {
+  /** Already answered today, or null to show the picker. */
+  value: Feeling | null;
+  busy?: boolean;
+  onSelect: (feeling: Feeling) => void;
+}) {
+  if (value) {
+    const meta = FEELING_META[value];
+    return (
+      <Row gap="sm">
+        <Text style={styles.feelingBigEmoji}>{meta.emoji}</Text>
+        <Text variant="body" tone={color.textSecondary} style={styles.grow}>
+          Feeling {meta.label.toLowerCase()} today. Let’s make it count.
+        </Text>
+      </Row>
+    );
+  }
+
+  return (
+    <Stack gap="sm">
+      <Text variant="label" tone={color.textSecondary}>
+        How are you feeling today?
+      </Text>
+      <Row gap="xs">
+        {(Object.keys(FEELING_META) as Feeling[]).map((feeling) => (
+          <Pressable
+            key={feeling}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={FEELING_META[feeling].label}
+            onPress={() => onSelect(feeling)}
+            style={({ pressed }) => [
+              styles.feelingOption,
+              pressed ? styles.feelingOptionPressed : null,
+              busy ? styles.feelingOptionBusy : null,
+            ]}
+          >
+            <Text style={styles.feelingEmoji}>{FEELING_META[feeling].emoji}</Text>
+            <Text variant="caption" tone={color.textTertiary} numberOfLines={1}>
+              {FEELING_META[feeling].label}
+            </Text>
+          </Pressable>
+        ))}
+      </Row>
+    </Stack>
+  );
+}
+
 /* -------------------------------------------------------------- honest gaps */
 
 /**
@@ -502,6 +573,19 @@ const styles = StyleSheet.create({
   weekDay: { flex: 1 },
   weekPip: { width: 18, height: 18, borderRadius: 9 },
   grow: { flex: 1 },
+  feelingBigEmoji: { fontSize: 22, lineHeight: 26 },
+  feelingOption: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: space.sm,
+    borderRadius: radii.md,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  feelingOptionPressed: { backgroundColor: color.surfaceOverlay },
+  feelingOptionBusy: { opacity: 0.5 },
+  feelingEmoji: { fontSize: 22, lineHeight: 26 },
   kindTag: {
     flexDirection: 'row',
     alignItems: 'center',

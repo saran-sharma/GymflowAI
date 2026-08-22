@@ -23,6 +23,7 @@ from app.db.models import (
     AlertStatus,
     AttendanceCorrection,
     CorrectionStatus,
+    Member,
     RoleKey,
     Task,
     Trainer,
@@ -117,6 +118,16 @@ def broadcast(
     if payload.branch_id is not None:
         assert_branch_access(user, payload.branch_id)
 
+    if payload.audience == "member":
+        # A single member has their own branch regardless of whether the
+        # caller passed one — checking access against it (not the omitted
+        # `branch_id`) is what stops a branch manager reaching a member
+        # outside their branch just by leaving `branch_id` off the request.
+        target = db.get(Member, payload.member_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Member not found")
+        assert_branch_access(user, target.branch_id)
+
     recipients = alert_service.send_broadcast(
         db,
         sender=user,
@@ -125,6 +136,7 @@ def broadcast(
         broadcast_type=payload.broadcast_type,
         title=payload.title,
         body=payload.message,
+        member_id=payload.member_id,
     )
     return BroadcastResult(
         recipients=recipients,

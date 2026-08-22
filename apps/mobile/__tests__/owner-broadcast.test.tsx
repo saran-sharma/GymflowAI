@@ -115,6 +115,20 @@ describe('composing a message', () => {
     expect(screen.getByTestId('broadcast-branch-1').props.accessibilityState.selected).toBe(true);
   });
 
+  it('offers PT members without inventing a recipient estimate nothing on screen already knows', async () => {
+    // Unlike members/trainers, no PT-member count exists anywhere else on
+    // this screen — the preview must say nothing about a count rather than
+    // guess one.
+    await draw();
+    fireEvent.changeText(screen.getByTestId('broadcast-title'), 'PT slot opened');
+    fireEvent.changeText(screen.getByTestId('broadcast-message'), 'Friday 6pm is free.');
+    fireEvent.press(screen.getByTestId('broadcast-audience-pt_members'));
+    expect(screen.getByTestId('broadcast-audience-pt_members').props.accessibilityState.selected).toBe(
+      true,
+    );
+    expect(screen.queryByText(/recipient.*\(estimate\)/)).toBeNull();
+  });
+
   it('keeps Send disabled until both a title and a message are entered', async () => {
     await draw();
     expect(screen.getByTestId('broadcast-send').props.accessibilityState.disabled).toBe(true);

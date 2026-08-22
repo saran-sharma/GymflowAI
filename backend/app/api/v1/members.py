@@ -20,6 +20,7 @@ from app.db.models import (
     CaptureMethod,
     EventType,
     Member,
+    MemberCheckIn,
     Membership,
     MembershipStatus,
     PersonType,
@@ -36,7 +37,13 @@ from app.schemas.common import (
     MessageOut,
     OccupancyOut,
 )
-from app.schemas.training import ActivityEntryOut, MemberHomeOut, TrainerClientDetailOut
+from app.schemas.training import (
+    ActivityEntryOut,
+    MemberCheckInOut,
+    MemberCheckInRequest,
+    MemberHomeOut,
+    TrainerClientDetailOut,
+)
 from app.services import (
     activity_service,
     alert_service,
@@ -45,6 +52,7 @@ from app.services import (
     incentive_service,
     journey_service,
     pt_service,
+    wellness_service,
 )
 
 from .journeys import assert_can_read_member
@@ -220,7 +228,23 @@ def member_home(
         occupancy=attendance_service.branch_occupancy(db, member.branch),
         unread_alerts=unread,
         streak_days=journey_service.streak(db, member, on=today),
+        today_checkin=(
+            MemberCheckInOut.model_validate(checkin)
+            if (checkin := wellness_service.today_checkin(db, member, member.branch))
+            else None
+        ),
     )
+
+
+@router.post("/me/checkin", response_model=MemberCheckInOut)
+def submit_checkin(
+    payload: MemberCheckInRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MemberCheckIn:
+    """Today's "how are you feeling" answer. A resubmit the same day updates it."""
+    member = _current_member(db, user)
+    return wellness_service.submit_checkin(db, member, member.branch, payload.feeling)
 
 
 @router.get("/me/activity", response_model=list[ActivityEntryOut])

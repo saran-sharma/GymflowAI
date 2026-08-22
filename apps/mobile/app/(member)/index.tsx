@@ -11,12 +11,14 @@
  */
 
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
-import { OFFLINE_CODE } from '../../src/api/client';
+import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type {
+  Assessment,
+  Feeling,
   JourneyDay,
   MemberHome,
   Payment,
@@ -24,11 +26,20 @@ import type {
   WorkoutSession,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
-import { NotConnected, PtLine, TodayCard, WeekStrip, journeyToday } from '../../src/components/member';
+import {
+  FeelingCheckIn,
+  NotConnected,
+  PtLine,
+  TodayCard,
+  WeekStrip,
+  journeyToday,
+} from '../../src/components/member';
 import {
   Badge,
+  Banner,
   Body,
   Card,
+  Divider,
   ErrorState,
   Eyebrow,
   LinkButton,
@@ -45,7 +56,16 @@ import {
   color,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
+import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel, money, timeOfDay } from '../../src/utils/format';
+
+/** "Good Morning" / "Good Afternoon" / "Good Evening" — device-local time. */
+function greeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
 
 /** Local midnight-to-midnight test, so "today" means the member's today. */
 function isToday(iso: string | null | undefined): boolean {
@@ -82,10 +102,39 @@ function loggedSets(session: WorkoutSession): number {
 
 export default function MemberHomeScreen() {
   const router = useRouter();
+  const { withToken } = useAuth();
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
   const payments = useApi<Payment[]>((token) => api.myPayments(token), []);
   // The member's week, which replaces the internal 45-day counter.
   const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
+  // The trainer's hand-measured Day 1–3 weight — the one real weight source
+  // that exists today. It is not a repeated measurement, so there is no
+  // trend to show against it; see `renderWeight` for the honest framing.
+  const weight = useApi<Assessment | null>((token) => api.myAssessment(token), []);
+
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
+
+  const submitFeeling = useCallback(
+    async (feeling: Feeling) => {
+      setCheckinBusy(true);
+      setCheckinError(null);
+      try {
+        const result = await withToken((token) => api.submitCheckIn(feeling, token));
+        // Updates the one field that changed rather than refetching the
+        // whole screen — the member just answered a question, not started a
+        // new session.
+        if (home.data) home.setData({ ...home.data, today_checkin: result });
+      } catch (caught) {
+        setCheckinError(
+          caught instanceof ApiError ? caught.message : 'That did not save. Try again.',
+        );
+      } finally {
+        setCheckinBusy(false);
+      }
+    },
+    [withToken, home],
+  );
 
   /* Home now sends the member straight into logging, so it is the screen they
    * come back to — and its counts describe a moment that has already passed.
@@ -163,11 +212,13 @@ export default function MemberHomeScreen() {
           />
         }
       >
-        {/* Who and where. Quiet — the member knows their own name. */}
+        {/* Establishes context immediately: who, when, and where. */}
         <Row gap="md">
           <AccountAvatar size={44} />
           <Stack gap="xxs" style={styles.grow}>
-            <Text variant="heading">{me.full_name}</Text>
+            <Text variant="title">
+              {greeting()}, {me.full_name.split(' ')[0]}
+            </Text>
             <Text variant="label" tone={color.textTertiary}>
               {me.branch_name}
             </Text>
@@ -205,6 +256,26 @@ export default function MemberHomeScreen() {
 
         {/* Today. The one thing this screen exists to say. */}
         {renderToday()}
+
+        {/* Quick personal status — how the member is doing right now, in the
+            two things GymFlow can actually say something real about. Weight
+            is a single hand-measured point, not a tracked series, so it is
+            framed by when it was recorded rather than implied to be today's.
+            Feeling is the member's own answer, optional and one tap. */}
+        <Card>
+          {renderWeight()}
+          <Divider />
+          {checkinError ? (
+            <Banner tone="critical" icon="alert-circle-outline">
+              {checkinError}
+            </Banner>
+          ) : null}
+          <FeelingCheckIn
+            value={me.today_checkin?.feeling ?? null}
+            busy={checkinBusy}
+            onSelect={(feeling) => void submitFeeling(feeling)}
+          />
+        </Card>
 
         {/* The training week, immediately under today's session.
             Not the 45-day counter: that is a business rule about when a
@@ -457,6 +528,52 @@ export default function MemberHomeScreen() {
         }
         secondary={next ? { label: 'See the full chart', onPress: chart } : undefined}
       />
+    );
+  }
+
+  /**
+   * The one real weight source that exists today: the trainer's hand-measured
+   * Day 1–3 assessment. It is a single point, not a series — no second
+   * measurement exists anywhere to compare it against — so this states when
+   * it was recorded rather than implying a "current" figure from today, and
+   * never draws a trend arrow the data cannot back up.
+   *
+   * A body-composition trend (weight, body fat, muscle) belongs to InBody,
+   * which is not connected — see `docs/INTEGRATIONS.md`. That gap is exactly
+   * the empty state below, not a number.
+   */
+  function renderWeight() {
+    const assessment = weight.data;
+    if (weight.loading) {
+      return (
+        <Row gap="sm">
+          <Eyebrow>Weight</Eyebrow>
+        </Row>
+      );
+    }
+    if (!assessment || assessment.weight_kg === null) {
+      return (
+        <Row gap="sm">
+          <Eyebrow>Weight</Eyebrow>
+          <Spacer />
+          <Text variant="label" tone={color.textTertiary}>
+            Not recorded yet
+          </Text>
+        </Row>
+      );
+    }
+    return (
+      <Row gap="md" align="center">
+        <Stack gap="xxs" style={styles.grow}>
+          <Eyebrow>Weight</Eyebrow>
+          <Text variant="heading">{assessment.weight_kg} kg</Text>
+        </Stack>
+        {assessment.recorded_at ? (
+          <Text variant="label" tone={color.textTertiary}>
+            Recorded {dayLabel(assessment.recorded_at)}
+          </Text>
+        ) : null}
+      </Row>
     );
   }
 

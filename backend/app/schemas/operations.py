@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models import (
     AlertSeverity,
@@ -54,15 +54,30 @@ class BroadcastRequest(BaseModel):
     Delivered through the existing in-app alert channel — one alert per
     recipient, so it lands in the same inbox `GET /alerts` already reads.
     There is no image field: nothing in GymFlow can store or serve one yet.
+
+    ``pt_members`` and ``member`` narrow the audience below "every member" —
+    PT members by an active package, a single member by ``member_id``. A
+    "membership segment" audience (renewal-window, plan type, …) is not here:
+    that needs a product decision about what a segment actually is, not a
+    mechanical filter on data already at hand.
     """
 
-    audience: str = Field(pattern="^(everyone|members|trainers)$")
+    audience: str = Field(pattern="^(everyone|members|trainers|pt_members|member)$")
     branch_id: int | None = None
+    member_id: int | None = None
     broadcast_type: str = Field(
         pattern="^(announcement|urgent|training|membership|motivation|campaign)$"
     )
     title: str = Field(min_length=1, max_length=160)
     message: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def _member_id_matches_audience(self) -> BroadcastRequest:
+        if self.audience == "member" and self.member_id is None:
+            raise ValueError("member_id is required when audience is 'member'")
+        if self.audience != "member" and self.member_id is not None:
+            raise ValueError("member_id is only accepted when audience is 'member'")
+        return self
 
 
 class BroadcastResult(BaseModel):
