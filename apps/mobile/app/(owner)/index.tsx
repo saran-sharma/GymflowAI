@@ -270,7 +270,7 @@ export default function OwnerDashboardScreen() {
             hint="next 30 days"
             tone={(renewals.data?.count ?? 0) > 0 ? 'caution' : 'positive'}
             icon="refresh-outline"
-            onPress={() => router.push('/(owner)/members' as never)}
+            onPress={() => router.push('/(owner)/renewals' as never)}
           />
           <StatCard
             label="Ready for PT"

@@ -42,6 +42,7 @@ export default function OwnerLayout() {
       <Tabs.Screen name="member/[id]" options={{ href: null }} />
       <Tabs.Screen name="marketing/[source]" options={{ href: null }} />
       <Tabs.Screen name="broadcast" options={{ href: null }} />
+      <Tabs.Screen name="renewals" options={{ href: null }} />
       <Tabs.Screen name="payments" options={{ href: null }} />
       <Tabs.Screen name="incentives" options={{ href: null }} />
       <Tabs.Screen name="performance" options={{ href: null }} />
