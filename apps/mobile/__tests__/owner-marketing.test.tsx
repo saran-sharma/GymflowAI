@@ -65,6 +65,8 @@ function aMember(partial: Partial<TrainerClient> = {}): TrainerClient {
     days_remaining: 17,
     journey: null,
     pt_package: null,
+    effective_pt_status: 'no_pt',
+    effective_pt_status_label: 'No PT package',
     next_pt_session: null,
     last_seen_on: '2026-08-20',
     visits_last_30: 5,

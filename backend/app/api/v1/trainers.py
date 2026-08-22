@@ -35,6 +35,7 @@ from app.db.models import (
     WorkoutSession,
 )
 from app.db.session import get_db
+from app.domain import pt_eligibility
 from app.schemas.common import (
     AttendanceDayOut,
     MessageOut,
@@ -385,8 +386,19 @@ def client_out(db: Session, member: Member, trainer: Trainer | None = None) -> T
     )
 
     days_remaining = None
+    membership_status = None
     if membership is not None and membership.ends_on is not None:
         days_remaining = (membership.ends_on - today).days
+        # Keep the stored status honest without needing a nightly job — same
+        # self-heal as GET /members/me, so the roster and a member's own
+        # screen never disagree about whether their membership has lapsed.
+        membership_status = pt_eligibility.effective_membership_status(
+            membership.status, membership.ends_on, today
+        )
+    elif membership is not None:
+        membership_status = membership.status
+
+    effective_pt = pt_service.effective_status_for_package(db, package)
 
     return TrainerClientOut(
         member_id=member.id,
@@ -395,10 +407,12 @@ def client_out(db: Session, member: Member, trainer: Trainer | None = None) -> T
         branch_id=member.branch_id,
         joined_on=member.joined_on,
         membership_plan=membership.plan_name if membership else None,
-        membership_status=membership.status if membership else None,
+        membership_status=membership_status,
         days_remaining=days_remaining,
         journey=journey_out(db, journey) if journey else None,
         pt_package=package_out(db, package) if package else None,
+        effective_pt_status=effective_pt.value,
+        effective_pt_status_label=pt_eligibility.EFFECTIVE_PT_STATUS_LABELS[effective_pt],
         next_pt_session=session_out(db, next_session) if next_session else None,
         last_seen_on=max(visit_dates) if visit_dates else None,
         visits_last_30=len(visit_dates),

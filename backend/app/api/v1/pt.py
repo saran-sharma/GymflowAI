@@ -33,6 +33,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.domain import pt_eligibility
 from app.schemas.training import (
     ConvertToPtRequest,
     CreatePackageRequest,
@@ -73,6 +74,7 @@ def package_out(db: Session, package: PTPackage) -> PTPackageOut:
     member = db.get(Member, package.member_id)
     trainer = db.get(Trainer, package.trainer_id) if package.trainer_id else None
     threshold = settings_service.get_int(db, "pt.low_balance_threshold", package.branch_id)
+    effective = pt_service.effective_status_for_package(db, package)
     return PTPackageOut(
         id=package.id,
         member_id=package.member_id,
@@ -90,8 +92,11 @@ def package_out(db: Session, package: PTPackage) -> PTPackageOut:
         price_amount=package.price_amount,
         currency=package.currency,
         low_balance=(
-            package.status is PackageStatus.ACTIVE and 0 < package.sessions_remaining <= threshold
+            effective is pt_eligibility.EffectivePtStatus.PT_ACTIVE
+            and 0 < package.sessions_remaining <= threshold
         ),
+        effective_status=effective.value,
+        effective_status_label=pt_eligibility.EFFECTIVE_PT_STATUS_LABELS[effective],
     )
 
 

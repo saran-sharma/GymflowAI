@@ -321,14 +321,28 @@ export default function MemberHomeScreen() {
 
         {/* An active PT package with nothing booked yet still says so — a
             converted member should never land on Home and see no sign they
-            are on PT at all. */}
-        {!pt && pack && pack.status === 'active' ? (
+            are on PT at all. Gated on effective status, not the package's
+            own status: a lapsed membership leaves the package row
+            untouched, so this only shows "PT with {trainer}" for a member
+            who can actually train PT today. */}
+        {!pt && pack && me.effective_pt_status === 'pt_active' ? (
           <StatCard
             label={pack.trainer_name ? `PT with ${pack.trainer_name}` : 'Personal training'}
             value={pack.sessions_remaining}
             hint={`of ${pack.sessions_total} sessions left`}
             tone={pack.low_balance ? 'caution' : 'brand'}
             icon="person"
+            onPress={() => router.push('/(member)/pt' as never)}
+          />
+        ) : null}
+
+        {!pt && pack && me.effective_pt_status === 'pt_paused_membership_expired' ? (
+          <StatCard
+            label="PT paused — membership expired"
+            value={pack.sessions_remaining}
+            hint={`of ${pack.sessions_total} sessions kept, renew to resume`}
+            tone="caution"
+            icon="pause"
             onPress={() => router.push('/(member)/pt' as never)}
           />
         ) : null}
@@ -438,7 +452,7 @@ export default function MemberHomeScreen() {
       // several sessions into PT. The full detail already lives in the
       // "Next PT session" section (or the package summary) further down, so
       // this only needs to say there is nothing to do today specifically.
-      if (pt || (pack && pack.status === 'active')) {
+      if (pt || (pack && me.effective_pt_status === 'pt_active')) {
         return (
           <Card>
             <Eyebrow>Today</Eyebrow>

@@ -57,11 +57,44 @@ function matches(client: TrainerClient, filter: Filter): boolean {
     case 'journey':
       return client.journey?.status === 'active';
     case 'pt':
-      return client.pt_package?.status === 'active';
+      // Effective status, not the package's own status: a member whose
+      // membership has lapsed still has an "active" package row, but they
+      // are not someone this trainer can put on the floor for PT today.
+      return client.effective_pt_status === 'pt_active';
     case 'low':
       return Boolean(client.pt_package?.low_balance);
     default:
       return true;
+  }
+}
+
+/**
+ * The roster badge for PT, one of the four states a trainer needs to tell
+ * apart at a glance. Reads `effective_pt_status` (the server's combined
+ * membership + package truth — see `app.domain.pt_eligibility`), never the
+ * package's own `status` alone, so a lapsed membership never displays as
+ * "PT ACTIVE" here.
+ */
+function ptStatusBadge(
+  client: TrainerClient,
+): { label: string; tone: 'brand' | 'caution' | 'critical' } | null {
+  const pack = client.pt_package;
+  switch (client.effective_pt_status) {
+    case 'pt_active':
+      return pack
+        ? { label: `${pack.sessions_remaining} left`, tone: pack.low_balance ? 'caution' : 'brand' }
+        : null;
+    case 'pt_paused_membership_expired':
+      return { label: 'PT paused — membership expired', tone: 'caution' };
+    case 'pt_expired':
+      return { label: 'PT package expired', tone: 'critical' };
+    case 'pt_completed':
+      return null;
+    case 'no_pt':
+    default:
+      return client.membership_status !== 'active'
+        ? { label: 'Membership expired — no PT', tone: 'critical' }
+        : null;
   }
 }
 
@@ -146,8 +179,8 @@ export default function TrainerClientsScreen() {
 
 function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => void }) {
   const journey = client.journey;
-  const pack = client.pt_package;
   const pct = journey?.completion_pct ?? null;
+  const ptBadge = ptStatusBadge(client);
 
   return (
     <Pressable
@@ -164,12 +197,7 @@ function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => 
               {client.membership_plan ?? 'No membership on file'}
             </Text>
           </Stack>
-          {pack && pack.status === 'active' ? (
-            <Badge
-              label={`${pack.sessions_remaining} left`}
-              tone={pack.low_balance ? 'caution' : 'brand'}
-            />
-          ) : null}
+          {ptBadge ? <Badge label={ptBadge.label} tone={ptBadge.tone} /> : null}
         </Row>
 
         {pct !== null ? (

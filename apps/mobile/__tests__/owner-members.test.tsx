@@ -78,6 +78,8 @@ function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
     price_amount: null,
     currency: null,
     low_balance: false,
+    effective_status: 'pt_active',
+    effective_status_label: 'PT active',
     ...partial,
   };
 }

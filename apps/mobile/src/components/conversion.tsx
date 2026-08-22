@@ -33,7 +33,11 @@ import {
   space,
 } from '../design';
 
-export type ConversionState = 'eligible' | 'already_pt' | 'not_eligible';
+export type ConversionState =
+  | 'eligible'
+  | 'already_pt'
+  | 'paused_membership_expired'
+  | 'not_eligible';
 
 /**
  * Whether this member can be converted, and why not when they cannot.
@@ -42,11 +46,20 @@ export type ConversionState = 'eligible' | 'already_pt' | 'not_eligible';
  * `journey.pt_converted`: the package is the thing the member actually trains
  * on, and a flag that disagreed with it would put the button back on screen
  * for somebody already training with their coach.
+ *
+ * The package's own `status` only ever means "does this package still exist
+ * and have sessions" — it says nothing about whether the member's membership
+ * is currently active. `effective_status` is the server's answer to that
+ * combined question (see `app.domain.pt_eligibility`), so a lapsed member
+ * with an untouched PT package reads as paused here, never as "already_pt".
  */
 export function conversionState(
   journey: Journey | null | undefined,
   pack: PTPackage | null | undefined,
 ): ConversionState {
+  if (pack && pack.effective_status === 'pt_paused_membership_expired') {
+    return 'paused_membership_expired';
+  }
   if (pack && pack.status === 'active') return 'already_pt';
   if (journey && journey.status === 'completed') return 'eligible';
   return 'not_eligible';
@@ -95,6 +108,21 @@ export function ConvertToPt({
         <Spacer />
         <Text variant="label" tone={color.textTertiary}>
           Your programming is the active plan
+        </Text>
+      </Row>
+    );
+  }
+
+  if (state === 'paused_membership_expired') {
+    return (
+      <Row gap="sm" style={styles.paused} testID="pt-paused-membership-expired">
+        <Ionicons name="pause-circle" size={18} color={color.status.caution} />
+        <Text variant="label" tone={color.status.caution}>
+          PT PAUSED — MEMBERSHIP EXPIRED
+        </Text>
+        <Spacer />
+        <Text variant="label" tone={color.textTertiary}>
+          Sessions and package are kept; renew to resume
         </Text>
       </Row>
     );
@@ -177,6 +205,13 @@ const styles = StyleSheet.create({
   active: {
     borderWidth: 1,
     borderColor: color.status.positive,
+    borderRadius: 12,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  paused: {
+    borderWidth: 1,
+    borderColor: color.status.caution,
     borderRadius: 12,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,

@@ -80,7 +80,10 @@ export default function OwnerMembersScreen() {
     [journeys.data],
   );
   const livePackages = useMemo(
-    () => (packages.data ?? []).filter((p) => p.status === 'active'),
+    // Effective status, not the package's own status: a lapsed membership
+    // leaves the package row "active" but paused — it should not count as
+    // PT activity happening on the floor today.
+    () => (packages.data ?? []).filter((p) => p.effective_status === 'pt_active'),
     [packages.data],
   );
 

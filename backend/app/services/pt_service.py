@@ -21,6 +21,8 @@ from app.db.models import (
     Branch,
     Journey,
     Member,
+    Membership,
+    MembershipStatus,
     PackageStatus,
     PTPackage,
     PTSession,
@@ -28,6 +30,7 @@ from app.db.models import (
     Trainer,
     User,
 )
+from app.domain import pt_eligibility
 from app.services import alert_service, audit, settings_service
 
 #: Statuses a session can no longer move out of.
@@ -238,6 +241,48 @@ def latest_package(db: Session, member_id: int) -> PTPackage | None:
         .where(PTPackage.member_id == member_id)
         .order_by(PTPackage.start_date.desc(), PTPackage.id.desc())
     )
+
+
+def _effective_membership_status(db: Session, member_id: int) -> MembershipStatus | None:
+    """The member's current membership status, honest as of today.
+
+    See ``app.domain.pt_eligibility.effective_membership_status`` — a lapsed
+    membership is EXPIRED here even if the stored column hasn't caught up.
+    """
+    membership = db.scalar(
+        select(Membership)
+        .where(Membership.member_id == member_id)
+        .order_by(Membership.ends_on.desc())
+    )
+    if membership is None:
+        return None
+    branch = db.get(Branch, membership.branch_id)
+    today = branch_today(branch.timezone if branch else None)
+    return pt_eligibility.effective_membership_status(membership.status, membership.ends_on, today)
+
+
+def effective_status_for_package(
+    db: Session, package: PTPackage | None
+) -> pt_eligibility.EffectivePtStatus:
+    """The one true PT status: this package's own status, gated by whether
+    the member's membership is currently active. See
+    ``app.domain.pt_eligibility`` for the rules — the package itself is never
+    touched here; only the *reported* status changes.
+    """
+    if package is None:
+        return pt_eligibility.EffectivePtStatus.NO_PT
+    membership_status = _effective_membership_status(db, package.member_id)
+    return pt_eligibility.effective_pt_status(
+        package_status=package.status,
+        sessions_remaining=package.sessions_remaining,
+        membership_status=membership_status,
+    )
+
+
+def effective_status_for_member(db: Session, member_id: int) -> pt_eligibility.EffectivePtStatus:
+    """Same as ``effective_status_for_package``, for a caller who only has a
+    member id (e.g. a roster row that may have no PT package at all)."""
+    return effective_status_for_package(db, latest_package(db, member_id))
 
 
 def settle_package(db: Session, package: PTPackage, on: date | None = None) -> PTPackage:

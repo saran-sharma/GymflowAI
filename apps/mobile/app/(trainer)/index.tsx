@@ -119,7 +119,7 @@ export default function TrainerDeskScreen() {
 
   const done = items.filter((item) => item.status === 'completed').length;
   const activeClients = roster.filter(
-    (client) => client.pt_package?.status === 'active' || client.journey?.status === 'active',
+    (client) => client.effective_pt_status === 'pt_active' || client.journey?.status === 'active',
   ).length;
   const lowBalance = roster.filter((client) => client.pt_package?.low_balance).length;
 

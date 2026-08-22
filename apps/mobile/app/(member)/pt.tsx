@@ -119,7 +119,11 @@ export default function MemberPtScreen() {
   const past = rows.filter((s) => s.status !== 'scheduled' && s.status !== 'in_progress');
   const promotion = offer.data;
   const roster = trainers.data ?? [];
-  const active = pack && pack.status === 'active';
+  // Effective status, not the package's own status: a lapsed membership
+  // leaves the package row untouched (see app.domain.pt_eligibility), so
+  // "active" here means "eligible to train today", not just "not deleted".
+  const active = pack && pack.effective_status === 'pt_active';
+  const pausedByMembership = pack && pack.effective_status === 'pt_paused_membership_expired';
 
   return (
     <Screen>
@@ -158,6 +162,19 @@ export default function MemberPtScreen() {
               Talk to your branch about renewing.
             </Text>
           </Banner>
+        ) : null}
+
+        {pausedByMembership ? (
+          <Card>
+            <Eyebrow>PT paused — membership expired</Eyebrow>
+            <Text variant="heading">
+              {pack.sessions_remaining} of {pack.sessions_total} sessions kept
+            </Text>
+            <Text variant="body" tone={color.textSecondary}>
+              Your PT package and remaining sessions are safe. Renew your membership to pick up
+              exactly where you left off.
+            </Text>
+          </Card>
         ) : null}
 
         {pack && pack.status === 'completed' ? (

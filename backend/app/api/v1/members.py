@@ -22,12 +22,12 @@ from app.db.models import (
     Member,
     MemberCheckIn,
     Membership,
-    MembershipStatus,
     PersonType,
     Trainer,
     User,
 )
 from app.db.session import get_db
+from app.domain import pt_eligibility
 from app.schemas.common import (
     BranchBrief,
     MemberEventRequest,
@@ -93,8 +93,9 @@ def my_membership(
     if membership is not None:
         days_remaining = (membership.ends_on - today).days
         # Keep the stored status honest without needing a nightly job.
-        if days_remaining < 0 and membership.status is MembershipStatus.ACTIVE:
-            membership.status = MembershipStatus.EXPIRED
+        membership.status = pt_eligibility.effective_membership_status(
+            membership.status, membership.ends_on, today
+        )
 
     period_start, period_end = incentive_service.month_bounds(today)
     visits = db.scalars(
@@ -190,6 +191,14 @@ def member_home(
         .order_by(Membership.ends_on.desc())
     )
     days_remaining = (membership.ends_on - today).days if membership else None
+    membership_status = None
+    if membership is not None:
+        # Keep the stored status honest without needing a nightly job — same
+        # self-heal as my_membership below, so Home and Membership never
+        # disagree about whether it has lapsed.
+        membership_status = pt_eligibility.effective_membership_status(
+            membership.status, membership.ends_on, today
+        )
 
     journey = journey_service.latest_journey(db, member.id)
     if journey is not None:
@@ -216,7 +225,7 @@ def member_home(
         branch_id=member.branch_id,
         branch_name=member.branch.name,
         membership_plan=membership.plan_name if membership else None,
-        membership_status=membership.status.value if membership else None,
+        membership_status=membership_status.value if membership_status else None,
         days_remaining=days_remaining,
         is_inside=attendance_service.is_inside(db, user.id, member.branch_id, today),
         trainer_name=trainer.user.full_name if trainer and trainer.user else None,
@@ -224,6 +233,7 @@ def member_home(
         today_workout=workout_out(db, workout) if workout else None,
         next_pt_session=session_out(db, next_pt) if next_pt else None,
         pt_package=package_out(db, package) if package else None,
+        effective_pt_status=pt_service.effective_status_for_package(db, package).value,
         next_class=class_out(db, upcoming[0], user) if upcoming else None,
         occupancy=attendance_service.branch_occupancy(db, member.branch),
         unread_alerts=unread,

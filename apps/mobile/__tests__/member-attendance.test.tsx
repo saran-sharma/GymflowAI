@@ -69,6 +69,7 @@ function aHome(partial: Partial<MemberHome> = {}): MemberHome {
     today_workout: null,
     next_pt_session: null,
     pt_package: null,
+    effective_pt_status: 'no_pt',
     next_class: null,
     occupancy: null,
     unread_alerts: 0,

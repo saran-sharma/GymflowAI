@@ -33,10 +33,14 @@ jest.mock('expo-router', () => ({
 const mockDetail = jest.fn();
 const mockOptions = jest.fn();
 const mockConvert = jest.fn();
+const mockStrength = jest.fn();
+const mockBodyComposition = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   myClientDetail: (...a: unknown[]) => mockDetail(...a),
   ptOptions: (...a: unknown[]) => mockOptions(...a),
   convertMemberToPt: (...a: unknown[]) => mockConvert(...a),
+  memberStrengthTrend: (...a: unknown[]) => mockStrength(...a),
+  memberBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -92,6 +96,8 @@ function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
     price_amount: null,
     currency: null,
     low_balance: false,
+    effective_status: 'pt_active',
+    effective_status_label: 'PT active',
     ...partial,
   } as PTPackage;
 }
@@ -109,6 +115,8 @@ function aDetail(partial: Partial<TrainerClientDetail['client']> = {}): TrainerC
       days_remaining: 200,
       journey: aJourney(),
       pt_package: null,
+      effective_pt_status: 'no_pt',
+      effective_pt_status_label: 'No PT package',
       next_pt_session: null,
       last_seen_on: '2026-08-16',
       visits_last_30: 12,
@@ -124,6 +132,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockOptions.mockResolvedValue([12, 20, 30]);
   mockDetail.mockResolvedValue(aDetail());
+  mockStrength.mockResolvedValue({ exercises: [] });
+  mockBodyComposition.mockResolvedValue({ latest: null, measurements: [] });
 });
 
 /* ------------------------------------------------------------ eligibility */
@@ -150,6 +160,15 @@ describe('who can be converted', () => {
   it('treats a finished package as convertible again rather than as active PT', () => {
     expect(conversionState(aJourney(), aPackage({ status: 'completed' }))).toBe('eligible');
   });
+
+  it('reads a package on a lapsed membership as paused, never as already_pt', () => {
+    // A member whose membership has expired keeps their PT package (it is
+    // never deleted), but the server reports it as paused via
+    // `effective_status` — the package's own `status` is still 'active'.
+    expect(
+      conversionState(aJourney(), aPackage({ effective_status: 'pt_paused_membership_expired' })),
+    ).toBe('paused_membership_expired');
+  });
 });
 
 /* --------------------------------------------------------------- the action */
@@ -175,6 +194,24 @@ describe('the action on the client screen', () => {
     await draw(<TrainerClientScreen />);
     expect(screen.getByTestId('pt-active')).toBeTruthy();
     expect(screen.getByText('PT ACTIVE')).toBeTruthy();
+    expect(screen.queryByTestId('convert-to-pt')).toBeNull();
+  });
+
+  it('shows PT PAUSED — MEMBERSHIP EXPIRED, not PT ACTIVE, once membership lapses', async () => {
+    // The package itself is untouched (still 'active', sessions intact) —
+    // only the member's membership has expired, which the server folds into
+    // `effective_status` rather than this screen re-deriving it.
+    mockDetail.mockResolvedValue(
+      aDetail({
+        membership_status: 'expired',
+        days_remaining: -3,
+        pt_package: aPackage({ effective_status: 'pt_paused_membership_expired' }),
+      }),
+    );
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByTestId('pt-paused-membership-expired')).toBeTruthy();
+    expect(screen.getByText('PT PAUSED — MEMBERSHIP EXPIRED')).toBeTruthy();
+    expect(screen.queryByText('PT ACTIVE')).toBeNull();
     expect(screen.queryByTestId('convert-to-pt')).toBeNull();
   });
 });
@@ -402,9 +439,10 @@ describe('expired membership', () => {
 describe('InBody placeholder copy', () => {
   it('explains the gap in plain language, not implementation detail', async () => {
     await draw(<TrainerClientScreen />);
+    expect(screen.getByText('No InBody measurements yet')).toBeTruthy();
     expect(
       screen.getByText(
-        "Body composition isn't tracked yet. Scans will appear here once InBody is turned on for your gym.",
+        "Once this member's next scan is synced, their measurements will appear here.",
       ),
     ).toBeTruthy();
   });
@@ -414,6 +452,42 @@ describe('InBody placeholder copy', () => {
     for (const term of [/scan table/i, /nothing writes to it/i]) {
       expect(screen.queryByText(term)).toBeNull();
     }
+  });
+});
+
+describe('the compact body composition card', () => {
+  it('shows weight, skeletal muscle and body fat for the client', async () => {
+    mockBodyComposition.mockResolvedValue({
+      latest: {
+        measured_at: '2026-08-22T09:00:00Z',
+        source: 'inbody',
+        weight_kg: 78.4,
+        body_fat_pct: 18.7,
+        muscle_mass_kg: 32.1,
+        bmi: 24.6,
+        visceral_fat: null,
+        bmr_kcal: null,
+        body_water_pct: null,
+      },
+      measurements: [
+        {
+          measured_at: '2026-08-22T09:00:00Z',
+          source: 'inbody',
+          weight_kg: 78.4,
+          body_fat_pct: 18.7,
+          muscle_mass_kg: 32.1,
+          bmi: 24.6,
+          visceral_fat: null,
+          bmr_kcal: null,
+          body_water_pct: null,
+        },
+      ],
+    });
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('78.4 kg')).toBeTruthy();
+    expect(screen.getByText('32.1 kg')).toBeTruthy();
+    expect(screen.getByText('18.7%')).toBeTruthy();
+    expect(screen.getByText(/Last measured:/)).toBeTruthy();
   });
 });
 
@@ -434,5 +508,22 @@ describe('back navigation', () => {
     fireEvent.press(screen.getByText('Back to clients'));
     expect(mockReplace).toHaveBeenCalledWith('/(trainer)/clients');
     expect(mockBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('the strength trend in Progress', () => {
+  it('shows a lift with a PR badge when the server flags one', async () => {
+    mockStrength.mockResolvedValue({
+      exercises: [{ exercise: 'Squat', points: [], heaviest_kg: 100, is_recent_pr: true }],
+    });
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('Squat')).toBeTruthy();
+    expect(screen.getByText('best 100kg')).toBeTruthy();
+    expect(screen.getByText('PR')).toBeTruthy();
+  });
+
+  it('says plainly when this client has not logged any sets yet', async () => {
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('No sets logged yet')).toBeTruthy();
   });
 });

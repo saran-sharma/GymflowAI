@@ -132,6 +132,8 @@ function aPackage(partial: Partial<PTPackage> = {}): PTPackage {
     price_amount: null,
     currency: null,
     low_balance: false,
+    effective_status: 'pt_active',
+    effective_status_label: 'PT active',
     ...partial,
   };
 }
@@ -188,6 +190,7 @@ function aHome(partial: Partial<MemberHome> = {}): MemberHome {
     today_workout: null,
     next_pt_session: null,
     pt_package: null,
+    effective_pt_status: 'no_pt',
     next_class: null,
     occupancy: null,
     unread_alerts: 0,
@@ -472,6 +475,7 @@ describe("a converted member's PT package", () => {
       aHome({
         journey: aJourney({ status: 'completed', phase: 'complete', pt_converted: true }),
         pt_package: aPackage({ sessions_remaining: 9, sessions_total: 12 }),
+        effective_pt_status: 'pt_active',
       }),
     );
     await openHome();
@@ -536,7 +540,9 @@ describe('a member trained entirely on PT, with no General Training journey', ()
   });
 
   it('points at PT rather than GT when only an active package exists, nothing booked', async () => {
-    mockHome.mockResolvedValue(aHome({ journey: null, pt_package: aPackage() }));
+    mockHome.mockResolvedValue(
+      aHome({ journey: null, pt_package: aPackage(), effective_pt_status: 'pt_active' }),
+    );
     await openHome();
     expect(screen.getByText('No session today')).toBeTruthy();
     expect(screen.queryByText('Your programme has not started')).toBeNull();
