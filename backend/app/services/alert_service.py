@@ -22,6 +22,8 @@ from app.db.models import (
     AlertSeverity,
     AlertStatus,
     Member,
+    PackageStatus,
+    PTPackage,
     RoleKey,
     Task,
     Trainer,
@@ -163,6 +165,7 @@ def send_broadcast(
     broadcast_type: str,
     title: str,
     body: str,
+    member_id: int | None = None,
 ) -> int:
     """Send one message to a whole audience, as individual alerts.
 
@@ -184,6 +187,21 @@ def send_broadcast(
         if branch_id is not None:
             stmt = stmt.where(Trainer.branch_id == branch_id)
         recipients += [t.user for t in db.scalars(stmt).all() if t.user is not None]
+    if audience == "pt_members":
+        stmt = (
+            select(Member)
+            .join(PTPackage, PTPackage.member_id == Member.id)
+            .options(joinedload(Member.user))
+            .where(Member.is_active.is_(True), PTPackage.status == PackageStatus.ACTIVE)
+            .distinct()
+        )
+        if branch_id is not None:
+            stmt = stmt.where(Member.branch_id == branch_id)
+        recipients += [m.user for m in db.scalars(stmt).all() if m.user is not None]
+    if audience == "member" and member_id is not None:
+        member = db.get(Member, member_id)
+        if member is not None and member.user is not None:
+            recipients.append(member.user)
 
     broadcast_id = uuid.uuid4().hex
     severity = _BROADCAST_SEVERITY.get(broadcast_type, AlertSeverity.INFO)

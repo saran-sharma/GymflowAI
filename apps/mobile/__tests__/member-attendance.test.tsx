@@ -73,6 +73,7 @@ function aHome(partial: Partial<MemberHome> = {}): MemberHome {
     occupancy: null,
     unread_alerts: 0,
     streak_days: 3,
+    today_checkin: null,
     ...partial,
   };
 }

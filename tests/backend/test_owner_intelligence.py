@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from conftest import make_member
 from sqlalchemy import select
 
-from app.db.models import Alert, MarketingSource
+from app.db.models import MarketingSource
 from app.services import journey_service, marketing_service, pt_service
-from conftest import make_member
 
 API = "/api/v1"
 
@@ -54,6 +54,7 @@ def test_a_trainer_at_another_branch_cannot_open_the_member(client, world, auth)
 
 def test_a_member_cannot_open_someone_elses_record(client, db, world, auth):
     other, _ = make_member(db, world["roles"], world["branches"]["ngk"], "Someone Else")
+    db.commit()
     response = client.get(f"{API}/members/{other.id}", headers=auth(world["member_ngk_user"]))
     assert response.status_code == 403
 
@@ -210,6 +211,104 @@ def test_only_management_can_send_a_broadcast(client, world, auth):
     assert response.status_code == 403
 
 
+def test_pt_members_audience_reaches_only_members_with_an_active_package(client, db, world, auth):
+    member = world["member_ngk"]
+    pt_service.create_package(db, member=member, sessions_total=12)
+    db.commit()
+
+    _, other_user = make_member(db, world["roles"], world["branches"]["ngk"], "No PT Yet")
+    db.commit()
+
+    response = client.post(
+        f"{API}/alerts/broadcast",
+        headers=auth(world["owner"]),
+        json={
+            "audience": "pt_members",
+            "branch_id": None,
+            "broadcast_type": "training",
+            "title": "PT slot opened up",
+            "message": "Friday 6pm is now free.",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["recipients"] == 1
+
+    inbox = client.get(f"{API}/alerts", headers=auth(world["member_ngk_user"]))
+    assert "PT slot opened up" in {row["title"] for row in inbox.json()}
+
+    other_inbox = client.get(f"{API}/alerts", headers=auth(other_user))
+    assert "PT slot opened up" not in {row["title"] for row in other_inbox.json()}
+
+
+def test_a_specific_member_can_be_targeted_directly(client, db, world, auth):
+    response = client.post(
+        f"{API}/alerts/broadcast",
+        headers=auth(world["owner"]),
+        json={
+            "audience": "member",
+            "member_id": world["member_ngk"].id,
+            "branch_id": None,
+            "broadcast_type": "membership",
+            "title": "About your renewal",
+            "message": "Let's talk about your plan.",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["recipients"] == 1
+
+    inbox = client.get(f"{API}/alerts", headers=auth(world["member_ngk_user"]))
+    assert "About your renewal" in {row["title"] for row in inbox.json()}
+
+
+def test_member_audience_without_a_member_id_is_rejected(client, world, auth):
+    response = client.post(
+        f"{API}/alerts/broadcast",
+        headers=auth(world["owner"]),
+        json={
+            "audience": "member",
+            "branch_id": None,
+            "broadcast_type": "announcement",
+            "title": "x",
+            "message": "y",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_member_id_is_rejected_outside_the_member_audience(client, world, auth):
+    response = client.post(
+        f"{API}/alerts/broadcast",
+        headers=auth(world["owner"]),
+        json={
+            "audience": "everyone",
+            "member_id": world["member_ngk"].id,
+            "branch_id": None,
+            "broadcast_type": "announcement",
+            "title": "x",
+            "message": "y",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_a_branch_manager_cannot_target_a_member_outside_their_branch(client, world, auth):
+    """`branch_id` is optional on a `member` broadcast — access must still be
+    checked against the target member's own branch, not the omitted field."""
+    response = client.post(
+        f"{API}/alerts/broadcast",
+        headers=auth(world["manager_bgh"]),
+        json={
+            "audience": "member",
+            "member_id": world["member_ngk"].id,  # at NGK, not BGH
+            "branch_id": None,
+            "broadcast_type": "announcement",
+            "title": "Should be blocked",
+            "message": "This should not send.",
+        },
+    )
+    assert response.status_code == 403
+
+
 # ------------------------------------------------------------ dashboard counts
 
 
@@ -222,7 +321,5 @@ def test_dashboard_reports_total_members_and_per_branch_counts(client, db, world
     ald_row = next(b for b in body["branches"] if b["branch_id"] == ald.id)
     assert ald_row["member_count"] == 0
 
-    ngk_row = next(
-        b for b in body["branches"] if b["branch_id"] == world["branches"]["ngk"].id
-    )
+    ngk_row = next(b for b in body["branches"] if b["branch_id"] == world["branches"]["ngk"].id)
     assert ngk_row["member_count"] >= 1

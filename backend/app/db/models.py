@@ -154,6 +154,16 @@ class AssessmentStatus(str, enum.Enum):
     COMPLETED = "completed"
 
 
+class CheckInFeeling(str, enum.Enum):
+    """The member's own daily check-in — personalisation, not a clinical scale."""
+
+    GREAT = "great"
+    GOOD = "good"
+    OKAY = "okay"
+    TIRED = "tired"
+    LOW = "low"
+
+
 class ItemStatus(str, enum.Enum):
     PENDING = "pending"
     COMPLETED = "completed"
@@ -261,6 +271,7 @@ journey_status_enum = Enum(JourneyStatus, name="journey_status")
 workout_split_enum = Enum(WorkoutSplit, name="workout_split")
 day_status_enum = Enum(DayStatus, name="day_status")
 assessment_status_enum = Enum(AssessmentStatus, name="assessment_status")
+checkin_feeling_enum = Enum(CheckInFeeling, name="checkin_feeling")
 item_status_enum = Enum(ItemStatus, name="item_status")
 session_status_enum = Enum(SessionStatus, name="session_status")
 package_status_enum = Enum(PackageStatus, name="package_status")
@@ -898,12 +909,8 @@ class WorkoutSession(Base, TimestampMixin, DemoMixin):
             "member_id",
             "session_date",
             unique=True,
-            postgresql_where=text(
-                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
-            ),
-            sqlite_where=text(
-                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
-            ),
+            postgresql_where=text("status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"),
+            sqlite_where=text("status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"),
         ),
     )
 
@@ -1256,6 +1263,33 @@ class BodyComposition(Base, TimestampMixin):
     body_water_pct: Mapped[float | None] = mapped_column(Pct())
 
 
+class MemberCheckIn(Base, TimestampMixin):
+    """A member's own daily "how are you feeling" answer.
+
+    One row per member per day — enforced by the unique constraint below, not
+    just by service-layer discipline, so a retried submit cannot double the
+    row rather than update it. ``work_date`` is server-derived the same way
+    every other day-scoped record in the journey architecture is
+    (``branch_today``), never a client-supplied date, so a member cannot
+    backdate or predate an entry by changing their phone's clock.
+
+    Deliberately member-only: there is no trainer- or owner-facing write path
+    onto this table, and no column here claims to be a readiness or recovery
+    score. It is what the member said, nothing inferred from it.
+    """
+
+    __tablename__ = "member_checkins"
+    __table_args__ = (UniqueConstraint("member_id", "work_date", name="uq_member_checkin_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    feeling: Mapped[CheckInFeeling] = mapped_column(checkin_feeling_enum, nullable=False)
+
+
 class TrainerAvailability(Base, TimestampMixin, DemoMixin):
     """A slot a trainer has published as bookable.
 
@@ -1397,6 +1431,7 @@ __all__ = [
     "Campaign",
     "CaptureMethod",
     "CardioSession",
+    "CheckInFeeling",
     "ClassStatus",
     "CorrectionStatus",
     "CorrectionType",
@@ -1415,6 +1450,7 @@ __all__ = [
     "JourneyType",
     "MarketingSource",
     "Member",
+    "MemberCheckIn",
     "Membership",
     "MembershipStatus",
     "Notification",

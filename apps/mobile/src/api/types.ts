@@ -320,6 +320,16 @@ export interface JourneyDay {
   completed_at: string | null;
 }
 
+export type Feeling = 'great' | 'good' | 'okay' | 'tired' | 'low';
+
+/** The member's own daily "how are you feeling" answer — nothing inferred from it. */
+export interface MemberCheckIn {
+  id: number;
+  work_date: string;
+  feeling: Feeling;
+  created_at: string;
+}
+
 export interface Assessment {
   id: number;
   status: AssessmentState;
@@ -775,6 +785,7 @@ export interface MemberHome {
   occupancy: Occupancy | null;
   unread_alerts: number;
   streak_days: number;
+  today_checkin: MemberCheckIn | null;
 }
 
 /* ------------------------------------------------------ the trainer's desk */
@@ -924,7 +935,7 @@ export interface WhoIsInside {
 
 /* --------------------------------------------------------------- broadcast */
 
-export type BroadcastAudience = 'everyone' | 'members' | 'trainers';
+export type BroadcastAudience = 'everyone' | 'members' | 'trainers' | 'pt_members' | 'member';
 
 export type BroadcastType =
   | 'announcement'
@@ -937,6 +948,8 @@ export type BroadcastType =
 export interface BroadcastRequest {
   audience: BroadcastAudience;
   branch_id: number | null;
+  /** Required when, and only sent when, `audience` is `'member'`. */
+  member_id?: number | null;
   broadcast_type: BroadcastType;
   title: string;
   message: string;

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import (
     AssessmentStatus,
+    CheckInFeeling,
     ClassStatus,
     DayStatus,
     ItemStatus,
@@ -485,6 +486,19 @@ class ActivityEntryOut(BaseModel):
     branch_id: int | None = None
 
 
+class MemberCheckInOut(ORMModel):
+    """A member's own answer to "how are you feeling today?" — nothing inferred."""
+
+    id: int
+    work_date: date
+    feeling: CheckInFeeling
+    created_at: datetime
+
+
+class MemberCheckInRequest(BaseModel):
+    feeling: CheckInFeeling
+
+
 class MemberHomeOut(BaseModel):
     """Everything the member's home screen needs, in one request.
 
@@ -509,6 +523,7 @@ class MemberHomeOut(BaseModel):
     occupancy: dict[str, Any] | None = None
     unread_alerts: int = 0
     streak_days: int = 0
+    today_checkin: MemberCheckInOut | None = None
 
 
 class TrainerClientOut(BaseModel):

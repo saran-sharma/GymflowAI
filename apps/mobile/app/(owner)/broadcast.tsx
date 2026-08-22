@@ -54,11 +54,12 @@ import { useAuth } from '../../src/store/AuthContext';
 const AUDIENCES: {
   value: BroadcastAudience;
   label: string;
-  icon: 'people-outline' | 'body-outline' | 'barbell-outline';
+  icon: 'people-outline' | 'body-outline' | 'barbell-outline' | 'person-outline';
 }[] = [
   { value: 'everyone', label: 'Everyone', icon: 'people-outline' },
   { value: 'members', label: 'Members', icon: 'body-outline' },
   { value: 'trainers', label: 'Trainers', icon: 'barbell-outline' },
+  { value: 'pt_members', label: 'PT members', icon: 'person-outline' },
 ];
 
 const TYPES: { value: BroadcastType; label: string }[] = [
@@ -89,8 +90,11 @@ export default function OwnerBroadcastScreen() {
 
   // An estimate from data already on screen elsewhere in the app — the exact
   // count the server actually reached comes back with the send, since that is
-  // the only number worth trusting completely.
+  // the only number worth trusting completely. `pt_members` has no count
+  // anywhere already on screen, so this says nothing rather than guessing —
+  // the send result still reports the real number once it lands.
   const estimatedRecipients = useMemo(() => {
+    if (audience === 'pt_members') return null;
     const branchMemberCount = branchId
       ? (dashboard.data?.branches.find((b) => b.branch_id === branchId)?.member_count ?? 0)
       : (dashboard.data?.total_members ?? 0);
@@ -216,9 +220,13 @@ export default function OwnerBroadcastScreen() {
             title={title.trim() || 'Your title appears here'}
             body={message.trim() || 'Your message appears here.'}
             tone={broadcastType === 'urgent' ? 'critical' : 'info'}
-            meta={`From ${user?.full_name ?? 'you'} · ${estimatedRecipients} recipient${
-              estimatedRecipients === 1 ? '' : 's'
-            } (estimate)`}
+            meta={
+              estimatedRecipients === null
+                ? `From ${user?.full_name ?? 'you'}`
+                : `From ${user?.full_name ?? 'you'} · ${estimatedRecipients} recipient${
+                    estimatedRecipients === 1 ? '' : 's'
+                  } (estimate)`
+            }
           />
         </Section>
 
