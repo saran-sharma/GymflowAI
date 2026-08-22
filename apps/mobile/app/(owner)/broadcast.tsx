@@ -18,7 +18,7 @@
  * "send later" reliably, so this only ever sends now.
  */
 
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -74,12 +74,20 @@ const TYPES: { value: BroadcastType; label: string }[] = [
 export default function OwnerBroadcastScreen() {
   const router = useRouter();
   const { user, withToken } = useAuth();
+  // Reached with a specific member in mind (Renewals, Member Intelligence)
+  // pre-selects that one recipient rather than opening on "everyone" — the
+  // server has supported a single-member audience since Marketing shipped;
+  // this is the deep-link entry point into it.
+  const { memberId, memberName } = useLocalSearchParams<{ memberId?: string; memberName?: string }>();
+  const targetMemberId = memberId ? Number(memberId) : null;
 
   const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
   const dashboard = useApi<Dashboard>((token) => api.dashboard(token), []);
   const trainers = useApi<Trainer[]>((token) => api.listTrainers(token), []);
 
-  const [audience, setAudience] = useState<BroadcastAudience>('everyone');
+  const [audience, setAudience] = useState<BroadcastAudience>(
+    targetMemberId ? 'member' : 'everyone',
+  );
   const [branchId, setBranchId] = useState<number | null>(null);
   const [broadcastType, setBroadcastType] = useState<BroadcastType>('announcement');
   const [title, setTitle] = useState('');
@@ -94,6 +102,7 @@ export default function OwnerBroadcastScreen() {
   // anywhere already on screen, so this says nothing rather than guessing —
   // the send result still reports the real number once it lands.
   const estimatedRecipients = useMemo(() => {
+    if (audience === 'member') return 1;
     if (audience === 'pt_members') return null;
     const branchMemberCount = branchId
       ? (dashboard.data?.branches.find((b) => b.branch_id === branchId)?.member_count ?? 0)
@@ -106,7 +115,11 @@ export default function OwnerBroadcastScreen() {
     return branchMemberCount + trainerCount;
   }, [audience, branchId, dashboard.data, trainers.data]);
 
-  const canSend = title.trim().length > 0 && message.trim().length > 0 && !sending;
+  const canSend =
+    title.trim().length > 0 &&
+    message.trim().length > 0 &&
+    !sending &&
+    (audience !== 'member' || targetMemberId !== null);
 
   async function send() {
     if (!canSend) return;
@@ -117,7 +130,8 @@ export default function OwnerBroadcastScreen() {
         api.sendBroadcast(
           {
             audience,
-            branch_id: branchId,
+            branch_id: audience === 'member' ? null : branchId,
+            member_id: audience === 'member' ? targetMemberId : undefined,
             broadcast_type: broadcastType,
             title: title.trim(),
             message: message.trim(),
@@ -161,27 +175,36 @@ export default function OwnerBroadcastScreen() {
 
         <Section title="Audience">
           <Chips
-            options={AUDIENCES}
+            options={
+              targetMemberId
+                ? [
+                    { value: 'member' as const, label: memberName ?? 'This member', icon: 'person-outline' as const },
+                    ...AUDIENCES,
+                  ]
+                : AUDIENCES
+            }
             value={audience}
             onChange={setAudience}
             testIDPrefix="broadcast-audience"
           />
         </Section>
 
-        <Section title="Branch">
-          <Chips
-            options={[
-              { value: 'all', label: 'All branches' },
-              ...((branches.data ?? []).map((b) => ({
-                value: String(b.id),
-                label: b.name.replace(/^SLAM\s+/i, ''),
-              }))),
-            ]}
-            value={branchId === null ? 'all' : String(branchId)}
-            onChange={(value) => setBranchId(value === 'all' ? null : Number(value))}
-            testIDPrefix="broadcast-branch"
-          />
-        </Section>
+        {audience === 'member' ? null : (
+          <Section title="Branch">
+            <Chips
+              options={[
+                { value: 'all', label: 'All branches' },
+                ...((branches.data ?? []).map((b) => ({
+                  value: String(b.id),
+                  label: b.name.replace(/^SLAM\s+/i, ''),
+                }))),
+              ]}
+              value={branchId === null ? 'all' : String(branchId)}
+              onChange={(value) => setBranchId(value === 'all' ? null : Number(value))}
+              testIDPrefix="broadcast-branch"
+            />
+          </Section>
+        )}
 
         <Section title="Type">
           <Chips

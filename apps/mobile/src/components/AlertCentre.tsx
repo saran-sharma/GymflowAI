@@ -12,13 +12,14 @@ import { RefreshControl, StyleSheet } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../api/client';
 import * as api from '../api/endpoints';
-import type { AppAlert } from '../api/types';
+import type { AlertSeverity, AppAlert } from '../api/types';
 import {
   AlertCard,
   Banner,
   Body,
   EmptyState,
   ErrorState,
+  LinkButton,
   Screen,
   Section,
   SkeletonScreen,
@@ -42,6 +43,19 @@ const SEVERITY_TONE = {
   warning: 'caution',
   critical: 'critical',
 } as const;
+
+/**
+ * The groups a wall of alerts collapses into, most urgent first, each
+ * collapsed to a handful of rows with a "Show N more" toggle rather than
+ * every open alert stacked in one flat list.
+ */
+const SEVERITY_GROUPS: { key: AlertSeverity; title: string }[] = [
+  { key: 'critical', title: 'Needs attention now' },
+  { key: 'warning', title: 'Worth a look' },
+  { key: 'info', title: 'Updates' },
+];
+
+const INITIAL_VISIBLE = 3;
 
 /**
  * Map the server's action route onto an app route.
@@ -107,6 +121,10 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
   }
 
   const rows = alerts.data ?? [];
+  const groups = SEVERITY_GROUPS.map((group) => ({
+    ...group,
+    rows: rows.filter((a) => a.severity === group.key),
+  })).filter((group) => group.rows.length > 0);
 
   return (
     <Screen>
@@ -119,48 +137,88 @@ export function AlertCentre({ title = 'Updates' }: { title?: string }) {
           />
         }
       >
+        <Text variant="title">{title}</Text>
+
         {error ? (
           <Banner tone="critical" icon="alert-circle-outline">
             {error}
           </Banner>
         ) : null}
 
-        <Section title={title}>
-          {rows.length === 0 ? (
-            <EmptyState
-              icon="notifications-off-outline"
-              title="Nothing needs you"
-              detail="Alerts appear here as they happen."
+        {rows.length === 0 ? (
+          <EmptyState
+            icon="notifications-off-outline"
+            title="Nothing needs you"
+            detail="Alerts appear here as they happen."
+          />
+        ) : (
+          groups.map((group) => (
+            <SeverityGroup
+              key={group.key}
+              title={group.title}
+              rows={group.rows}
+              onOpen={(alert) => {
+                const target = routeFor(alert);
+                if (target) {
+                  void act(alert, false);
+                  router.push(target as never);
+                } else {
+                  void act(alert, true);
+                }
+              }}
             />
-          ) : (
-            rows.map((alert) => {
-              const target = routeFor(alert);
-              return (
-                <AlertCard
-                  key={alert.id}
-                  tone={SEVERITY_TONE[alert.severity] ?? 'info'}
-                  title={alert.title}
-                  body={alert.body}
-                  meta={dayLabel(alert.created_at)}
-                  onPress={
-                    target
-                      ? () => {
-                          void act(alert, false);
-                          router.push(target as never);
-                        }
-                      : () => void act(alert, true)
-                  }
-                />
-              );
-            })
-          )}
-        </Section>
+          ))
+        )}
 
         <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
           GymFlow shows alerts inside the app. Push and WhatsApp are not enabled.
         </Text>
       </Body>
     </Screen>
+  );
+}
+
+/**
+ * One severity's rows, collapsed to `INITIAL_VISIBLE` with a "Show N more"
+ * toggle — the wall-of-cards problem was every open alert rendered at once
+ * regardless of how many there were; this bounds what a trainer or owner
+ * sees before choosing to see more of one severity specifically.
+ */
+function SeverityGroup({
+  title,
+  rows,
+  onOpen,
+}: {
+  title: string;
+  rows: AppAlert[];
+  onOpen: (alert: AppAlert) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? rows : rows.slice(0, INITIAL_VISIBLE);
+  const remaining = rows.length - visible.length;
+
+  return (
+    <Section
+      title={`${title} (${rows.length})`}
+      action={
+        remaining > 0 ? (
+          <LinkButton title={`Show ${remaining} more`} onPress={() => setExpanded(true)} />
+        ) : expanded && rows.length > INITIAL_VISIBLE ? (
+          <LinkButton title="Show less" onPress={() => setExpanded(false)} />
+        ) : undefined
+      }
+    >
+      {visible.map((alert) => (
+        <AlertCard
+          key={alert.id}
+          tone={SEVERITY_TONE[alert.severity] ?? 'info'}
+          title={alert.title}
+          body={alert.body}
+          meta={dayLabel(alert.created_at)}
+          onPress={() => onOpen(alert)}
+        />
+      ))}
+    </Section>
   );
 }
 

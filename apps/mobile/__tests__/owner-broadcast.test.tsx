@@ -13,8 +13,10 @@ import React from 'react';
 import OwnerBroadcastScreen from '../app/(owner)/broadcast';
 import type { Branch, Dashboard, Trainer } from '../src/api/types';
 
+const mockParams = jest.fn(() => ({}) as { memberId?: string; memberName?: string });
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
+  useLocalSearchParams: () => mockParams(),
 }));
 
 const mockListBranches = jest.fn();
@@ -71,6 +73,7 @@ async function draw() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockParams.mockReturnValue({});
   mockListBranches.mockResolvedValue([aBranch({ id: 1 }), aBranch({ id: 2, name: 'SLAM Boganhalli' })]);
   mockDashboard.mockResolvedValue({
     work_date: '2026-08-21',
@@ -204,5 +207,43 @@ describe('sending', () => {
       ).toBeTruthy(),
     );
     expect(screen.getByTestId('broadcast-title').props.value).toBe('New Zumba class');
+  });
+});
+
+describe('reached with one member in mind', () => {
+  // The server has supported a single-member audience since Marketing
+  // shipped; this deep-link entry point (from Renewals, from Member
+  // Intelligence) was the missing client-side half of it.
+  beforeEach(() => {
+    mockParams.mockReturnValue({ memberId: '13', memberName: 'Rahul Iyer' });
+  });
+
+  it('pre-selects that member as the audience, with no branch to choose', async () => {
+    await draw();
+    expect(screen.getByText(/1 recipient/)).toBeTruthy();
+    expect(screen.queryByText('Branch')).toBeNull();
+  });
+
+  it('sends to only that member', async () => {
+    await draw();
+    fireEvent.changeText(screen.getByTestId('broadcast-title'), 'Your renewal is coming up');
+    fireEvent.changeText(
+      screen.getByTestId('broadcast-message'),
+      'Renew this week to keep your rate.',
+    );
+    fireEvent.press(screen.getByTestId('broadcast-send'));
+
+    await waitFor(() => expect(mockSendBroadcast).toHaveBeenCalledTimes(1));
+    expect(mockSendBroadcast).toHaveBeenCalledWith(
+      {
+        audience: 'member',
+        branch_id: null,
+        member_id: 13,
+        broadcast_type: 'announcement',
+        title: 'Your renewal is coming up',
+        message: 'Renew this week to keep your rate.',
+      },
+      'token',
+    );
   });
 });
