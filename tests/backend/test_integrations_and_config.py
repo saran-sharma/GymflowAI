@@ -58,6 +58,52 @@ def test_yoactiv_refuses_rather_than_inventing_data():
     assert "documentation" in str(excinfo.value)
 
 
+def test_every_yoactiv_client_method_refuses_rather_than_inventing_data():
+    """Every method on the placeholder client must refuse, not just list_members.
+
+    A half-guessed client that only refused on one entry point and quietly
+    returned something (or raised AttributeError) elsewhere would still end up
+    inventing Yoactiv data through the back door.
+    """
+    import datetime
+
+    client = YoactivClient()
+    calls = [
+        lambda: client.list_members(),
+        lambda: client.get_member("YO-1"),
+        lambda: client.list_trainers(),
+        lambda: client.get_trainer("YO-1"),
+        lambda: client.pull_events(since=datetime.datetime(2026, 1, 1)),
+    ]
+    for call in calls:
+        with pytest.raises(IntegrationDisabled) as excinfo:
+            call()
+        message = str(excinfo.value)
+        assert "documentation" in message
+        assert "docs/INTEGRATIONS.md" in message
+
+
+def test_yoactiv_client_health_reports_what_is_blocking_it():
+    health = YoactivClient().health()
+    assert health["enabled"] is False
+    assert health["status"] == "contract_only"
+    assert "API documentation" in health["blocked_on"]
+
+
+def test_yoactiv_config_slots_are_unset_placeholders():
+    """No real Yoactiv base URL or key exists yet; these must default empty.
+
+    Fabricating a plausible-looking value here (a fake base URL, a made-up
+    header name) would be exactly the kind of invented API surface this
+    integration must not have.
+    """
+    from app.core.config import Settings
+
+    fresh = Settings()
+    assert fresh.yoactiv_base_url == ""
+    assert fresh.yoactiv_api_key == ""
+
+
 def test_inbody_refuses_rather_than_inventing_readings():
     with pytest.raises(IntegrationDisabled):
         InBodyProvider().latest_reading("SLAM-M0001")
