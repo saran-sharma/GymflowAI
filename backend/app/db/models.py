@@ -378,7 +378,10 @@ class Member(Base, TimestampMixin, DemoMixin):
     joined_on: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Set when the record originates in an external system of record (Yoactiv).
-    external_ref: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Unique (Postgres allows any number of NULLs under a unique index) so a
+    # Yoactiv identity can never be linked to more than one GymFlow member;
+    # see app.integrations.yoactiv.identity for the lookup this backs.
+    external_ref: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
 
     # How SLAM acquired this member. Captured at registration; the owner's
     # marketing dashboard is entirely derived from these three columns plus

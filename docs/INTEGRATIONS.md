@@ -50,6 +50,30 @@ Until then: GymFlow owns its own member and trainer records. V1 does not depend
 on Yoactiv in any way, and the local provider means switching later is a
 registry change rather than a rewrite.
 
+**Member synchronization is pending because the real Yoactiv API/member
+contract is not yet available.** What exists today is groundwork that does not
+depend on that contract:
+
+- `Member.external_ref` (nullable, `String(64)`) is GymFlow's side of the
+  link to a member's Yoactiv identity. It now carries a **unique** index
+  (migration `b4e6bbcca127`) — one Yoactiv identity can never be claimed by
+  two GymFlow members, while any number of members can still be unlinked
+  (`NULL`). Nothing writes to it yet; the constraint is there so nothing ever
+  can write to it unsafely.
+- `app/integrations/yoactiv/identity.py` is the one place that resolves an
+  `ExternalMember` to a GymFlow `Member` (`find_member_by_external_ref`) and
+  stamps the link (`link_member`). A real sync, once one can exist, calls
+  through here rather than each caller writing its own query against
+  `external_ref`.
+- `Settings.yoactiv_base_url` / `Settings.yoactiv_api_key` are typed,
+  environment-driven config slots, following the same pattern as every other
+  setting in `core/config.py`. Both default to `""` and are read nowhere —
+  they exist only so there is somewhere to put real values the day they
+  arrive, without another config-shape change.
+
+None of this invents an endpoint, a payload shape, an auth scheme, or a
+sync — the eight items above are still exactly what is missing.
+
 ---
 
 ## InBody — ACTION REQUIRED

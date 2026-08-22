@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # work with all of these off; turning one on only swaps a mock provider for
     # a real one behind the same interface.
     yoactiv_enabled: bool = False
+    # Placeholder config slots only — nothing reads these yet. Yoactiv's real
+    # base URL and auth scheme are not documented to us (see the "Yoactiv —
+    # ACTION REQUIRED" section of docs/INTEGRATIONS.md). Do not invent a
+    # value; leave both empty until that documentation exists.
+    yoactiv_base_url: str = ""
+    yoactiv_api_key: str = ""
     inbody_enabled: bool = False
     access_control_enabled: bool = False
     whatsapp_enabled: bool = False
