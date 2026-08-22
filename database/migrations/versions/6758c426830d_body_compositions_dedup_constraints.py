@@ -17,7 +17,7 @@ Two constraints, matching the two ways the importer de-duplicates a row:
    entirely. Scoped to NULL-ref rows only, so it never interacts with rule 1.
 
 Revision ID: 6758c426830d
-Revises: 526e2d50334f
+Revises: b4e6bbcca127
 Create Date: 2026-08-22 00:00:00.000000
 """
 
@@ -29,7 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "6758c426830d"
-down_revision: str | None = "526e2d50334f"
+down_revision: str | None = "b4e6bbcca127"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
