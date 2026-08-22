@@ -190,6 +190,7 @@ import type {
   AppSetting,
   Assessment,
   AttendanceCorrection,
+  BodyCompositionHistory,
   BranchPerformanceResponse,
   BroadcastRequest,
   BroadcastResult,
@@ -207,6 +208,7 @@ import type {
   MemberHome,
   NeedsAttention,
   OccupancyForecast,
+  PlanItemUpsert,
   PTOffer,
   PTPackage,
   PTSession,
@@ -214,10 +216,12 @@ import type {
   PTSplitView,
   RsvpAnswer,
   ScheduleItem,
+  StrengthTrend,
   TrainerClient,
   TrainerClientDetail,
   TrainerPerformance,
   WorkoutItem,
+  WorkoutPlan,
   WorkoutSession,
   WorkoutSet,
   WorkoutSetHistory,
@@ -249,6 +253,20 @@ export const memberActivityStats = (memberId: number, token: string, weeks = 8) 
   request<MemberActivity>(`/performance/members/${memberId}/activity?weeks=${weeks}`, { token });
 
 /* ---------------------------------------------------------------- journey */
+
+export const myStrengthTrend = (token: string) =>
+  request<StrengthTrend>('/journeys/me/progress/strength', { token });
+
+export const memberStrengthTrend = (memberId: number, token: string) =>
+  request<StrengthTrend>(`/journeys/members/${memberId}/progress/strength`, { token });
+
+export const myBodyComposition = (token: string) =>
+  request<BodyCompositionHistory>('/journeys/me/progress/body-composition', { token });
+
+export const memberBodyComposition = (memberId: number, token: string) =>
+  request<BodyCompositionHistory>(`/journeys/members/${memberId}/progress/body-composition`, {
+    token,
+  });
 
 export const myJourney = (token: string) => request<Journey | null>('/journeys/me', { token });
 
@@ -282,6 +300,21 @@ export const recordCardio = (
   body: { day_number: number; duration_minutes: number; machine?: string },
   token: string,
 ) => request<CardioSession>(`/journeys/${journeyId}/cardio`, { method: 'POST', body, token });
+
+export const memberPlan = (memberId: number, token: string) =>
+  request<WorkoutPlan | null>(`/journeys/members/${memberId}/plan`, { token });
+
+export const replacePlanSplit = (
+  memberId: number,
+  split: WorkoutSplit,
+  items: PlanItemUpsert[],
+  token: string,
+) =>
+  request<WorkoutPlan>(`/journeys/members/${memberId}/plan/${split}`, {
+    method: 'PUT',
+    body: items,
+    token,
+  });
 
 export const journeysReadyForPt = (token: string) =>
   request<Journey[]>('/journeys?ready_for_pt=true', { token });

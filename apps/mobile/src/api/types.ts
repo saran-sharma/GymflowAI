@@ -402,6 +402,84 @@ export interface WorkoutSetInput {
   rpe?: number | null;
 }
 
+/** One exercise a trainer has prescribed for a split, as the member will see it. */
+export interface PlanItem {
+  id: number;
+  split: WorkoutSplit;
+  order_index: number;
+  exercise: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes: string | null;
+}
+
+/** What a trainer sends to (re)write one split's exercise list. */
+export interface PlanItemUpsert {
+  split: WorkoutSplit;
+  exercise: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes?: string | null;
+}
+
+/** The member's whole trainer-authored plan — every split at once. */
+export interface WorkoutPlan {
+  id: number;
+  name: string;
+  member_id: number | null;
+  journey_id: number | null;
+  is_active: boolean;
+  items: PlanItem[];
+}
+
+/** One point on a strength-progression chart — one session's best on one lift. */
+export interface ExerciseTrendPoint {
+  session_date: string;
+  top_weight_kg: number;
+  volume_kg: number;
+}
+
+/**
+ * Real progression on one lift, oldest point first. `heaviest_kg` always
+ * reflects the member's complete history for this exercise, not just the
+ * points returned for the chart — see `app.domain` equivalent server-side.
+ */
+export interface ExerciseTrend {
+  exercise: string;
+  points: ExerciseTrendPoint[];
+  heaviest_kg: number;
+  is_recent_pr: boolean;
+}
+
+export interface StrengthTrend {
+  exercises: ExerciseTrend[];
+}
+
+/**
+ * One InBody scan, column-for-column from the server's `body_compositions`
+ * read model. No field here is computed — Body Fat Mass (kg) is deliberately
+ * absent because the importer never writes it, only Body Fat % does.
+ */
+export interface BodyComposition {
+  measured_at: string;
+  source: string;
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  muscle_mass_kg: number | null;
+  bmi: number | null;
+  visceral_fat: number | null;
+  bmr_kcal: number | null;
+  body_water_pct: number | null;
+}
+
+/** `measurements` is oldest first, matching `StrengthTrend`'s points. */
+export interface BodyCompositionHistory {
+  latest: BodyComposition | null;
+  measurements: BodyComposition[];
+}
+
 /** One past session of one exercise, with what it adds up to. */
 export interface ExerciseSession {
   session_id: number;
@@ -468,7 +546,16 @@ export interface PTPackage {
   price_amount: number | null;
   currency: string | null;
   low_balance: boolean;
+  effective_status: EffectivePtStatus;
+  effective_status_label: string;
 }
+
+export type EffectivePtStatus =
+  | 'pt_active'
+  | 'pt_paused_membership_expired'
+  | 'pt_expired'
+  | 'pt_completed'
+  | 'no_pt';
 
 export interface PTSession {
   id: number;
@@ -781,6 +868,7 @@ export interface MemberHome {
   today_workout: WorkoutSession | null;
   next_pt_session: PTSession | null;
   pt_package: PTPackage | null;
+  effective_pt_status: EffectivePtStatus;
   next_class: GroupClass | null;
   occupancy: Occupancy | null;
   unread_alerts: number;
@@ -807,6 +895,8 @@ export interface TrainerClient {
   days_remaining: number | null;
   journey: Journey | null;
   pt_package: PTPackage | null;
+  effective_pt_status: EffectivePtStatus;
+  effective_pt_status_label: string;
   next_pt_session: PTSession | null;
   last_seen_on: string | null;
   visits_last_30: number;

@@ -281,6 +281,59 @@ class WorkoutSetHistory(BaseModel):
     best_volume_on: date | None = None
 
 
+class ExerciseTrendPointOut(BaseModel):
+    session_date: date
+    top_weight_kg: float
+    volume_kg: float
+
+
+class ExerciseTrendOut(BaseModel):
+    """One lift's recent progression, oldest point first.
+
+    Only ever built from logged sets — an exercise the member has never
+    trained does not appear, and ``heaviest_kg`` always reflects the member's
+    complete history for this exercise, not just the points returned here.
+    """
+
+    exercise: str
+    points: list[ExerciseTrendPointOut] = []
+    heaviest_kg: float
+    is_recent_pr: bool
+
+
+class StrengthTrendOut(BaseModel):
+    exercises: list[ExerciseTrendOut] = []
+
+
+class BodyCompositionOut(BaseModel):
+    """One InBody scan, column-for-column from ``body_compositions``.
+
+    No field is computed. A metric the importer does not write to this
+    table (Body Fat Mass in kilograms, for one — only Body Fat % is stored)
+    simply has no field here, rather than being derived and shown as if it
+    were measured.
+    """
+
+    measured_at: datetime
+    source: str
+    weight_kg: float | None = None
+    body_fat_pct: float | None = None
+    muscle_mass_kg: float | None = None
+    bmi: float | None = None
+    visceral_fat: float | None = None
+    bmr_kcal: int | None = None
+    body_water_pct: float | None = None
+
+
+class BodyCompositionHistoryOut(BaseModel):
+    """``measurements`` is oldest first, matching ``StrengthTrendOut``'s
+    points — a chart never has to reverse anything. ``latest`` is ``None``
+    for a member with no scans on file, never a row of zeros."""
+
+    latest: BodyCompositionOut | None = None
+    measurements: list[BodyCompositionOut] = []
+
+
 class WorkoutSetLogged(BaseModel):
     """A stored set, and anything it beat.
 
@@ -353,6 +406,8 @@ class PTPackageOut(BaseModel):
     price_amount: float | None = None
     currency: str | None = None
     low_balance: bool = False
+    effective_status: str
+    effective_status_label: str
 
 
 class PTSessionOut(BaseModel):
@@ -519,6 +574,7 @@ class MemberHomeOut(BaseModel):
     today_workout: WorkoutSessionOut | None = None
     next_pt_session: PTSessionOut | None = None
     pt_package: PTPackageOut | None = None
+    effective_pt_status: str = "no_pt"
     next_class: GroupClassOut | None = None
     occupancy: dict[str, Any] | None = None
     unread_alerts: int = 0
@@ -544,6 +600,8 @@ class TrainerClientOut(BaseModel):
     days_remaining: int | None = None
     journey: JourneyOut | None = None
     pt_package: PTPackageOut | None = None
+    effective_pt_status: str
+    effective_pt_status_label: str
     next_pt_session: PTSessionOut | None = None
     last_seen_on: date | None = None
     visits_last_30: int = 0

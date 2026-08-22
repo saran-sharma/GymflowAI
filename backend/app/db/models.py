@@ -389,7 +389,10 @@ class Member(Base, TimestampMixin, DemoMixin):
     joined_on: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Set when the record originates in an external system of record (Yoactiv).
-    external_ref: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Unique (Postgres allows any number of NULLs under a unique index) so a
+    # Yoactiv identity can never be linked to more than one GymFlow member;
+    # see app.integrations.yoactiv.identity for the lookup this backs.
+    external_ref: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
 
     # How SLAM acquired this member. Captured at registration; the owner's
     # marketing dashboard is entirely derived from these three columns plus
@@ -482,10 +485,93 @@ class AttendanceEvent(Base, TimestampMixin):
     device_info: Mapped[str | None] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(Text)
     recorded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # Set only for events a push-based hardware integration delivered (today:
+    # the X2008/ADMS fingerprint receiver). Null for every QR/PIN/manual
+    # event, which never carries an external identity for a duplicate to key
+    # off. Constructed by the receiver as "{device_serial}:{enrolled_id}:
+    # {device_reported_time}" — see app/services/attendance_service.py — so
+    # it is unique by construction across every device without a composite
+    # constraint, and a redelivered batch (the terminal resending its backlog
+    # is normal ADMS behaviour) resolves to the same row instead of a second
+    # visit.
+    external_event_id: Mapped[str | None] = mapped_column(String(160))
 
     __table_args__ = (
         Index("ix_events_branch_date", "branch_id", "work_date"),
         Index("ix_events_user_date", "user_id", "work_date"),
+        UniqueConstraint("external_event_id", name="uq_attendance_event_external_id"),
+    )
+
+
+class FingerprintDevice(Base, TimestampMixin):
+    """A registered ZKTeco/ADMS fingerprint terminal (e.g. an X2008) and the
+    branch its events belong to.
+
+    Holds only non-secret device facts — serial, LAN address, the ADMS
+    "Device ID" — never the terminal's Communication Key, which is a real
+    secret and lives only in ``Settings.fingerprint_comm_key`` (environment
+    only, never the database). A bespoke table rather than a `Setting` JSON
+    blob because the ADMS push receiver needs an indexed, unique lookup from
+    an inbound request's device serial straight to a branch; scanning every
+    settings row and parsing JSON to find a match does not scale past a
+    handful of branches and loses the DB-level uniqueness guarantee a
+    physical serial number should have.
+
+    ``device_number`` is the terminal's own small ADMS "Device ID" (e.g. 1) —
+    unique per branch, not globally, unlike ``serial``.
+    """
+
+    __tablename__ = "fingerprint_devices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    device_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    serial: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    tcp_port: Mapped[int | None] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    branch: Mapped[Branch] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("branch_id", "device_number", name="uq_fingerprint_device_branch_number"),
+    )
+
+
+class FingerprintEnrollment(Base, TimestampMixin):
+    """Maps a member to the numeric enroll-ID they registered under on a
+    fingerprint terminal.
+
+    Deliberately its own table rather than ``Member.external_ref`` — that
+    column's docstring reserves it for Yoactiv, and reusing it here would
+    silently conflate two unrelated external systems on one column, which is
+    exactly the implicit cross-integration coupling this codebase's
+    per-integration contracts are structured to avoid.
+
+    ``enrolled_id`` is unique per *device*, not globally (two terminals can
+    both hand out enroll-ID "7" to different people), so the uniqueness
+    constraint is scoped to the device. ``member_id`` is unique on its own:
+    V1 gives a member exactly one enrollment, at their own branch's device.
+    """
+
+    __tablename__ = "fingerprint_enrollments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("fingerprint_devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    enrolled_id: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    member: Mapped[Member] = relationship()
+    device: Mapped[FingerprintDevice] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "enrolled_id", name="uq_fingerprint_enrollment_device_slot"),
     )
 
 
@@ -1262,6 +1348,29 @@ class BodyComposition(Base, TimestampMixin):
     bmr_kcal: Mapped[int | None] = mapped_column(Integer)
     body_water_pct: Mapped[float | None] = mapped_column(Pct())
 
+    __table_args__ = (
+        # Re-running the same InBody export must not duplicate a scan. Every
+        # real InBody row carries a Local ID (the machine's own identifier for
+        # the scan), so the common case is covered by a plain uniqueness rule
+        # on (member, external_ref) — NULLs are distinct in both Postgres and
+        # SQLite, so members whose rows lack a Local ID are unaffected by it.
+        UniqueConstraint(
+            "member_id", "external_ref", name="uq_body_compositions_member_external_ref"
+        ),
+        # For the rare row that arrives without a Local ID at all, fall back
+        # to guarding on (member, measured_at) instead — but only among rows
+        # that also lack a Local ID, so it never collides with the primary
+        # rule above for the normal case.
+        Index(
+            "uq_body_compositions_member_measured_at_no_ref",
+            "member_id",
+            "measured_at",
+            unique=True,
+            postgresql_where=text("external_ref IS NULL"),
+            sqlite_where=text("external_ref IS NULL"),
+        ),
+    )
+
 
 class MemberCheckIn(Base, TimestampMixin):
     """A member's own daily "how are you feeling" answer.
@@ -1437,6 +1546,8 @@ __all__ = [
     "CorrectionType",
     "DayStatus",
     "EventType",
+    "FingerprintDevice",
+    "FingerprintEnrollment",
     "GroupClass",
     "GroupClassAttendance",
     "GroupClassRsvp",
