@@ -898,12 +898,8 @@ class WorkoutSession(Base, TimestampMixin, DemoMixin):
             "member_id",
             "session_date",
             unique=True,
-            postgresql_where=text(
-                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
-            ),
-            sqlite_where=text(
-                "status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"
-            ),
+            postgresql_where=text("status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"),
+            sqlite_where=text("status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')"),
         ),
     )
 
@@ -1254,6 +1250,29 @@ class BodyComposition(Base, TimestampMixin):
     visceral_fat: Mapped[float | None] = mapped_column(Numeric(5, 1, asdecimal=False))
     bmr_kcal: Mapped[int | None] = mapped_column(Integer)
     body_water_pct: Mapped[float | None] = mapped_column(Pct())
+
+    __table_args__ = (
+        # Re-running the same InBody export must not duplicate a scan. Every
+        # real InBody row carries a Local ID (the machine's own identifier for
+        # the scan), so the common case is covered by a plain uniqueness rule
+        # on (member, external_ref) — NULLs are distinct in both Postgres and
+        # SQLite, so members whose rows lack a Local ID are unaffected by it.
+        UniqueConstraint(
+            "member_id", "external_ref", name="uq_body_compositions_member_external_ref"
+        ),
+        # For the rare row that arrives without a Local ID at all, fall back
+        # to guarding on (member, measured_at) instead — but only among rows
+        # that also lack a Local ID, so it never collides with the primary
+        # rule above for the normal case.
+        Index(
+            "uq_body_compositions_member_measured_at_no_ref",
+            "member_id",
+            "measured_at",
+            unique=True,
+            postgresql_where=text("external_ref IS NULL"),
+            sqlite_where=text("external_ref IS NULL"),
+        ),
+    )
 
 
 class TrainerAvailability(Base, TimestampMixin, DemoMixin):

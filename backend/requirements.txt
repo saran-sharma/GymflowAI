@@ -11,3 +11,6 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.20
 email-validator==2.2.0
+# InBody export reading (backend/app/scripts/import_inbody.py). Pure-Python,
+# reads .xlsx directly — no pandas/numpy chain needed for this one job.
+openpyxl==3.1.5

@@ -52,20 +52,65 @@ registry change rather than a rewrite.
 
 ---
 
-## InBody — ACTION REQUIRED
+## InBody
 
-**What:** body-composition data from the InBody machines.
-**Why:** to show scan history against attendance in a later phase.
-**Exact values/access needed:**
+**Machine and software are now confirmed, not a guess:** InBody 120,
+reporting into LookinBody120, exported as Excel. SLAM's export carries 1,345
+InBody measurement records (87 columns) and a separate 845-record Blood
+Pressure sheet — the two are different data and are not assumed to share a
+row shape. Identity in the export: InBody's own "ID" field is the member's
+phone number by SLAM's convention; InBody's "Local ID" is the machine's own
+identifier for a scan and is not a GymFlow identifier of any kind.
 
-1. The exact InBody model in each of the three branches
-2. Which InBody software the machines report into (Lookin' Body, InBody Web, or a local install)
-3. Whether that installation exposes an API, or only a scheduled export (CSV/Excel)
-4. If an API: base URL, auth and endpoint list
-5. If an export: file format, delivery mechanism and cadence
+**What's built (this PR):** a standalone, human-supervised import pipeline —
+not a running integration, and not wired into `InBodyProvider` or the
+registry, which stay interface-only until InBody offers something GymFlow can
+read live rather than a manual export.
 
-No V1 feature reads body composition. The interface exists so adding it later
-does not disturb anything.
+- `backend/app/integrations/inbody/importer.py` — parses the Excel export,
+  validates its header against the named fields above (raises a clear error
+  naming exactly which column is missing, rather than guessing), maps only
+  the semantically-known fields (`Weight → weight_kg`, `PBF → body_fat_pct`,
+  `SMM → muscle_mass_kg`, `BMI → bmi`, `VFL → visceral_fat`,
+  `BMR → bmr_kcal`, `TBW → body_water_pct`, `Local ID → external_ref`,
+  `Test Date/Time → measured_at`), matches each row to a GymFlow member by
+  phone number only (never by name), and classifies every row into MATCHED /
+  AMBIGUOUS / UNMATCHED / DUPLICATE / INVALID before anything is written.
+- `backend/app/scripts/import_inbody.py` — the script a human runs:
+  `--dry-run` to see the classification and counts and write nothing, or
+  `--import --yes` to write MATCHED, non-duplicate rows to
+  `body_compositions`. AMBIGUOUS/UNMATCHED/INVALID/DUPLICATE rows are never
+  silently written or silently discarded — they stay visible in the report
+  for a human to resolve.
+- The database itself now guarantees re-running the same file can't duplicate
+  a scan: `body_compositions` carries a unique constraint on
+  `(member_id, external_ref)`, plus a partial unique index on
+  `(member_id, measured_at)` for the rare row with no Local ID at all.
+- The other ~70 columns in the export (segmental body composition, impedance,
+  and the rest) are read but not mapped — `body_compositions` was not turned
+  into an 87-column table. Two fields worth a second look: **Protein** and
+  **Minerals** are validated and parsed (required columns) but have nowhere
+  to go — `body_compositions` has no column for either — so they are
+  currently discarded after validation. If SLAM wants them retained, that's a
+  schema decision for a human, not something this pipeline should invent.
+
+**What's still manual, and still ACTION REQUIRED:**
+
+1. The real 1,345-row export has not been run through this pipeline by
+   anyone. This PR was built and tested only against small, synthetic .xlsx
+   fixtures — the shape is right, the real data has not been seen.
+2. A human must review a `--dry-run` report against the real export — in
+   particular every AMBIGUOUS row (two-plus active members sharing a phone
+   number, which `User.phone` allows and is a real, expected case, not an
+   edge case) and every UNMATCHED row (a phone in the export that matches no
+   active GymFlow member) — before anyone runs `--import`.
+3. The Blood Pressure sheet (845 records) is not handled by this pipeline at
+   all — it is a separate dataset with an unconfirmed shape, deliberately out
+   of scope here.
+4. Whether InBody/LookinBody120 ever offers something beyond a manual Excel
+   export (an API, a watched folder, a scheduled feed) — that's what would
+   let `InBodyProvider` graduate from interface-only to real, and this
+   import script from manual to routine.
 
 ---
 
