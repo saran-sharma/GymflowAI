@@ -13,7 +13,7 @@ The column stays nullable: Postgres treats NULLs as distinct under a unique
 index, so any number of not-yet-linked members are still allowed.
 
 Revision ID: b4e6bbcca127
-Revises: 526e2d50334f
+Revises: d6fe374b99f3
 Create Date: 2026-08-22 00:00:00.000000
 """
 
@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "b4e6bbcca127"
-down_revision: str | None = "526e2d50334f"
+down_revision: str | None = "d6fe374b99f3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
