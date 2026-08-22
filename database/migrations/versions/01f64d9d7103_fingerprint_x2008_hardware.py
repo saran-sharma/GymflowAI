@@ -18,7 +18,7 @@ turned on (see app/core/config.py and docs/INTEGRATIONS.md):
   duplicate visit.
 
 Revision ID: 01f64d9d7103
-Revises: 526e2d50334f
+Revises: 6758c426830d
 Create Date: 2026-08-22 00:00:00.000000
 """
 
@@ -30,7 +30,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "01f64d9d7103"
-down_revision: str | None = "526e2d50334f"
+down_revision: str | None = "6758c426830d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
