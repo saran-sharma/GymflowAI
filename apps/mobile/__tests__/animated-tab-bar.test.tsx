@@ -12,7 +12,7 @@
  *
  * These tests build a `state.routes` shaped the way expo-router really
  * produces it once a few hidden screens have been visited, and assert the
- * bar still identifies the correct tab as active from among the five real
+ * bar still identifies the correct tab as active from among the four real
  * ones — not from among however many hidden routes happen to have
  * accumulated in history by that point.
  */
@@ -22,17 +22,24 @@ import React from 'react';
 
 import { AnimatedTabBar } from '../src/design/navigation';
 
-const REAL_TABS = ['index', 'members', 'trainers', 'marketing', 'profile'] as const;
+const REAL_TABS = ['index', 'members', 'trainers', 'marketing'] as const;
 const TITLES: Record<string, string> = {
   index: 'Dashboard',
   members: 'Members',
   trainers: 'Trainers',
   marketing: 'Marketing',
-  profile: 'Account',
 };
 // Hidden detail screens a session accumulates in `state.routes` over time —
-// none of these ever get a tab bar button of their own.
-const HIDDEN_ROUTES = ['member/[id]', 'marketing/[source]', 'broadcast', 'payments', 'settings'];
+// none of these ever get a tab bar button of their own. `profile` is hidden
+// too now: Account is reached from the avatar in the top-right, not a tab.
+const HIDDEN_ROUTES = [
+  'member/[id]',
+  'marketing/[source]',
+  'broadcast',
+  'payments',
+  'settings',
+  'profile',
+];
 
 function tabBarButtonOptions(name: string) {
   // Mirrors expo-router's own useScreens.ts: a real tab never sets
@@ -45,7 +52,17 @@ function tabBarButtonOptions(name: string) {
 /** A `state.routes` array with hidden routes interleaved among the tabs, the
  * way real navigation history actually accumulates them. */
 function buildRoutes(activeName: string) {
-  const names = [...REAL_TABS.slice(0, 2), HIDDEN_ROUTES[0], REAL_TABS[2], HIDDEN_ROUTES[1], REAL_TABS[3], HIDDEN_ROUTES[2], REAL_TABS[4], HIDDEN_ROUTES[3], HIDDEN_ROUTES[4]];
+  const names = [
+    ...REAL_TABS.slice(0, 2),
+    HIDDEN_ROUTES[0],
+    REAL_TABS[2],
+    HIDDEN_ROUTES[1],
+    REAL_TABS[3],
+    HIDDEN_ROUTES[2],
+    HIDDEN_ROUTES[3],
+    HIDDEN_ROUTES[4],
+    HIDDEN_ROUTES[5],
+  ];
   const routes = names.map((name, i) => ({ key: `${name}-${i}`, name }));
   const index = routes.findIndex((r) => r.name === activeName);
   return { routes, index };
@@ -75,7 +92,7 @@ function renderBar(activeName: string) {
 
 describe('which tab reads as active', () => {
   it.each(REAL_TABS.map((name) => [name, TITLES[name]] as const))(
-    'marks %s selected when it is the active route, with the other four unselected',
+    'marks %s selected when it is the active route, with the other three unselected',
     async (name, title) => {
       renderBar(name);
       const selected = screen.getByRole('tab', { name: title });
@@ -89,7 +106,7 @@ describe('which tab reads as active', () => {
     },
   );
 
-  it('renders exactly the five real tabs regardless of how many hidden routes are in history', () => {
+  it('renders exactly the four real tabs regardless of how many hidden routes are in history', () => {
     renderBar('trainers');
     expect(screen.getAllByRole('tab')).toHaveLength(REAL_TABS.length);
   });

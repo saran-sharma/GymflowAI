@@ -13,7 +13,7 @@ import { StyleSheet } from 'react-native';
 import * as api from '../../src/api/endpoints';
 import { OFFLINE_CODE } from '../../src/api/client';
 import type { WorkoutTemplate } from '../../src/api/types';
-import { CategoryBadge } from '../../src/components/programme';
+import { CategoryBadge, WorkoutArtwork } from '../../src/components/programme';
 import {
   Body,
   EmptyState,
@@ -92,6 +92,10 @@ export default function WorkoutTemplatesScreen() {
                 } as never)
               }
             >
+              <WorkoutArtwork
+                category={template.category}
+                testID={`template-art-${template.id}`}
+              />
               <Row gap="sm">
                 <Stack gap="xxs" style={styles.grow}>
                   <Text variant="heading">{template.name}</Text>

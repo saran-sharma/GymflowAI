@@ -1,10 +1,11 @@
 /**
- * Member navigation: HOME, WORKOUT, PT, PROGRESS, MORE.
+ * Member navigation: HOME, WORKOUT, PT, PROGRESS.
  *
- * Five tabs, matching the member's actual journey. Attendance, classes,
- * updates and settings live under MORE rather than competing with the four
- * things a member opens the app to do — nothing that worked before was removed
- * without a route to reach it.
+ * Four tabs, matching the member's actual journey. Account is reached from the
+ * initials avatar in the top-right of Home instead of occupying a tab of its
+ * own — the account menu (`AccountSheet`) already surfaces attendance,
+ * membership, trainer and notifications, so nothing that worked before lost
+ * its route.
  */
 
 import { Tabs } from 'expo-router';
@@ -26,11 +27,9 @@ export default function MemberLayout() {
         name="progress"
         options={{ title: 'Progress', tabBarIcon: tabIcon('stats-chart') }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
-      />
-      {/* Reached from home and from More, not tabs of their own. */}
+      {/* Reached from the account avatar/sheet on Home, not a tab of its own. */}
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      {/* Reached from home and from the account sheet, not tabs of their own. */}
       <Tabs.Screen name="classes" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="visits" options={{ href: null }} />

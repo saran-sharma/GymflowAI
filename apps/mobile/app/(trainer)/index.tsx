@@ -135,8 +135,8 @@ export default function TrainerDeskScreen() {
         }
       >
         <Row gap="md">
-          <AccountAvatar size={40} />
           <Spacer />
+          <AccountAvatar size={40} />
         </Row>
 
         <HeroCard

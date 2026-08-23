@@ -1,10 +1,11 @@
 /**
- * Trainer navigation: DESK, CLIENTS, SESSIONS, ATTENDANCE, MORE.
+ * Trainer navigation: DESK, CLIENTS, SESSIONS, ATTENDANCE.
  *
  * The desk is what a trainer opens the app for — the floor, their day, their
  * clients and where they stand on the incentive. Shift check-in, the scanner,
  * PT split view, availability, client detail, corrections, classes and updates
- * are pushed over the tabs rather than competing for a slot.
+ * are pushed over the tabs rather than competing for a slot. Account is
+ * reached from the initials avatar in the top-right of the desk instead.
  *
  * Every non-tab route is declared with `href: null` on purpose. A file under
  * this directory that is not listed becomes a tab of its own, which is how a
@@ -33,11 +34,8 @@ export default function TrainerLayout() {
         name="attendance"
         options={{ title: 'Attendance', tabBarIcon: tabIcon('time') }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
-      />
-      {/* Reached from the desk and from More, not tabs of their own. */}
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      {/* Reached from the desk and from the account sheet, not tabs of their own. */}
       <Tabs.Screen name="shift" options={{ href: null }} />
       <Tabs.Screen name="scan" options={{ href: null }} />
       <Tabs.Screen name="availability" options={{ href: null }} />

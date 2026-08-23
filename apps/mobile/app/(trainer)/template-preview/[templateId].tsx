@@ -13,7 +13,7 @@ import { StyleSheet } from 'react-native';
 import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
 import type { WorkoutTemplate } from '../../../src/api/types';
-import { CategoryBadge } from '../../../src/components/programme';
+import { CategoryBadge, WorkoutArtwork } from '../../../src/components/programme';
 import {
   Banner,
   Body,
@@ -105,6 +105,7 @@ export default function TemplatePreviewScreen() {
 
         {data.days.map((day, index) => (
           <Card key={day.id} testID={`preview-day-${index}`}>
+            <WorkoutArtwork category={day.category} testID={`preview-day-art-${index}`} />
             <Row gap="sm">
               <Stack gap="xxs" style={styles.grow}>
                 <Text variant="label" tone={color.textTertiary}>

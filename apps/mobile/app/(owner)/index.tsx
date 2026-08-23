@@ -217,7 +217,6 @@ export default function OwnerDashboardScreen() {
       >
         {/* ---------------------------------------------------- greeting */}
         <Row gap="md" align="flex-start">
-          <AccountAvatar size={44} />
           <Stack
             gap="xxs"
             style={styles.grow}
@@ -246,6 +245,7 @@ export default function OwnerDashboardScreen() {
           >
             <Ionicons name="megaphone-outline" size={20} color={color.text} />
           </Pressable>
+          <AccountAvatar size={44} />
         </Row>
 
         {/* ------------------------------------------------- key numbers */}

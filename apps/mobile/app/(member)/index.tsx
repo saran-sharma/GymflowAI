@@ -214,7 +214,6 @@ export default function MemberHomeScreen() {
       >
         {/* Establishes context immediately: who, when, and where. */}
         <Row gap="md">
-          <AccountAvatar size={44} />
           <Stack gap="xxs" style={styles.grow}>
             <Text variant="title">
               {greeting()}, {me.full_name.split(' ')[0]}
@@ -224,6 +223,7 @@ export default function MemberHomeScreen() {
             </Text>
           </Stack>
           {me.is_inside ? <Badge label="Inside" tone="positive" solid /> : null}
+          <AccountAvatar size={44} />
         </Row>
 
         {membershipExpired ? (

@@ -1,9 +1,11 @@
 /**
- * Owner navigation: DASHBOARD, MEMBERS, TRAINERS, MARKETING, MORE.
+ * Owner navigation: DASHBOARD, MEMBERS, TRAINERS, MARKETING.
  *
  * Members is promoted to a tab because it is the list an owner opens most
  * after the dashboard. Incentives, performance, classes, corrections, PT
- * opportunities, alerts and settings live under MORE.
+ * opportunities, alerts and settings live behind the account sheet or pushed
+ * from the dashboard rather than competing for a tab slot. Account itself is
+ * reached from the initials avatar in the top-right of the dashboard.
  *
  * There is no Revenue tab and no InBody tab. Neither has a data source — no
  * billing model, and nothing writes body composition — and a tab that opens
@@ -32,10 +34,7 @@ export default function OwnerLayout() {
         name="marketing"
         options={{ title: 'Marketing', tabBarIcon: tabIcon('megaphone') }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{ title: 'Account', tabBarIcon: tabIcon('person-circle') }}
-      />
+      <Tabs.Screen name="profile" options={{ href: null }} />
       {/* Pushed on top of the tabs. */}
       <Tabs.Screen name="branch/[id]" options={{ href: null }} />
       <Tabs.Screen name="trainer/[id]" options={{ href: null }} />
