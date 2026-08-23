@@ -157,4 +157,10 @@ describe('member navigation', () => {
     fireEvent.press(screen.getByTestId('member-pt-13'));
     expect(mockPush).toHaveBeenCalledWith('/(owner)/member/13');
   });
+
+  it('opens Add member', async () => {
+    await draw();
+    fireEvent.press(screen.getByTestId('add-member'));
+    expect(mockPush).toHaveBeenCalledWith('/(owner)/members/new');
+  });
 });

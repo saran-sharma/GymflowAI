@@ -16,9 +16,13 @@ from app.core.config import settings
 from app.db.models import (
     AttendanceStatus,
     CaptureMethod,
+    ContactPreference,
     EventType,
+    ExperienceLevel,
     IncentiveStatus,
     MembershipStatus,
+    PreferredTime,
+    PreferredTrainingStyle,
 )
 
 
@@ -420,6 +424,61 @@ class MemberVisitOut(BaseModel):
     check_in_at: datetime | None = None
     check_out_at: datetime | None = None
     minutes: int | None = None
+
+
+# ------------------------------------------------------------- registration
+
+
+class MemberIntakeIn(BaseModel):
+    """What the member told the front desk at registration. Every field is
+    optional — declining a question is not an incomplete registration, and
+    ``limitations`` is a free-text note the member volunteers, never a
+    medical history form."""
+
+    fitness_goal: str | None = Field(default=None, max_length=160)
+    experience_level: ExperienceLevel | None = None
+    training_frequency_per_week: int | None = Field(default=None, ge=1, le=7)
+    preferred_style: PreferredTrainingStyle | None = None
+    preferred_time: PreferredTime | None = None
+    wants_pt: bool | None = None
+    limitations: str | None = Field(default=None, max_length=500)
+    contact_preference: ContactPreference | None = None
+
+
+class MemberIntakeOut(ORMModel):
+    fitness_goal: str | None = None
+    experience_level: ExperienceLevel | None = None
+    training_frequency_per_week: int | None = None
+    preferred_style: PreferredTrainingStyle | None = None
+    preferred_time: PreferredTime | None = None
+    wants_pt: bool | None = None
+    limitations: str | None = None
+    contact_preference: ContactPreference | None = None
+
+
+class MemberCreateRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    phone: str | None = Field(default=None, max_length=24)
+    password: str = Field(min_length=10, max_length=128)
+    branch_id: int
+    # Validated against the server's own plan catalog (see
+    # `members.PLAN_CATALOG`) rather than accepted as free text — duration
+    # and any included PT sessions are a business rule this endpoint owns,
+    # not something a caller supplies and could get wrong.
+    plan_name: str = Field(min_length=2, max_length=120)
+    marketing_source_id: int | None = None
+    intake: MemberIntakeIn | None = None
+
+
+class MemberCreateOut(BaseModel):
+    member_id: int
+    member_code: str
+    full_name: str
+    email: str
+    branch: BranchBrief
+    membership: MembershipOut
+    intake: MemberIntakeOut | None = None
 
 
 class NotificationOut(ORMModel):

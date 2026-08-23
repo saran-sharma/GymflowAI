@@ -30,6 +30,7 @@ import {
   EmptyState,
   ErrorState,
   Eyebrow,
+  LinkButton,
   PersonRow,
   ProgressBar,
   radii,
@@ -120,7 +121,16 @@ export default function OwnerMembersScreen() {
           />
         }
       >
-        <Text variant="title">Members</Text>
+        <Row>
+          <Text variant="title" style={styles.grow}>
+            Members
+          </Text>
+          <LinkButton
+            title="Add member"
+            testID="add-member"
+            onPress={() => router.push('/(owner)/members/new' as never)}
+          />
+        </Row>
 
         {/* Live, and marked as such — the only figure here that moves. */}
         <Section title="Currently in gym">

@@ -105,6 +105,34 @@ class MembershipStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ExperienceLevel(str, enum.Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+
+
+class PreferredTrainingStyle(str, enum.Enum):
+    STRENGTH = "strength"
+    CARDIO = "cardio"
+    GENERAL_FITNESS = "general_fitness"
+    GROUP_CLASSES = "group_classes"
+    MOBILITY = "mobility"
+
+
+class PreferredTime(str, enum.Enum):
+    MORNING = "morning"
+    AFTERNOON = "afternoon"
+    EVENING = "evening"
+    FLEXIBLE = "flexible"
+
+
+class ContactPreference(str, enum.Enum):
+    WHATSAPP = "whatsapp"
+    EMAIL = "email"
+    SMS = "sms"
+    NONE = "none"
+
+
 class NotificationStatus(str, enum.Enum):
     QUEUED = "queued"
     SENT = "sent"
@@ -265,6 +293,10 @@ capture_method_enum = Enum(CaptureMethod, name="capture_method")
 attendance_status_enum = Enum(AttendanceStatus, name="attendance_status")
 incentive_status_enum = Enum(IncentiveStatus, name="incentive_status")
 membership_status_enum = Enum(MembershipStatus, name="membership_status")
+experience_level_enum = Enum(ExperienceLevel, name="experience_level")
+preferred_training_style_enum = Enum(PreferredTrainingStyle, name="preferred_training_style")
+preferred_time_enum = Enum(PreferredTime, name="preferred_time")
+contact_preference_enum = Enum(ContactPreference, name="contact_preference")
 notification_status_enum = Enum(NotificationStatus, name="notification_status")
 journey_type_enum = Enum(JourneyType, name="journey_type")
 journey_status_enum = Enum(JourneyStatus, name="journey_status")
@@ -431,6 +463,38 @@ class Membership(Base, TimestampMixin, DemoMixin):
     pt_sessions_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     member: Mapped[Member] = relationship(back_populates="memberships")
+
+
+class MemberIntake(Base, TimestampMixin, DemoMixin):
+    """What a member told the front desk about themselves at registration —
+    goals and preferences, captured once. Deliberately its own table, not
+    columns on ``Member``: a trainer's later fitness ``Assessment``
+    (height/weight, done in person) is a different, ongoing record, and
+    conflating the two would let a trainer's follow-up silently overwrite
+    what the member originally said about themselves.
+
+    Every field is optional: a member who declines a question is not an
+    incomplete registration. ``limitations`` is a free-text note the member
+    volunteers, never a medical history form — GymFlow has no model for
+    injuries or medical conditions, and does not ask for one here.
+    """
+
+    __tablename__ = "member_intakes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    fitness_goal: Mapped[str | None] = mapped_column(String(160))
+    experience_level: Mapped[ExperienceLevel | None] = mapped_column(experience_level_enum)
+    training_frequency_per_week: Mapped[int | None] = mapped_column(Integer)
+    preferred_style: Mapped[PreferredTrainingStyle | None] = mapped_column(
+        preferred_training_style_enum
+    )
+    preferred_time: Mapped[PreferredTime | None] = mapped_column(preferred_time_enum)
+    wants_pt: Mapped[bool | None] = mapped_column(Boolean)
+    limitations: Mapped[str | None] = mapped_column(String(500))
+    contact_preference: Mapped[ContactPreference | None] = mapped_column(contact_preference_enum)
 
 
 class Shift(Base, TimestampMixin, DemoMixin):
@@ -1542,10 +1606,12 @@ __all__ = [
     "CardioSession",
     "CheckInFeeling",
     "ClassStatus",
+    "ContactPreference",
     "CorrectionStatus",
     "CorrectionType",
     "DayStatus",
     "EventType",
+    "ExperienceLevel",
     "FingerprintDevice",
     "FingerprintEnrollment",
     "GroupClass",
@@ -1562,6 +1628,7 @@ __all__ = [
     "MarketingSource",
     "Member",
     "MemberCheckIn",
+    "MemberIntake",
     "Membership",
     "MembershipStatus",
     "Notification",
@@ -1570,6 +1637,8 @@ __all__ = [
     "PTSession",
     "PackageStatus",
     "PersonType",
+    "PreferredTime",
+    "PreferredTrainingStyle",
     "Referral",
     "RefreshToken",
     "Role",

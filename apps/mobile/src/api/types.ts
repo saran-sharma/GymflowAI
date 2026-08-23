@@ -229,6 +229,59 @@ export interface Membership {
   pt_sessions_used: number;
 }
 
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type PreferredTrainingStyle =
+  | 'strength'
+  | 'cardio'
+  | 'general_fitness'
+  | 'group_classes'
+  | 'mobility';
+export type PreferredTime = 'morning' | 'afternoon' | 'evening' | 'flexible';
+export type ContactPreference = 'whatsapp' | 'email' | 'sms' | 'none';
+
+export interface MemberIntakeIn {
+  fitness_goal?: string | null;
+  experience_level?: ExperienceLevel | null;
+  training_frequency_per_week?: number | null;
+  preferred_style?: PreferredTrainingStyle | null;
+  preferred_time?: PreferredTime | null;
+  wants_pt?: boolean | null;
+  limitations?: string | null;
+  contact_preference?: ContactPreference | null;
+}
+
+export interface MemberIntake {
+  fitness_goal: string | null;
+  experience_level: ExperienceLevel | null;
+  training_frequency_per_week: number | null;
+  preferred_style: PreferredTrainingStyle | null;
+  preferred_time: PreferredTime | null;
+  wants_pt: boolean | null;
+  limitations: string | null;
+  contact_preference: ContactPreference | null;
+}
+
+export interface MemberCreateRequest {
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  password: string;
+  branch_id: number;
+  plan_name: string;
+  marketing_source_id?: number | null;
+  intake?: MemberIntakeIn | null;
+}
+
+export interface MemberCreateResult {
+  member_id: number;
+  member_code: string;
+  full_name: string;
+  email: string;
+  branch: BranchBrief;
+  membership: Membership;
+  intake: MemberIntake | null;
+}
+
 export interface MemberMe {
   member_id: number;
   member_code: string;

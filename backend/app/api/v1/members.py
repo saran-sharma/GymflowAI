@@ -2,17 +2,24 @@
 
 Membership status, own attendance, live occupancy at their branch, and who
 their trainer is. Nothing else: no CRM, no diet platform, no PT booking.
+
+Registration (`POST ""`) is the one staff-facing exception: creating a member
+is not something the member does to themselves, so it lives here rather than
+being invented as a self-registration flow the gym doesn't have.
 """
 
 from __future__ import annotations
+
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today
-from app.core.deps import get_current_user
+from app.core.deps import assert_branch_access, get_current_user, require_management
 from app.core.rate_limit import checkin_rate_limit
+from app.core.security import hash_password
 from app.db.models import (
     AlertStatus,
     AttendanceEvent,
@@ -21,8 +28,12 @@ from app.db.models import (
     EventType,
     Member,
     MemberCheckIn,
+    MemberIntake,
     Membership,
+    MembershipStatus,
     PersonType,
+    Role,
+    RoleKey,
     Trainer,
     User,
 )
@@ -30,7 +41,10 @@ from app.db.session import get_db
 from app.domain import pt_eligibility
 from app.schemas.common import (
     BranchBrief,
+    MemberCreateOut,
+    MemberCreateRequest,
     MemberEventRequest,
+    MemberIntakeOut,
     MemberMeOut,
     MembershipOut,
     MemberVisitOut,
@@ -48,6 +62,7 @@ from app.services import (
     activity_service,
     alert_service,
     attendance_service,
+    audit,
     class_service,
     incentive_service,
     journey_service,
@@ -59,6 +74,19 @@ from .journeys import assert_can_read_member
 from .trainers import client_detail_out, trainer_out
 
 router = APIRouter(prefix="/members", tags=["members"])
+
+#: The only plans registration will create a membership against — each one
+#: a (duration in days, PT sessions included) pair. Not user-supplied: a
+#: caller sends the plan's name, never its duration or session count, so a
+#: staff member can never register a "Monthly" plan that quietly runs for a
+#: year. Matches the vocabulary the seed data and every existing screen
+#: already filter/display on; adding a plan means adding it here.
+PLAN_CATALOG: dict[str, tuple[int, int]] = {
+    "Monthly": (30, 0),
+    "Quarterly": (90, 0),
+    "Annual": (365, 0),
+    "Elite Annual + PT": (365, 12),
+}
 
 
 def _current_member(db: Session, user: User) -> Member:
@@ -313,6 +341,111 @@ def member_attendance(
     )
     verb = "in" if payload.event_type is EventType.CHECK_IN else "out"
     return MessageOut(message=f"Checked {verb} at {branch.name}")
+
+
+@router.post("", response_model=MemberCreateOut, status_code=201)
+def register_member(
+    payload: MemberCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_management),
+) -> MemberCreateOut:
+    """Register a new member: account, membership, and their intake
+    questionnaire in one transaction. Branch-scoped like every other
+    management action — a branch manager registers members at their own
+    branch, an owner at any of theirs.
+
+    The plan determines duration and any included PT sessions
+    (`PLAN_CATALOG`); a caller supplies the plan's name, never its dates or
+    session count, so registration can't accidentally hand out terms nobody
+    approved.
+    """
+    assert_branch_access(actor, payload.branch_id)
+    branch = db.get(Branch, payload.branch_id)
+    if branch is None or not branch.is_active:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    plan = PLAN_CATALOG.get(payload.plan_name)
+    if plan is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown plan. Choose one of: {', '.join(PLAN_CATALOG)}",
+        )
+    duration_days, pt_sessions_total = plan
+
+    if db.scalar(select(User).where(User.email == payload.email.lower())):
+        raise HTTPException(status_code=409, detail="That email is already registered")
+
+    role = db.scalar(select(Role).where(Role.key == RoleKey.MEMBER.value))
+    if role is None:
+        raise HTTPException(status_code=500, detail="Member role is not seeded")
+
+    today = branch_today(branch.timezone)
+
+    new_user = User(
+        email=payload.email.lower(),
+        full_name=payload.full_name,
+        phone=payload.phone,
+        password_hash=hash_password(payload.password),
+        role_id=role.id,
+        branch_id=branch.id,
+    )
+    db.add(new_user)
+    db.flush()
+
+    member = Member(
+        user_id=new_user.id,
+        branch_id=branch.id,
+        member_code=f"{branch.code}-M{new_user.id:04d}",
+        joined_on=today,
+        registered_on=today,
+        marketing_source_id=payload.marketing_source_id,
+        is_active=True,
+    )
+    db.add(member)
+    db.flush()
+
+    membership = Membership(
+        member_id=member.id,
+        branch_id=branch.id,
+        plan_name=payload.plan_name,
+        status=MembershipStatus.ACTIVE,
+        starts_on=today,
+        ends_on=today + timedelta(days=duration_days),
+        pt_sessions_total=pt_sessions_total,
+        pt_sessions_used=0,
+    )
+    db.add(membership)
+
+    intake_out: MemberIntakeOut | None = None
+    if payload.intake is not None:
+        intake = MemberIntake(member_id=member.id, **payload.intake.model_dump())
+        db.add(intake)
+        db.flush()
+        intake_out = MemberIntakeOut.model_validate(intake)
+
+    db.flush()
+
+    audit.record(
+        db,
+        action=audit.ACTION_ADMIN_ACTION,
+        actor=actor,
+        entity_type="member",
+        entity_id=member.id,
+        branch_id=branch.id,
+        request=request,
+        details={"created_email": new_user.email, "plan_name": payload.plan_name},
+    )
+
+    return MemberCreateOut(
+        member_id=member.id,
+        member_code=member.member_code,
+        full_name=new_user.full_name,
+        email=new_user.email,
+        branch=BranchBrief.model_validate(branch),
+        membership=MembershipOut.model_validate(membership),
+        intake=intake_out,
+    )
 
 
 @router.get("/{member_id}", response_model=TrainerClientDetailOut)

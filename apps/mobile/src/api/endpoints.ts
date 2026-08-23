@@ -11,6 +11,8 @@ import type {
   IncentiveResult,
   Insight,
   LoginResponse,
+  MemberCreateRequest,
+  MemberCreateResult,
   MemberMe,
   MemberVisit,
   Occupancy,
@@ -177,6 +179,9 @@ export const memberAttendance = (
     },
     token,
   });
+
+export const registerMember = (body: MemberCreateRequest, token: string) =>
+  request<MemberCreateResult>('/members', { method: 'POST', body, token });
 
 /* ------------------------------------------------------------------- system */
 
