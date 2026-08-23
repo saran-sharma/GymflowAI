@@ -166,3 +166,61 @@ def test_a_member_cannot_read_another_members_strength_trend(client, db, world, 
         headers=auth(world["member_ngk_user"]),
     )
     assert response.status_code == 403
+
+
+def test_a_correction_that_removes_the_pr_set_lets_the_old_pr_return(client, db, world, auth):
+    """The PR is never a stored number — it is recomputed from whatever sets
+    actually exist. Deleting a mistakenly-logged heavier set must therefore
+    let the true previous best show again, not leave a phantom PR standing
+    or a gap where the badge used to be."""
+    member = world["member_ngk"]
+    _past_session(db, member, days_ago=7, exercise="Back squat", sets=[(100.0, 5)])
+    session = _past_session(db, member, days_ago=0, exercise="Back squat", sets=[(120.0, 5)])
+    db.commit()
+
+    trend = journey_service.strength_trend(db, member_id=member.id)
+    squat = next(t for t in trend if t.exercise == "Back squat")
+    assert squat.heaviest_kg == 120.0
+    assert squat.is_recent_pr is True
+
+    item = session.items[0]
+    mistaken_set = item.logged_sets[0]
+    journey_service.delete_set(db, row=mistaken_set)
+    db.commit()
+
+    trend_after = journey_service.strength_trend(db, member_id=member.id)
+    squat_after = next((t for t in trend_after if t.exercise == "Back squat"), None)
+    assert squat_after is not None
+    assert squat_after.heaviest_kg == 100.0
+
+
+def test_correcting_a_sets_weight_down_recomputes_whether_it_is_still_a_pr(client, db, world, auth):
+    member = world["member_ngk"]
+    _past_session(db, member, days_ago=7, exercise="Deadlift", sets=[(140.0, 3)])
+    session = _past_session(db, member, days_ago=0, exercise="Deadlift", sets=[(150.0, 3)])
+    db.commit()
+
+    before = journey_service.strength_trend(db, member_id=member.id)
+    lift = next(t for t in before if t.exercise == "Deadlift")
+    assert lift.is_recent_pr is True
+
+    latest_set = session.items[0].logged_sets[0]
+    journey_service.update_set(db, row=latest_set, changes={"weight_kg": 130.0})
+    db.commit()
+
+    after = journey_service.strength_trend(db, member_id=member.id)
+    lift_after = next(t for t in after if t.exercise == "Deadlift")
+    assert lift_after.heaviest_kg == 140.0
+    assert lift_after.is_recent_pr is False
+
+
+def test_a_tied_weight_still_counts_as_the_pr(client, db, world, auth):
+    member = world["member_ngk"]
+    _past_session(db, member, days_ago=7, exercise="Overhead press", sets=[(50.0, 6)])
+    _past_session(db, member, days_ago=0, exercise="Overhead press", sets=[(50.0, 6)])
+    db.commit()
+
+    trend = journey_service.strength_trend(db, member_id=member.id)
+    lift = next(t for t in trend if t.exercise == "Overhead press")
+    assert lift.heaviest_kg == 50.0
+    assert lift.is_recent_pr is True
