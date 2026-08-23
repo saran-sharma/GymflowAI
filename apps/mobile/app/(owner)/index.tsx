@@ -368,7 +368,7 @@ export default function OwnerDashboardScreen() {
                 value={marketing.data.new_members}
                 hint="last 90 days"
                 icon="person-add-outline"
-                onPress={() => router.push('/(owner)/marketing' as never)}
+                onPress={() => router.push('/(owner)/new-members' as never)}
               />
               <StatCard
                 label="Top source"

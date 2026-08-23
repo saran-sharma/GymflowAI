@@ -26,6 +26,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import get_db
+from app.domain import pt_eligibility
 from app.domain.shift_engine import (
     EARLY_EXIT_STATUSES,
     LATE_STATUSES,
@@ -33,7 +34,13 @@ from app.domain.shift_engine import (
     PRESENT_STATUSES,
 )
 from app.schemas.common import AuditLogOut, BranchSummaryOut, DashboardOut, OccupancyOut
-from app.schemas.operations import NeedsAttentionOut, RenewalItemOut, RenewalsOut
+from app.schemas.operations import (
+    NeedsAttentionOut,
+    NewMemberItemOut,
+    NewMembersOut,
+    RenewalItemOut,
+    RenewalsOut,
+)
 from app.services import attendance_service, automation_service, correction_service
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -348,3 +355,69 @@ def renewals_due(
             for row in rows
         ],
     )
+
+
+@router.get("/new-members", response_model=NewMembersOut)
+def new_members(
+    days: int = Query(default=90, ge=1, le=365),
+    branch_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> NewMembersOut:
+    """Members who joined inside the window, one flat list across every
+    acquisition source.
+
+    The dashboard's "New members" tile previously opened onto the marketing
+    overview, which answers "how is acquisition trending" a source at a
+    time — not "who are they," which is what tapping a count on a dashboard
+    means. This is that list: name, when, plan, source, trainer, status,
+    each row opening straight onto Member Intelligence.
+    """
+    allowed = scoped_branch_filter(user, branch_id)
+    today = branch_today(None)
+    horizon = today - timedelta(days=days)
+
+    stmt = (
+        select(Member)
+        .options(
+            joinedload(Member.user),
+            joinedload(Member.marketing_source),
+            joinedload(Member.assigned_trainer).joinedload(Trainer.user),
+        )
+        .where(Member.registered_on.is_not(None), Member.registered_on >= horizon)
+        .order_by(Member.registered_on.desc())
+    )
+    if allowed is not None:
+        stmt = stmt.where(Member.branch_id.in_(allowed))
+
+    members = db.scalars(stmt).unique().all()
+    items = []
+    for member in members:
+        membership = db.scalar(
+            select(Membership)
+            .where(Membership.member_id == member.id)
+            .order_by(Membership.ends_on.desc())
+        )
+        status = None
+        if membership is not None:
+            status = pt_eligibility.effective_membership_status(
+                membership.status, membership.ends_on, today
+            )
+        items.append(
+            NewMemberItemOut(
+                member_id=member.id,
+                member_name=member.user.full_name,
+                branch_id=member.branch_id,
+                registered_on=member.registered_on,
+                plan_name=membership.plan_name if membership else None,
+                source_label=member.marketing_source.label if member.marketing_source else None,
+                assigned_trainer_name=(
+                    member.assigned_trainer.user.full_name
+                    if member.assigned_trainer and member.assigned_trainer.user
+                    else None
+                ),
+                status=status,
+            )
+        )
+
+    return NewMembersOut(window_days=days, count=len(items), items=items)

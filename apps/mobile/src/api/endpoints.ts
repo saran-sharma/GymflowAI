@@ -636,6 +636,12 @@ export const renewalsDue = (token: string, days = 30, branchId?: number) =>
     { token },
   );
 
+export const newMembers = (token: string, days = 90, branchId?: number) =>
+  request<import('./types').NewMembers>(
+    `/reports/new-members?days=${days}${branchId ? `&branch_id=${branchId}` : ''}`,
+    { token },
+  );
+
 /* ---------------------------------------------------------------- payments */
 
 export const revenueSummary = (token: string, days = 30, branchId?: number) =>

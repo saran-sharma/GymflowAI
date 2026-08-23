@@ -1009,6 +1009,24 @@ export interface Renewals {
   items: RenewalItem[];
 }
 
+export interface NewMemberItem {
+  member_id: number;
+  member_name: string;
+  branch_id: number;
+  registered_on: string | null;
+  plan_name: string | null;
+  source_label: string | null;
+  assigned_trainer_name: string | null;
+  status: 'active' | 'expired' | 'frozen' | 'cancelled' | null;
+}
+
+/** Members who joined inside the window, across every acquisition source. */
+export interface NewMembers {
+  window_days: number;
+  count: number;
+  items: NewMemberItem[];
+}
+
 /* ---------------------------------------------------------------- payments */
 
 export type PaymentKind = 'membership' | 'pt' | 'group_class' | 'renewal' | 'addon';

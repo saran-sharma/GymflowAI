@@ -18,6 +18,7 @@ from app.db.models import (
     AttendanceStatus,
     CorrectionStatus,
     CorrectionType,
+    MembershipStatus,
 )
 
 
@@ -340,6 +341,27 @@ class RenewalsOut(BaseModel):
     window_days: int
     count: int
     items: list[RenewalItemOut]
+
+
+class NewMemberItemOut(BaseModel):
+    member_id: int
+    member_name: str
+    branch_id: int
+    registered_on: date | None
+    plan_name: str | None
+    source_label: str | None
+    assigned_trainer_name: str | None
+    status: MembershipStatus | None
+
+
+class NewMembersOut(BaseModel):
+    """Members who joined inside the window — one flat list across every
+    acquisition source, for the dashboard's "New members" tile to open
+    straight onto rather than the marketing overview a source at a time."""
+
+    window_days: int
+    count: int
+    items: list[NewMemberItemOut]
 
 
 __all__ = [name for name in dir() if name[0].isupper()]
