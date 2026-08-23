@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Motion } from './motion';
 import { Row, Spacer, Text } from './primitives';
 import { color, radii, space } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 export interface SheetProps {
   visible: boolean;
@@ -43,6 +44,7 @@ export interface SheetProps {
  */
 export function Sheet({ visible, onClose, title, subtitle, children, footer, testID }: SheetProps) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(buildOverlayStyles);
 
   return (
     <Modal
@@ -115,41 +117,43 @@ export function Sheet({ visible, onClose, title, subtitle, children, footer, tes
   );
 }
 
-const styles = StyleSheet.create({
-  grow: { flex: 1 },
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.72)',
-  },
-  sheet: {
-    maxHeight: '88%',
-    backgroundColor: color.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    borderTopWidth: 1,
-    borderColor: color.border,
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    marginTop: space.md,
-    backgroundColor: color.borderStrong,
-  },
-  header: {
-    paddingHorizontal: space.lg,
-    paddingTop: space.lg,
-    paddingBottom: space.sm,
-  },
-  close: { paddingVertical: space.xs, paddingLeft: space.md },
-  body: { paddingHorizontal: space.lg, paddingBottom: space.md, gap: space.sm },
-  footer: {
-    paddingHorizontal: space.lg,
-    paddingTop: space.md,
-    gap: space.sm,
-    borderTopWidth: 1,
-    borderTopColor: color.border,
-  },
-});
+function buildOverlayStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    backdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.72)',
+    },
+    sheet: {
+      maxHeight: '88%',
+      backgroundColor: color.surface,
+      borderTopLeftRadius: radii.xl,
+      borderTopRightRadius: radii.xl,
+      borderTopWidth: 1,
+      borderColor: color.border,
+    },
+    grabber: {
+      alignSelf: 'center',
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      marginTop: space.md,
+      backgroundColor: color.borderStrong,
+    },
+    header: {
+      paddingHorizontal: space.lg,
+      paddingTop: space.lg,
+      paddingBottom: space.sm,
+    },
+    close: { paddingVertical: space.xs, paddingLeft: space.md },
+    body: { paddingHorizontal: space.lg, paddingBottom: space.md, gap: space.sm },
+    footer: {
+      paddingHorizontal: space.lg,
+      paddingTop: space.md,
+      gap: space.sm,
+      borderTopWidth: 1,
+      borderTopColor: color.border,
+    },
+  });
+}

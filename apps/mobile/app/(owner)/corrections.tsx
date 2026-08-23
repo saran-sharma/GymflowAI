@@ -29,19 +29,29 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 const STATUS_COLOR: Record<AttendanceCorrection['status'], string> = {
-  pending: color.status.caution,
-  approved: color.status.positive,
-  rejected: color.status.critical,
-  withdrawn: color.textTertiary,
+  get pending() {
+    return color.status.caution;
+  },
+  get approved() {
+    return color.status.positive;
+  },
+  get rejected() {
+    return color.status.critical;
+  },
+  get withdrawn() {
+    return color.textTertiary;
+  },
 };
 
 export default function OwnerCorrectionsScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const corrections = useApi<AttendanceCorrection[]>((token) => api.listCorrections(token), []);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -189,7 +199,8 @@ export default function OwnerCorrectionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   change: { gap: space.md, alignItems: 'flex-start' },
@@ -202,3 +213,4 @@ const styles = StyleSheet.create({
   },
   footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
 });
+}

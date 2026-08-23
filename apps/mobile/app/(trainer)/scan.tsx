@@ -15,12 +15,14 @@ import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Loading, Screen, Txt } from '../../src/components/ui';
+import { useThemedStyles } from '../../src/design';
 import { colors, radius, spacing } from '../../src/theme';
 
 /** The prefix every GymFlow branch token carries. */
 const TOKEN_PREFIX = 'GFQ1.';
 
 export default function ScanScreen() {
+  const styles = useThemedStyles(buildStyles);
   const [permission, requestPermission] = useCameraPermissions();
   const router = useRouter();
   const [hint, setHint] = useState<string | null>(null);
@@ -113,7 +115,8 @@ export default function ScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.bg },
   overlay: { backgroundColor: 'transparent' },
   overlayTop: { padding: spacing.lg, alignItems: 'flex-end' },
@@ -139,3 +142,4 @@ const styles = StyleSheet.create({
   actions: { marginTop: spacing.lg, gap: spacing.md, alignSelf: 'stretch', paddingHorizontal: spacing.xl },
   overlayBottom: { padding: spacing.xl, gap: spacing.md },
 });
+}

@@ -25,43 +25,21 @@ import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 /* ------------------------------------------------------------------ palette */
 
 /**
- * Raw values. Referenced only by the semantic tokens below — never import this
- * directly from a component, or the semantics stop being changeable in one
- * place.
+ * Raw values, one ramp per theme. Referenced only by the semantic tokens
+ * below — never import a palette directly from a component, or the
+ * semantics stop being changeable in one place.
+ *
+ * Role accents, the auth gold, and every status hue are identical across
+ * both palettes on purpose: GymFlow's brand identity (gold for trainer
+ * actions, purple for owner/selected/progress states, green for member) is
+ * what makes the app recognisable, and a theme switch changes the *ground
+ * the identity sits on*, never the identity itself.
  */
-const palette = {
-  // The Figma neutral ramp. Genuinely neutral — no hue shift — because the
-  // accent is now per-role, and greys tinted toward one accent would fight the
-  // other three.
-  ink0: '#0A0A0A', // page
-  ink1: '#111111', // chrome and cards
-  ink2: '#161616', // inputs
-  ink3: '#191919', // elevated / pressed
-  ink4: '#1F1F1F',
-  ink5: 'rgba(255,255,255,0.07)', // the only border in the design
-  ink6: 'rgba(255,255,255,0.14)',
-
-  /**
-   * Role accents.
-   *
-   * GymFlow no longer has one brand colour. A person's accent tells them whose
-   * app they are in before they read a word of it, which is worth more in a
-   * product where one human can be a member at one branch and a trainer at
-   * another. Auth is gold because it belongs to none of them yet.
-   */
+const brandInk = {
   member: '#B4E052',
   owner: '#7C6EF5',
   trainer: '#D4A44C',
   gold: '#C9A84C',
-
-  // Text ramp, from the design.
-  text1: '#F0EDE8', // not pure white: warm, and easier to read at length
-  text2: '#888888',
-  text3: '#444444',
-  text4: '#3A3A3A', // placeholders and inactive tabs
-
-  // Outcome hues. Deliberately few, and none saturated enough to be mistaken
-  // for a role accent.
   green: '#5FBF6A',
   amber: '#D9A441',
   red: '#E05252',
@@ -71,63 +49,160 @@ const palette = {
   slate: '#6B6B6B',
 } as const;
 
-/* ------------------------------------------------------- semantic colour */
+const darkPalette = {
+  ...brandInk,
+  // The Figma neutral ramp. Genuinely neutral — no hue shift — because the
+  // accent is now per-role, and greys tinted toward one accent would fight
+  // the other three.
+  ink0: '#0A0A0A', // page
+  ink1: '#111111', // chrome and cards
+  ink2: '#161616', // inputs
+  ink3: '#191919', // elevated / pressed
+  ink4: '#1F1F1F',
+  ink5: 'rgba(255,255,255,0.07)', // the only border in the design
+  ink6: 'rgba(255,255,255,0.14)',
 
-export const color = {
-  /** App background — the furthest-back surface. */
-  background: palette.ink0,
-  /** Chrome that sits on the background: tab bar, headers. */
-  surface: palette.ink1,
-  /** Content containers. The default card. */
-  surfaceRaised: palette.ink1,
-  /** A container on top of a container, or a pressed state. */
-  surfaceOverlay: palette.ink3,
-  /** Form fields, which must read as recessed rather than raised. */
-  surfaceInput: palette.ink2,
-
-  border: palette.ink5,
-  borderStrong: palette.ink6,
-
-  /**
-   * The accent for the app you are currently in.
-   *
-   * Defaults to gold — the auth colour — and is replaced per role group by
-   * `roleAccent`. Every component reads `color.brand`, so a role's colour
-   * arrives without a single component knowing roles exist.
-   */
-  brand: palette.gold,
-  brandPressed: palette.trainer,
-  brandDeep: palette.trainer,
-  /** For text and icons on a dark ground. */
-  brandAccent: palette.gold,
-
-  text: palette.text1,
-  textSecondary: palette.text2,
-  textTertiary: palette.text3,
-  /** Placeholders, inactive tabs — the quietest legible step. */
-  textQuiet: palette.text4,
-  /** On a brand or light fill. */
-  textInverse: palette.ink0,
-
-  status: {
-    positive: palette.green,
-    caution: palette.amber,
-    critical: palette.red,
-    warning: palette.orange,
-    notable: palette.violet,
-    info: palette.blue,
-    neutral: palette.slate,
-  },
+  // Text ramp, from the design.
+  text1: '#F0EDE8', // not pure white: warm, and easier to read at length
+  text2: '#888888',
+  text3: '#444444',
+  text4: '#3A3A3A', // placeholders and inactive tabs
+  textInverse: '#0A0A0A',
 } as const;
 
-/** Each role's accent, and the colour the auth screen wears before any role. */
+const lightPalette = {
+  ...brandInk,
+  // Warm off-white rather than a harsh paper-white page, with genuinely
+  // white cards sitting a visible step above it — the same "elevation is
+  // lightness" rule as dark mode, just anchored at the opposite end.
+  ink0: '#FAF6EF', // page
+  ink1: '#FFFFFF', // chrome and cards
+  ink2: '#F2ECE1', // inputs — recessed relative to a white card
+  ink3: '#ECE4D6', // elevated / pressed
+  ink4: '#E4D9C6',
+  ink5: 'rgba(28,20,10,0.09)', // the only border in the design
+  ink6: 'rgba(28,20,10,0.18)',
+
+  // Warm near-black rather than pure black — the same reasoning as dark
+  // mode's warm near-white, applied at the other end of the ramp.
+  text1: '#211C15',
+  text2: '#6E655A',
+  text3: '#9C9184',
+  text4: '#C7BCA9',
+  textInverse: '#FFFFFF',
+} as const;
+
+export type ColorScheme = 'light' | 'dark';
+
+/**
+ * The live token object every component reads. Mutated in place by
+ * `applyColorScheme` rather than reassigned, because dozens of modules hold
+ * a direct reference to this exact object (`import { color } from
+ * '../design'`) — replacing it would leave those imports pointed at a
+ * stale copy. `elevation`, `hairline` and `toneColor` below read through
+ * getters for the same reason: a value copied out of `color` at import time
+ * would freeze at whatever theme was active on first load.
+ */
+interface ColorTokens {
+  background: string;
+  surface: string;
+  surfaceRaised: string;
+  surfaceOverlay: string;
+  surfaceInput: string;
+  border: string;
+  borderStrong: string;
+  brand: string;
+  brandPressed: string;
+  brandDeep: string;
+  brandAccent: string;
+  text: string;
+  textSecondary: string;
+  textTertiary: string;
+  textQuiet: string;
+  textInverse: string;
+  status: {
+    positive: string;
+    caution: string;
+    critical: string;
+    warning: string;
+    notable: string;
+    info: string;
+    neutral: string;
+  };
+}
+
+export const color: ColorTokens = {
+  background: darkPalette.ink0,
+  surface: darkPalette.ink1,
+  surfaceRaised: darkPalette.ink1,
+  surfaceOverlay: darkPalette.ink3,
+  surfaceInput: darkPalette.ink2,
+  border: darkPalette.ink5,
+  borderStrong: darkPalette.ink6,
+  brand: darkPalette.gold,
+  brandPressed: darkPalette.trainer,
+  brandDeep: darkPalette.trainer,
+  brandAccent: darkPalette.gold,
+  text: darkPalette.text1,
+  textSecondary: darkPalette.text2,
+  textTertiary: darkPalette.text3,
+  textQuiet: darkPalette.text4,
+  textInverse: darkPalette.textInverse,
+  status: {
+    positive: darkPalette.green,
+    caution: darkPalette.amber,
+    critical: darkPalette.red,
+    warning: darkPalette.orange,
+    notable: darkPalette.violet,
+    info: darkPalette.blue,
+    neutral: darkPalette.slate,
+  },
+};
+
+/**
+ * Applies a resolved scheme to the live `color` object in place. Called by
+ * `ThemeProvider` — see `src/store/ThemeContext` — synchronously during its
+ * render, so the very first frame after a theme change already reads the
+ * new values rather than flashing the old ones for a tick.
+ */
+export function applyColorScheme(scheme: ColorScheme): void {
+  const p = scheme === 'light' ? lightPalette : darkPalette;
+  color.background = p.ink0;
+  color.surface = p.ink1;
+  color.surfaceRaised = p.ink1;
+  color.surfaceOverlay = p.ink3;
+  color.surfaceInput = p.ink2;
+  color.border = p.ink5;
+  color.borderStrong = p.ink6;
+  color.brand = p.gold;
+  color.brandPressed = p.trainer;
+  color.brandDeep = p.trainer;
+  color.brandAccent = p.gold;
+  color.text = p.text1;
+  color.textSecondary = p.text2;
+  color.textTertiary = p.text3;
+  color.textQuiet = p.text4;
+  color.textInverse = p.textInverse;
+  color.status.positive = p.green;
+  color.status.caution = p.amber;
+  color.status.critical = p.red;
+  color.status.warning = p.orange;
+  color.status.notable = p.violet;
+  color.status.info = p.blue;
+  color.status.neutral = p.slate;
+}
+
+/**
+ * Each role's accent, and the colour the auth screen wears before any role.
+ * Deliberately theme-invariant — see the module docstring.
+ */
 export const roleAccent = {
-  member: palette.member,
-  owner: palette.owner,
-  branch_manager: palette.owner,
-  super_admin: palette.owner,
-  trainer: palette.trainer,
-  auth: palette.gold,
+  member: brandInk.member,
+  owner: brandInk.owner,
+  branch_manager: brandInk.owner,
+  super_admin: brandInk.owner,
+  trainer: brandInk.trainer,
+  auth: brandInk.gold,
 } as const;
 
 export type RoleAccent = keyof typeof roleAccent;
@@ -274,34 +349,57 @@ export type TextRole = keyof typeof text;
 
 /**
  * Elevation as surface lightness plus, only where something truly floats, a
- * shadow. Levels 0–2 deliberately carry no shadow: on a near-black ground it
- * would be invisible cost.
+ * shadow. Levels 0–2 deliberately carry no shadow in dark mode, where it
+ * would be invisible against a near-black ground; light mode's level3 adds
+ * a soft shadow of its own, since a floating sheet needs to read as lifted
+ * off a light ground too.
+ *
+ * Every level is a getter rather than a plain field: `color.background`
+ * etc. would otherwise be copied out as a fixed string the moment this
+ * module first loads, and a later theme switch would never reach it.
  */
-export const elevation = {
+export const elevation: Record<'level0' | 'level1' | 'level2' | 'level3', ViewStyle> = {
   /** Flush with the background. */
-  level0: { backgroundColor: color.background },
-  /** A content container. */
-  level1: { backgroundColor: color.surfaceRaised },
-  /** A container on a container, or a pressed card. */
-  level2: { backgroundColor: color.surfaceOverlay },
-  /** Floating over content: modals, sheets, the tab bar. */
-  level3: {
-    backgroundColor: color.surfaceOverlay,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.45,
-        shadowRadius: 20,
-      },
-      android: { elevation: 12 },
-      default: {},
-    }),
+  get level0() {
+    return { backgroundColor: color.background };
   },
-} as const satisfies Record<string, ViewStyle>;
+  /** A content container. */
+  get level1() {
+    return { backgroundColor: color.surfaceRaised };
+  },
+  /** A container on a container, or a pressed card. */
+  get level2() {
+    return { backgroundColor: color.surfaceOverlay };
+  },
+  /** Floating over content: modals, sheets, the tab bar. */
+  get level3() {
+    return {
+      backgroundColor: color.surfaceOverlay,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.45,
+          shadowRadius: 20,
+        },
+        android: { elevation: 12 },
+        default: {},
+      }),
+    };
+  },
+};
 
-/** The hairline that separates surfaces of similar lightness. */
-export const hairline = { borderWidth: 1, borderColor: color.border } as const;
+/**
+ * The hairline that separates surfaces of similar lightness. A getter for
+ * `borderColor`, not a fixed field, for the same live-theme reason as
+ * `elevation` above.
+ */
+export const hairline: { borderWidth: number; borderColor: string } = {
+  borderWidth: 1,
+  get borderColor() {
+    return color.border;
+  },
+};
 
 /* ----------------------------------------------------------------- motion */
 
@@ -354,12 +452,24 @@ export const control = {
 export type Tone = 'neutral' | 'brand' | 'positive' | 'caution' | 'critical' | 'info';
 
 export const toneColor: Record<Tone, string> = {
-  neutral: color.status.neutral,
-  brand: color.brand,
-  positive: color.status.positive,
-  caution: color.status.caution,
-  critical: color.status.critical,
-  info: color.status.info,
+  get neutral() {
+    return color.status.neutral;
+  },
+  get brand() {
+    return color.brand;
+  },
+  get positive() {
+    return color.status.positive;
+  },
+  get caution() {
+    return color.status.caution;
+  },
+  get critical() {
+    return color.status.critical;
+  },
+  get info() {
+    return color.status.info;
+  },
 };
 
 export const tokens = {

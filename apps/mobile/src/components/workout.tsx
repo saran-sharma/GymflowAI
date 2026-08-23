@@ -32,6 +32,7 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../design';
 import { dayLabel } from '../utils/format';
 
@@ -82,6 +83,7 @@ export function PreviousPerformance({
   history: WorkoutSetHistory | null;
   onOpenHistory?: () => void;
 }) {
+  const styles = useThemedStyles(buildStyles);
   const last = history?.sessions[0] ?? null;
 
   if (!last || last.sets.length === 0) {
@@ -169,6 +171,7 @@ export function recordDetail(record: PersonalRecord): string {
  * reads as premium precisely because it does not ask for anything.
  */
 export function RecordNote({ records }: { records: PersonalRecord[] }) {
+  const styles = useThemedStyles(buildStyles);
   if (records.length === 0) return null;
 
   return (
@@ -213,6 +216,7 @@ export function SetRow({
   onEdit,
   onDelete,
 }: SetRowProps) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <Row gap="md" style={[styles.setRow, editing ? styles.setRowEditing : null]}>
       <Pressable
@@ -255,6 +259,7 @@ export function SetRow({
 
 /** One past session in the history sheet: what was done, and what it came to. */
 export function HistorySession({ entry }: { entry: ExerciseSession }) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <Stack gap="xs" style={styles.historyRow}>
       <Row gap="sm">
@@ -299,6 +304,7 @@ export function ExerciseHistorySheet({
   onClose: () => void;
   history: WorkoutSetHistory | null;
 }) {
+  const styles = useThemedStyles(buildStyles);
   const sessions = history?.sessions ?? [];
 
   return (
@@ -421,6 +427,7 @@ export function clockLabel(seconds: number): string {
  * responds again is a timer that gets in the way of the workout it is timing.
  */
 export function RestBar({ timer, onDone }: { timer: RestTimer; onDone?: () => void }) {
+  const styles = useThemedStyles(buildStyles);
   const { remaining } = timer;
   if (remaining === null) return null;
 
@@ -457,57 +464,59 @@ export function RestBar({ timer, onDone }: { timer: RestTimer; onDone?: () => vo
   );
 }
 
-const styles = StyleSheet.create({
-  grow: { flex: 1 },
-  previous: {
-    paddingVertical: space.sm,
-  },
-  records: { paddingVertical: space.xs },
-  record: {
-    borderLeftWidth: 2,
-    borderLeftColor: color.brandAccent,
-    paddingLeft: space.md,
-    paddingVertical: space.xs,
-  },
-  historyRow: {
-    paddingVertical: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  historySets: { flexWrap: 'wrap' },
-  setRow: {
-    backgroundColor: color.surfaceRaised,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: color.border,
-    paddingRight: space.sm,
-    minHeight: 56,
-  },
-  setRowEditing: { borderColor: color.brand, backgroundColor: color.surfaceOverlay },
-  setPress: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.sm,
-    paddingLeft: space.md,
-    minHeight: 56,
-  },
-  setNumber: { minWidth: 16 },
-  setDelete: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rest: {
-    backgroundColor: color.surfaceRaised,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: color.brand,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-  },
-  restDone: { borderColor: color.status.positive },
-  restClock: { fontSize: 26, lineHeight: 30 },
-});
+function buildStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    previous: {
+      paddingVertical: space.sm,
+    },
+    records: { paddingVertical: space.xs },
+    record: {
+      borderLeftWidth: 2,
+      borderLeftColor: color.brandAccent,
+      paddingLeft: space.md,
+      paddingVertical: space.xs,
+    },
+    historyRow: {
+      paddingVertical: space.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: color.border,
+    },
+    historySets: { flexWrap: 'wrap' as const },
+    setRow: {
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: color.border,
+      paddingRight: space.sm,
+      minHeight: 56,
+    },
+    setRowEditing: { borderColor: color.brand, backgroundColor: color.surfaceOverlay },
+    setPress: {
+      flex: 1,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: space.md,
+      paddingVertical: space.sm,
+      paddingLeft: space.md,
+      minHeight: 56,
+    },
+    setNumber: { minWidth: 16 },
+    setDelete: {
+      width: 36,
+      height: 36,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    rest: {
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: color.brand,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+    },
+    restDone: { borderColor: color.status.positive },
+    restClock: { fontSize: 26, lineHeight: 30 },
+  });
+}

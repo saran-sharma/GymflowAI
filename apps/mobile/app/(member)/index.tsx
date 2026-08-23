@@ -504,7 +504,7 @@ export default function MemberHomeScreen() {
       <TodayCard
         testID="today-card"
         kind="own_workout"
-        title={workout?.split_label ?? journey.split_today.toUpperCase()}
+        title={workout?.split_label ?? workout?.program_day_name ?? journey.split_today.toUpperCase()}
         subtitle={todaySubtitle()}
         percent={
           started && workout.total_items

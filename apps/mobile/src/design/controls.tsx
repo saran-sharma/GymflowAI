@@ -37,6 +37,7 @@ import {
   toneColor,
   type Tone,
 } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -77,6 +78,7 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
+  const styles = useThemedStyles(buildControlStyles);
   const isDisabled = disabled || loading;
 
   const palette: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
@@ -156,6 +158,7 @@ export function LinkButton({
   disabled,
   ...rest
 }: Omit<PressableProps, 'style' | 'children'> & { title: string; tone?: string }) {
+  const styles = useThemedStyles(buildControlStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -186,6 +189,7 @@ export interface BadgeProps {
 
 /** A compact status marker. Tinted by default so a list of them stays calm. */
 export function Badge({ label, tone = 'neutral', colorOverride, solid = false }: BadgeProps) {
+  const styles = useThemedStyles(buildControlStyles);
   const hue = colorOverride ?? toneColor[tone];
   return (
     <View
@@ -212,6 +216,7 @@ export function Badge({ label, tone = 'neutral', colorOverride, solid = false }:
 
 /** A small filled dot, for legends and inline status. */
 export function Dot({ tone = 'neutral', colorOverride }: { tone?: Tone; colorOverride?: string }) {
+  const styles = useThemedStyles(buildControlStyles);
   return <View style={[styles.dot, { backgroundColor: colorOverride ?? toneColor[tone] }]} />;
 }
 
@@ -240,6 +245,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   { label, error, hint, secure = false, icon, toggleTestID, ...rest },
   ref,
 ) {
+  const styles = useThemedStyles(buildControlStyles);
   const [revealed, setRevealed] = useState(false);
   const invalid = Boolean(error);
 
@@ -318,6 +324,7 @@ export function ProgressBar({
   colorOverride,
   height = 6,
 }: ProgressBarProps) {
+  const styles = useThemedStyles(buildControlStyles);
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   const travelled = useTravel(clamped);
   const fill = useAnimatedStyle(() => ({ width: `${travelled.value}%` }));
@@ -377,49 +384,57 @@ export function MetricRow({
   );
 }
 
-const styles = StyleSheet.create({
-  button: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    paddingHorizontal: space.lg,
-  },
-  link: { paddingVertical: space.sm, alignSelf: 'flex-start' },
-  badge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-    maxWidth: 180,
-  },
-  badgeLabel: { letterSpacing: 0.6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  inputWrap: { justifyContent: 'center' },
-  input: {
-    ...textTokens.body,
-    color: color.text,
-    backgroundColor: color.surfaceInput,
-    ...hairline,
-    borderRadius: radii.md,
-    paddingHorizontal: space.lg,
-    height: control.height.lg,
-  },
-  inputWithIcon: { paddingLeft: space.xxl + space.xs },
-  inputWithAction: { paddingRight: HIT_TARGET },
-  inputInvalid: { borderColor: color.brandDeep },
-  inputIcon: { position: 'absolute', left: space.lg, zIndex: 1 },
-  inputAction: {
-    position: 'absolute',
-    right: space.xs,
-    height: HIT_TARGET,
-    width: HIT_TARGET,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  track: { width: '100%', backgroundColor: color.surfaceOverlay, overflow: 'hidden' },
-  ringCentre: { position: 'absolute', alignItems: 'center', justifyContent: 'center', gap: 1 },
-});
+/**
+ * One shared factory rather than a module-scope `StyleSheet.create` — see
+ * `cards.tsx` for the same pattern and why. `button`/`badge`/`dot` do not
+ * strictly need it (no colour token inside), but keeping every control's
+ * styles behind one call is simpler to audit than splitting hairs per key.
+ */
+function buildControlStyles() {
+  return StyleSheet.create({
+    button: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      paddingHorizontal: space.lg,
+    },
+    link: { paddingVertical: space.sm, alignSelf: 'flex-start' },
+    badge: {
+      paddingHorizontal: space.sm,
+      paddingVertical: 4,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+      maxWidth: 180,
+    },
+    badgeLabel: { letterSpacing: 0.6 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    inputWrap: { justifyContent: 'center' },
+    input: {
+      ...textTokens.body,
+      color: color.text,
+      backgroundColor: color.surfaceInput,
+      ...hairline,
+      borderRadius: radii.md,
+      paddingHorizontal: space.lg,
+      height: control.height.lg,
+    },
+    inputWithIcon: { paddingLeft: space.xxl + space.xs },
+    inputWithAction: { paddingRight: HIT_TARGET },
+    inputInvalid: { borderColor: color.brandDeep },
+    inputIcon: { position: 'absolute', left: space.lg, zIndex: 1 },
+    inputAction: {
+      position: 'absolute',
+      right: space.xs,
+      height: HIT_TARGET,
+      width: HIT_TARGET,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    track: { width: '100%', backgroundColor: color.surfaceOverlay, overflow: 'hidden' },
+    ringCentre: { position: 'absolute', alignItems: 'center', justifyContent: 'center', gap: 1 },
+  });
+}
 
 /* -------------------------------------------------------------- progress ring */
 
@@ -455,6 +470,7 @@ export function ProgressRing({
   colorOverride,
   accessibilityLabel,
 }: ProgressRingProps) {
+  const styles = useThemedStyles(buildControlStyles);
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;

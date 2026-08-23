@@ -47,6 +47,14 @@ export default function TrainerLayout() {
       <Tabs.Screen name="pt/[id]" options={{ href: null }} />
       <Tabs.Screen name="client/[id]" options={{ href: null }} />
       <Tabs.Screen name="plan/[id]" options={{ href: null }} />
+      {/* The pre-templates PPL split-by-split editor. No longer linked from
+          the UI (Edit programming now opens plan/[id]) but left reachable
+          so an existing 45-day-journey member's WorkoutPlan can still be
+          edited directly if ever needed. */}
+      <Tabs.Screen name="plan-legacy/[id]" options={{ href: null }} />
+      <Tabs.Screen name="plan-day/[dayId]" options={{ href: null }} />
+      <Tabs.Screen name="templates" options={{ href: null }} />
+      <Tabs.Screen name="template-preview/[templateId]" options={{ href: null }} />
     </Tabs>
   );
 }

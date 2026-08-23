@@ -16,6 +16,7 @@ import { Button } from './controls';
 import { Motion, usePulse } from './motion';
 import { Card, Row, Screen, Stack, Text } from './primitives';
 import { color, radii, space } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -76,8 +77,19 @@ export function Skeleton({
 
 /** A placeholder shaped like a stat card. */
 export function SkeletonStat() {
+  const themed = useThemedStyles(() => ({
+    skeletonStat: {
+      flex: 1,
+      gap: space.sm,
+      padding: space.md,
+      borderRadius: radii.md,
+      backgroundColor: color.surfaceRaised,
+      borderWidth: 1,
+      borderColor: color.border,
+    },
+  }));
   return (
-    <View style={styles.skeletonStat}>
+    <View style={themed.skeletonStat}>
       <Skeleton width="60%" height={10} />
       <Skeleton width="45%" height={26} />
     </View>
@@ -206,8 +218,20 @@ export function ErrorState({
 
 /** The persistent offline bar, shown above content that needs the server. */
 export function OfflineNotice({ message }: { message: string }) {
+  const themed = useThemedStyles(() => ({
+    offline: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: space.sm,
+      backgroundColor: `${color.brandDeep}22`,
+      borderColor: `${color.brand}55`,
+      borderWidth: 1,
+      borderRadius: radii.md,
+      padding: space.md,
+    },
+  }));
   return (
-    <View style={styles.offline} accessibilityRole="alert">
+    <View style={themed.offline} accessibilityRole="alert">
       <Ionicons name="cloud-offline-outline" size={18} color={color.brandAccent} />
       <Text variant="label" tone={color.brandAccent} style={styles.grow}>
         {message}
@@ -227,24 +251,5 @@ const styles = StyleSheet.create({
   },
   detail: { maxWidth: 320 },
   action: { marginTop: space.md, minWidth: 180 },
-  skeletonStat: {
-    flex: 1,
-    gap: space.sm,
-    padding: space.md,
-    borderRadius: radii.md,
-    backgroundColor: color.surfaceRaised,
-    borderWidth: 1,
-    borderColor: color.border,
-  },
   skeletonScreen: { padding: space.lg, gap: space.md },
-  offline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    backgroundColor: `${color.brandDeep}22`,
-    borderColor: `${color.brand}55`,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: space.md,
-  },
 });

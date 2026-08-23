@@ -199,6 +199,40 @@ describe('a PT member', () => {
   });
 });
 
+describe('the workout section', () => {
+  it('names a program-based session by its trainer-given day, not blank, when it has no split', async () => {
+    // Regression: `split_label` is null by design for a `MemberWorkoutProgram`
+    // session (see `program_day_name` on `WorkoutSession`) — this screen used
+    // to render `split_label` directly with no fallback, leaving both the
+    // "Today" card and its row in "Recent workouts" blank for a member on a
+    // personalized program instead of showing the real day name.
+    const today = new Date().toISOString().slice(0, 10);
+    const programSession = {
+      id: 350,
+      member_id: 13,
+      branch_id: 1,
+      journey_id: null,
+      day_number: null,
+      split: null,
+      split_label: null,
+      program_day_id: 1,
+      program_day_name: 'Upper Strength',
+      program_day_category: 'upper',
+      session_date: today,
+      status: 'completed',
+      started_at: `${today}T08:00:00Z`,
+      completed_at: `${today}T09:00:00Z`,
+      supervising_trainer_id: null,
+      items: [],
+      completed_items: 5,
+      total_items: 5,
+    } as const;
+    mockGetMember.mockResolvedValue({ ...aDetail(), recent_workouts: [programSession] });
+    await draw();
+    expect(screen.getAllByText('Upper Strength').length).toBe(2); // Today card + Recent workouts row
+  });
+});
+
 describe('last seen', () => {
   beforeEach(() => {
     mockGetMember.mockResolvedValue(aDetail({ last_seen_on: '2026-08-19' }));

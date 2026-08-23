@@ -34,13 +34,14 @@ import {
   Screen,
   Txt,
 } from '../../../src/components/ui';
-import { ScreenHeader } from '../../../src/design';
+import { ScreenHeader, useThemedStyles } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
 import { colors, radius, spacing } from '../../../src/theme';
 import { dayLabel, initials, timeOfDay } from '../../../src/utils/format';
 
 export default function PtSplitScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(id);
   const router = useRouter();
@@ -234,6 +235,7 @@ function Side({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <View style={[styles.side, checkedIn && styles.sideIn]}>
       <Eyebrow color={checkedIn ? colors.onTime : colors.textFaint}>{title}</Eyebrow>
@@ -264,7 +266,8 @@ function Side({
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   split: { flexDirection: 'row', gap: spacing.sm },
@@ -295,3 +298,4 @@ const styles = StyleSheet.create({
   sideStatus: { gap: 4 },
   hint: { textAlign: 'center' },
 });
+}

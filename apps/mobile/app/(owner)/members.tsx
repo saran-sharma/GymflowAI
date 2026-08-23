@@ -44,6 +44,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
@@ -57,6 +58,7 @@ const TABS: { value: Tab; label: string }[] = [
 
 export default function OwnerMembersScreen() {
   const router = useRouter();
+  const styles = useThemedStyles(buildStyles);
   const [tab, setTab] = useState<Tab>('journeys');
   const journeys = useApi<Journey[]>((token) => api.journeys(token), []);
   const packages = useApi<PTPackage[]>((token) => api.ptPackages(token), []);
@@ -318,26 +320,28 @@ export default function OwnerMembersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  grow: { flex: 1 },
-  tiles: { flexDirection: 'row', gap: space.sm },
-  cardHead: { justifyContent: 'space-between' },
-  dayRow: { gap: space.sm },
-  historyRow: {
-    gap: space.md,
-    paddingVertical: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  branchRow: { gap: space.sm, flexWrap: 'wrap' },
-  chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surfaceOverlay,
-    overflow: 'hidden',
-  },
-  chipSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
-});
+function buildStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    tiles: { flexDirection: 'row' as const, gap: space.sm },
+    cardHead: { justifyContent: 'space-between' as const },
+    dayRow: { gap: space.sm },
+    historyRow: {
+      gap: space.md,
+      paddingVertical: space.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: color.border,
+    },
+    branchRow: { gap: space.sm, flexWrap: 'wrap' as const },
+    chip: {
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: color.border,
+      backgroundColor: color.surfaceOverlay,
+      overflow: 'hidden' as const,
+    },
+    chipSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
+  });
+}

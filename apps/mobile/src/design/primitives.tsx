@@ -21,6 +21,7 @@ import {
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { color, elevation, hairline, radii, space, text, type TextRole } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 /* -------------------------------------------------------------------- text */
 
@@ -146,7 +147,8 @@ export function Spacer() {
 }
 
 export function Divider({ inset = false }: { inset?: boolean }) {
-  return <View style={[styles.divider, inset && styles.dividerInset]} />;
+  const themed = useThemedStyles(() => ({ divider: { height: 1, backgroundColor: color.border } }));
+  return <View style={[themed.divider, inset && styles.dividerInset]} />;
 }
 
 /* ---------------------------------------------------------------- surfaces */
@@ -211,8 +213,9 @@ export interface ScreenProps extends ViewProps {
 
 /** The root of every screen. Owns the background and the safe area. */
 export function Screen({ children, edges = ['top'], style, ...rest }: ScreenProps) {
+  const themed = useThemedStyles(() => ({ screen: { flex: 1, backgroundColor: color.background } }));
   return (
-    <SafeAreaView style={styles.screen} edges={edges}>
+    <SafeAreaView style={themed.screen} edges={edges}>
       <View style={[styles.screenInner, style]} {...rest}>
         {children}
       </View>
@@ -259,9 +262,7 @@ export function Section({
 const styles = StyleSheet.create({
   caps: { textTransform: 'uppercase' },
   spacer: { flex: 1 },
-  divider: { height: 1, backgroundColor: color.border },
   dividerInset: { marginLeft: space.lg },
-  screen: { flex: 1, backgroundColor: color.background },
   screenInner: { flex: 1 },
   body: { flex: 1 },
   bodyContent: { padding: space.lg, paddingBottom: space.xxxl, gap: space.md },

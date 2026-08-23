@@ -17,6 +17,7 @@ import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { Motion } from './motion';
 import { Row, Text } from './primitives';
 import { alpha, color, font, hairline, HIT_TARGET, motion, radii, space } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -111,6 +112,7 @@ export function Segmented<T extends string>({
   onChange: (next: T) => void;
   testIDPrefix?: string;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <View style={styles.segmented} accessibilityRole="tablist">
       {options.map((option) => {
@@ -151,112 +153,121 @@ export function Segmented<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 2,
-    minHeight: HIT_TARGET,
-    paddingRight: space.sm,
-  },
-  backPressed: { opacity: 0.6 },
-  chipRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    minHeight: 38,
-    paddingHorizontal: space.lg,
-    borderRadius: radii.pill,
-    backgroundColor: color.surfaceRaised,
-    ...hairline,
-  },
-  chipSelected: { backgroundColor: alpha(color.brand, 0.2), borderColor: color.brand },
-  chipPressed: { backgroundColor: color.surfaceOverlay },
-  dayRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
-  day: {
-    alignItems: 'center',
-    gap: 2,
-    minWidth: 48,
-    paddingVertical: space.sm,
-    borderRadius: radii.pill,
-    backgroundColor: color.surfaceRaised,
-    ...hairline,
-  },
-  daySelected: { backgroundColor: color.brand, borderColor: color.brand },
-  dayPressed: { backgroundColor: color.surfaceOverlay },
-  dayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
-  header: { minHeight: HIT_TARGET },
-  // A fixed width keeps the title centred, but a trailing `action` is not
-  // always a 44pt icon button — a status badge ("In progress", "Upcoming")
-  // needs to say its own word. `minWidth` still reserves the icon-button
-  // spacing on the leading side, but lets the trailing side grow for its
-  // content instead of wrapping into single-letter lines.
-  headerSide: { minWidth: 44 },
-  headerTrailing: { alignItems: 'flex-end' },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -space.sm,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingTop: space.sm,
-    backgroundColor: color.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: color.border,
-  },
-  pill: { position: 'absolute', top: 0, left: 0, bottom: 0, alignItems: 'center' },
-  pillInner: {
-    width: 34,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: color.brand,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    minHeight: HIT_TARGET,
-    paddingTop: space.xs,
-  },
-  tabLabel: { fontSize: 10 },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    minHeight: HIT_TARGET,
-    paddingVertical: space.sm,
-  },
-  navRowPressed: { opacity: 0.6 },
-  navRowText: { flex: 1, gap: 2 },
-  headerTitle: { flex: 1, gap: 1 },
-  headerCentre: { textAlign: 'center' },
-  segmented: { flexDirection: 'row', gap: space.sm },
-  segment: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    minHeight: HIT_TARGET,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.sm,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surfaceRaised,
-  },
-  segmentSelected: {
-    borderColor: color.brand,
-    backgroundColor: `${color.brand}1F`,
-  },
-  segmentPressed: { backgroundColor: color.surfaceOverlay },
-});
+/**
+ * One shared factory rather than a module-scope `StyleSheet.create`: most
+ * entries reference a colour token, so the whole sheet needs rebuilding when
+ * the theme changes. Each component below calls
+ * `useThemedStyles(buildNavigationStyles)` — see `cards.tsx` for the same
+ * pattern and why a few unused keys per component is the safer trade.
+ */
+function buildNavigationStyles() {
+  return StyleSheet.create({
+    back: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 2,
+      minHeight: HIT_TARGET,
+      paddingRight: space.sm,
+    },
+    backPressed: { opacity: 0.6 },
+    chipRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+      minHeight: 38,
+      paddingHorizontal: space.lg,
+      borderRadius: radii.pill,
+      backgroundColor: color.surfaceRaised,
+      ...hairline,
+    },
+    chipSelected: { backgroundColor: alpha(color.brand, 0.2), borderColor: color.brand },
+    chipPressed: { backgroundColor: color.surfaceOverlay },
+    dayRow: { gap: space.sm, paddingVertical: space.xs, paddingRight: space.lg },
+    day: {
+      alignItems: 'center',
+      gap: 2,
+      minWidth: 48,
+      paddingVertical: space.sm,
+      borderRadius: radii.pill,
+      backgroundColor: color.surfaceRaised,
+      ...hairline,
+    },
+    daySelected: { backgroundColor: color.brand, borderColor: color.brand },
+    dayPressed: { backgroundColor: color.surfaceOverlay },
+    dayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
+    header: { minHeight: HIT_TARGET },
+    // A fixed width keeps the title centred, but a trailing `action` is not
+    // always a 44pt icon button — a status badge ("In progress", "Upcoming")
+    // needs to say its own word. `minWidth` still reserves the icon-button
+    // spacing on the leading side, but lets the trailing side grow for its
+    // content instead of wrapping into single-letter lines.
+    headerSide: { minWidth: 44 },
+    headerTrailing: { alignItems: 'flex-end' },
+    headerButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: -space.sm,
+    },
+    bar: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingTop: space.sm,
+      backgroundColor: color.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: color.border,
+    },
+    pill: { position: 'absolute', top: 0, left: 0, bottom: 0, alignItems: 'center' },
+    pillInner: {
+      width: 34,
+      height: 3,
+      borderRadius: 2,
+      backgroundColor: color.brand,
+    },
+    tab: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.xs,
+      minHeight: HIT_TARGET,
+      paddingTop: space.xs,
+    },
+    tabLabel: { fontSize: 10 },
+    navRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+      minHeight: HIT_TARGET,
+      paddingVertical: space.sm,
+    },
+    navRowPressed: { opacity: 0.6 },
+    navRowText: { flex: 1, gap: 2 },
+    headerTitle: { flex: 1, gap: 1 },
+    headerCentre: { textAlign: 'center' },
+    segmented: { flexDirection: 'row', gap: space.sm },
+    segment: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.xs,
+      minHeight: HIT_TARGET,
+      paddingVertical: space.sm,
+      paddingHorizontal: space.sm,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: color.border,
+      backgroundColor: color.surfaceRaised,
+    },
+    segmentSelected: {
+      borderColor: color.brand,
+      backgroundColor: `${color.brand}1F`,
+    },
+    segmentPressed: { backgroundColor: color.surfaceOverlay },
+  });
+}
 
 /* ------------------------------------------------------------- back link */
 
@@ -277,6 +288,7 @@ export function BackLink({
   onPress: () => void;
   testID?: string;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -316,6 +328,7 @@ export function Chips<T extends string>({
   onChange: (next: T) => void;
   testIDPrefix?: string;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <ScrollView
       horizontal
@@ -388,6 +401,7 @@ export function DayStrip({
   onChange: (date: string) => void;
   testIDPrefix?: string;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <ScrollView
       horizontal
@@ -458,6 +472,7 @@ export function ScreenHeader({
   backLabel?: string;
   action?: React.ReactNode;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <Row gap="sm" align="center" style={styles.header}>
       <View style={styles.headerSide}>
@@ -519,6 +534,7 @@ export function NavRow({
   trailing?: React.ReactNode;
   testID?: string;
 }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -562,6 +578,7 @@ export function AnimatedTabBar({
   navigation,
   accent = color.brand,
 }: BottomTabBarProps & { accent?: string }) {
+  const styles = useThemedStyles(buildNavigationStyles);
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
 

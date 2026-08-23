@@ -24,6 +24,7 @@ from app.api.v1 import (
     system,
     trainers,
     users,
+    workout_templates,
 )
 
 api_router = APIRouter()
@@ -47,5 +48,6 @@ api_router.include_router(performance.router)
 api_router.include_router(alerts.router)
 api_router.include_router(settings.router)
 api_router.include_router(hardware.router)
+api_router.include_router(workout_templates.router)
 
 __all__ = ["api_router"]

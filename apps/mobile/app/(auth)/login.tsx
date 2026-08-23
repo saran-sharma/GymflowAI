@@ -31,6 +31,7 @@ import {
   radii,
   roleAccent,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { homeRouteForRole, useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
@@ -70,6 +71,7 @@ function greeting(name: string): string {
 }
 
 export default function LoginScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { signIn } = useAuth();
   const { isOnline } = useNetwork();
   const router = useRouter();
@@ -312,7 +314,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingBottom: space.xl },
   hero: { paddingHorizontal: space.xl, paddingTop: space.lg, paddingBottom: space.xxl },
@@ -343,3 +346,4 @@ const styles = StyleSheet.create({
   signup: { paddingTop: space.sm },
   centered: { textAlign: 'center' },
 });
+}

@@ -21,6 +21,7 @@ from app.db.models import (
     GroupClass,
     GroupClassRsvp,
     Member,
+    MemberWorkoutProgramDay,
     PTSession,
     RsvpResponse,
     SessionStatus,
@@ -139,12 +140,19 @@ def trainer_day(db: Session, trainer_id: int, on: date) -> list[ScheduleItem]:
     ).all():
         member = db.get(Member, workout.member_id)
         name = member.user.full_name if member and member.user else "Member"
+        if workout.split is not None:
+            what = workout.split.value.capitalize()
+        elif workout.member_program_day_id is not None:
+            program_day = db.get(MemberWorkoutProgramDay, workout.member_program_day_id)
+            what = program_day.name if program_day else "workout"
+        else:
+            what = "workout"
         items.append(
             ScheduleItem(
                 kind=KIND_OWN_WORKOUT_SUPPORT,
                 reference_id=workout.id,
                 title=name,
-                subtitle=f"Own workout support — {workout.split.value.capitalize()}",
+                subtitle=f"Own workout support — {what}",
                 starts_at=workout.started_at,
                 ends_at=workout.completed_at,
                 status=workout.status.value,

@@ -169,6 +169,29 @@ class WorkoutSplit(str, enum.Enum):
     REST = "rest"
 
 
+class WorkoutCategory(str, enum.Enum):
+    """The muscle-focus a workout day is built around.
+
+    Purely a labelling/illustration concern — it drives which stock image a
+    template or member-program day shows, and has no bearing on scheduling.
+    Distinct from ``WorkoutSplit``, which is the PPL-specific enum the 45-day
+    journey still runs on; this is the open-ended vocabulary the templates
+    system uses instead, with ``CUSTOM`` as the fallback for a trainer's own
+    day name that doesn't fit any of the others.
+    """
+
+    PUSH = "push"
+    PULL = "pull"
+    LEGS = "legs"
+    UPPER = "upper"
+    LOWER = "lower"
+    FULL_BODY = "full_body"
+    CORE = "core"
+    CONDITIONING = "conditioning"
+    MOBILITY = "mobility"
+    CUSTOM = "custom"
+
+
 class DayStatus(str, enum.Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
@@ -301,6 +324,7 @@ notification_status_enum = Enum(NotificationStatus, name="notification_status")
 journey_type_enum = Enum(JourneyType, name="journey_type")
 journey_status_enum = Enum(JourneyStatus, name="journey_status")
 workout_split_enum = Enum(WorkoutSplit, name="workout_split")
+workout_category_enum = Enum(WorkoutCategory, name="workout_category")
 day_status_enum = Enum(DayStatus, name="day_status")
 assessment_status_enum = Enum(AssessmentStatus, name="assessment_status")
 checkin_feeling_enum = Enum(CheckInFeeling, name="checkin_feeling")
@@ -1028,7 +1052,14 @@ class WorkoutSession(Base, TimestampMixin, DemoMixin):
         ForeignKey("journey_days.id", ondelete="SET NULL")
     )
     day_number: Mapped[int | None] = mapped_column(Integer)
-    split: Mapped[WorkoutSplit] = mapped_column(workout_split_enum, nullable=False)
+    # Nullable: a session sourced from a `MemberWorkoutProgram` day (below)
+    # carries no `WorkoutSplit` at all — the templates system's whole point
+    # is that a day's name need not be Push/Pull/Legs. Exactly one of
+    # `split` and `member_program_day_id` is set per session.
+    split: Mapped[WorkoutSplit | None] = mapped_column(workout_split_enum, nullable=True)
+    member_program_day_id: Mapped[int | None] = mapped_column(
+        ForeignKey("member_workout_program_days.id", ondelete="SET NULL"), index=True
+    )
     session_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     status: Mapped[SessionStatus] = mapped_column(
         session_status_enum, default=SessionStatus.SCHEDULED, nullable=False
@@ -1133,6 +1164,173 @@ class WorkoutSet(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("session_item_id", "set_number", name="uq_workout_set_number"),
     )
+
+
+# ------------------------------------------------------------ workout templates
+
+
+class WorkoutTemplate(Base, TimestampMixin, DemoMixin):
+    """A reusable, editable starting point for a member's programming.
+
+    Deliberately its own table rather than a repurposed ``WorkoutPlan``:
+    ``WorkoutPlan``/``WorkoutPlanItem`` are keyed by the closed ``WorkoutSplit``
+    enum, which is exactly the PPL assumption this exists to not carry
+    forward. PPL itself becomes one seeded row here (see the default pack in
+    ``app.services.workout_template_service``), not the schema's assumption.
+
+    ``branch_id`` null means the template is available everywhere (the system
+    defaults); set, it is one trainer's own template for their branch.
+    Applying a template to a member copies its days and exercises into a
+    ``MemberWorkoutProgram`` — editing the template afterward never rewrites
+    a member's already-assigned copy.
+    """
+
+    __tablename__ = "workout_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Stable identity for the seeded system pack (e.g. "ppl_6day"), distinct
+    # from ``name`` so a trainer renaming "Push / Pull / Legs" doesn't break
+    # the seeder's find-or-create lookup. Null for a trainer's own template.
+    key: Mapped[str | None] = mapped_column(String(60), unique=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+    category: Mapped[WorkoutCategory] = mapped_column(workout_category_enum, nullable=False)
+    image_key: Mapped[str | None] = mapped_column(String(80))
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    days: Mapped[list[WorkoutTemplateDay]] = relationship(
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="WorkoutTemplateDay.order_index",
+    )
+
+
+class WorkoutTemplateDay(Base, TimestampMixin):
+    __tablename__ = "workout_template_days"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[WorkoutCategory] = mapped_column(workout_category_enum, nullable=False)
+    image_key: Mapped[str | None] = mapped_column(String(80))
+    estimated_duration_minutes: Mapped[int | None] = mapped_column(Integer)
+
+    template: Mapped[WorkoutTemplate] = relationship(back_populates="days")
+    exercises: Mapped[list[WorkoutTemplateExercise]] = relationship(
+        back_populates="day",
+        cascade="all, delete-orphan",
+        order_by="WorkoutTemplateExercise.order_index",
+    )
+
+    __table_args__ = (UniqueConstraint("template_id", "order_index", name="uq_template_day_order"),)
+
+
+class WorkoutTemplateExercise(Base, TimestampMixin):
+    __tablename__ = "workout_template_exercises"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_day_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_template_days.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exercise: Mapped[str] = mapped_column(String(120), nullable=False)
+    sets: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    reps: Mapped[str] = mapped_column(String(32), default="10", nullable=False)
+    rest_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(160))
+
+    day: Mapped[WorkoutTemplateDay] = relationship(back_populates="exercises")
+
+
+class MemberWorkoutProgram(Base, TimestampMixin, DemoMixin):
+    """A member's own, independent copy of a (usually template-derived) programme.
+
+    ``source_template_id`` is provenance only — kept so the trainer UI can
+    show "started from Upper/Lower 4-day" — and is nullable/``SET NULL`` so
+    deleting a template never deletes a member's already-copied programme.
+    """
+
+    __tablename__ = "member_workout_programs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workout_templates.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    days: Mapped[list[MemberWorkoutProgramDay]] = relationship(
+        back_populates="program",
+        cascade="all, delete-orphan",
+        order_by="MemberWorkoutProgramDay.order_index",
+    )
+
+    __table_args__ = (
+        # One live programme per member at a time — a trainer replacing a
+        # member's programme retires the old one rather than the member
+        # having two "active" programmes to disagree about.
+        Index(
+            "uq_member_workout_programs_active",
+            "member_id",
+            unique=True,
+            postgresql_where=text("is_active"),
+            sqlite_where=text("is_active"),
+        ),
+    )
+
+
+class MemberWorkoutProgramDay(Base, TimestampMixin):
+    __tablename__ = "member_workout_program_days"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(
+        ForeignKey("member_workout_programs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[WorkoutCategory] = mapped_column(workout_category_enum, nullable=False)
+    image_key: Mapped[str | None] = mapped_column(String(80))
+    estimated_duration_minutes: Mapped[int | None] = mapped_column(Integer)
+
+    program: Mapped[MemberWorkoutProgram] = relationship(back_populates="days")
+    exercises: Mapped[list[MemberWorkoutProgramExercise]] = relationship(
+        back_populates="day",
+        cascade="all, delete-orphan",
+        order_by="MemberWorkoutProgramExercise.order_index",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("program_id", "order_index", name="uq_member_program_day_order"),
+    )
+
+
+class MemberWorkoutProgramExercise(Base, TimestampMixin):
+    __tablename__ = "member_workout_program_exercises"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_day_id: Mapped[int] = mapped_column(
+        ForeignKey("member_workout_program_days.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exercise: Mapped[str] = mapped_column(String(120), nullable=False)
+    sets: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    reps: Mapped[str] = mapped_column(String(32), default="10", nullable=False)
+    rest_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(160))
+
+    day: Mapped[MemberWorkoutProgramDay] = relationship(back_populates="exercises")
 
 
 # ---------------------------------------------------------------------- PT

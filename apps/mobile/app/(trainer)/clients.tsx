@@ -34,6 +34,7 @@ import {
   hairline,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
@@ -99,6 +100,7 @@ function ptStatusBadge(
 }
 
 export default function TrainerClientsScreen() {
+  const styles = useThemedStyles(buildStyles);
   const router = useRouter();
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
   const [filter, setFilter] = useState<Filter>('all');
@@ -178,6 +180,7 @@ export default function TrainerClientsScreen() {
 }
 
 function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => void }) {
+  const styles = useThemedStyles(buildStyles);
   const journey = client.journey;
   const pct = journey?.completion_pct ?? null;
   const ptBadge = ptStatusBadge(client);
@@ -234,7 +237,8 @@ function ClientRow({ client, onPress }: { client: TrainerClient; onPress: () => 
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   card: {
     backgroundColor: color.surfaceRaised,
@@ -247,3 +251,4 @@ const styles = StyleSheet.create({
     borderColor: color.borderStrong,
   },
 });
+}

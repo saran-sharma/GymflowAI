@@ -36,6 +36,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel, money } from '../../src/utils/format';
@@ -61,6 +62,7 @@ const FILTERS = [
 ];
 
 export default function OwnerPaymentsScreen() {
+  const styles = useThemedStyles(buildStyles);
   const [filter, setFilter] = useState<PaymentStatus>('pending');
 
   const summary = useApi<RevenueSummary>((token) => api.revenueSummary(token, 30), []);
@@ -198,7 +200,8 @@ export default function OwnerPaymentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   row: {
     paddingVertical: space.md,
@@ -206,3 +209,4 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
 });
+}

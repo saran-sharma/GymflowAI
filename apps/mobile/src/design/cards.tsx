@@ -21,6 +21,7 @@ import { Motion, entrance, usePressMotion } from './motion';
 import { Badge, ProgressBar, ProgressRing } from './controls';
 import { Card, Eyebrow, Row, Spacer, Stack, Text } from './primitives';
 import { alpha, color, font, hairline, motion, radii, space, toneColor, type Tone } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -128,6 +129,7 @@ export function StatCard({
   testID,
   index,
 }: StatCardProps) {
+  const styles = useThemedStyles(buildCardStyles);
   const valueColor = colorOverride ?? (tone ? toneColor[tone] : color.text);
   return (
     <Tappable
@@ -201,6 +203,7 @@ export function SessionCard({
   testID,
   index,
 }: SessionCardProps) {
+  const styles = useThemedStyles(buildCardStyles);
   return (
     <Tappable
       onPress={onPress}
@@ -286,6 +289,7 @@ export function ProgressCard({
   testID,
   index,
 }: ProgressCardProps) {
+  const styles = useThemedStyles(buildCardStyles);
   return (
     <Tappable onPress={onPress} accessibilityLabel={label} style={styles.card} testID={testID}>
       <Stack gap="sm">
@@ -348,6 +352,7 @@ export function AlertCard({
   testID,
   index,
 }: AlertCardProps) {
+  const styles = useThemedStyles(buildCardStyles);
   const hue = toneColor[tone];
   return (
     <Tappable onPress={onPress} accessibilityLabel={title} style={styles.alertCard} testID={testID}>
@@ -388,6 +393,7 @@ export function Banner({
   icon?: IconName;
   testID?: string;
 }) {
+  const styles = useThemedStyles(buildCardStyles);
   const hue = toneColor[tone];
   return (
     <View
@@ -407,7 +413,23 @@ export function Banner({
   );
 }
 
-const styles = StyleSheet.create({
+/**
+ * One shared factory rather than a module-scope `StyleSheet.create`: every
+ * entry here references a colour token, so the whole sheet needs to be
+ * rebuilt when the theme changes, not just look up-to-date. Each component
+ * below calls `useThemedStyles(buildCardStyles)` — a few unused keys per
+ * component is a small, harmless cost next to hand-splitting eleven
+ * components' worth of style subsets and risking missing one.
+ */
+function buildCardStyles() {
+  // `StyleSheet.create` here (not just inside `useThemedStyles`) is what
+  // keeps RN's string-literal-union style props (`flexDirection`,
+  // `alignItems`, ...) typed as those literals rather than widened to
+  // `string` — TS only applies that contextual typing at the call site
+  // where the object literal is authored, not through a later generic
+  // hook. Calling it twice (here and again inside `useThemedStyles`) is a
+  // no-op the second time; RN's own implementation just returns its input.
+  return StyleSheet.create({
   heroCard: {
     padding: space.lg,
     borderRadius: radii.xl,
@@ -517,7 +539,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: space.md,
   },
-});
+  });
+}
 
 /* -------------------------------------------------------------- person row */
 
@@ -542,6 +565,7 @@ export interface PersonRowProps {
  * cards is a scroll, not a list.
  */
 export function PersonRow({ name, detail, trailing, onPress, testID, index }: PersonRowProps) {
+  const styles = useThemedStyles(buildCardStyles);
   return (
     <Tappable
       onPress={onPress}
@@ -584,6 +608,7 @@ export function TappableCard({
   /** Position in a list. Supplying it staggers this card's entrance. */
   index?: number;
 }) {
+  const styles = useThemedStyles(buildCardStyles);
   return (
     <Tappable
       onPress={onPress}
@@ -643,6 +668,7 @@ export function HeroCard({
   footer,
   testID,
 }: HeroCardProps) {
+  const styles = useThemedStyles(buildCardStyles);
   return (
     <Tappable
       onPress={onPress}
@@ -745,6 +771,7 @@ export function MetricTile({
   testID,
   index,
 }: MetricTileProps) {
+  const styles = useThemedStyles(buildCardStyles);
   const hue = colorOverride ?? (tone ? toneColor[tone] : color.text);
   return (
     <Tappable
@@ -809,6 +836,7 @@ export function TimelineRow({
   index,
   children,
 }: TimelineRowProps) {
+  const styles = useThemedStyles(buildCardStyles);
   const hue = toneColor[tone];
   return (
     <Motion.View entering={index === undefined ? undefined : entrance(index)}>

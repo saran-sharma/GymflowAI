@@ -384,6 +384,44 @@ describe('converting', () => {
   });
 });
 
+/* -------------------------------------------------------------- own workout */
+
+describe('recent workouts', () => {
+  it('names a program-based session by its trainer-given day, not blank, when it has no split', async () => {
+    // Regression: `split_label` is null by design for a `MemberWorkoutProgram`
+    // session (see `program_day_name` on `WorkoutSession`) — this row used to
+    // render `split_label` directly with no fallback, leaving a member on a
+    // personalized program blank here instead of showing the real day name.
+    mockDetail.mockResolvedValue({
+      ...aDetail(),
+      recent_workouts: [
+        {
+          id: 350,
+          member_id: 42,
+          branch_id: 1,
+          journey_id: null,
+          day_number: null,
+          split: null,
+          split_label: null,
+          program_day_id: 1,
+          program_day_name: 'Upper Strength',
+          program_day_category: 'upper',
+          session_date: '2026-08-22',
+          status: 'completed',
+          started_at: '2026-08-22T08:00:00Z',
+          completed_at: '2026-08-22T09:00:00Z',
+          supervising_trainer_id: null,
+          items: [],
+          completed_items: 5,
+          total_items: 5,
+        },
+      ],
+    });
+    await draw(<TrainerClientScreen />);
+    expect(screen.getByText('Upper Strength')).toBeTruthy();
+  });
+});
+
 /* ---------------------------------------------------------------- last seen */
 
 describe('last seen', () => {

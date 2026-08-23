@@ -32,6 +32,7 @@ import {
   hairline,
   radii,
   space,
+  useThemedStyles,
   type Tone,
 } from '../design';
 import type {
@@ -57,14 +58,47 @@ type IconName = keyof typeof Ionicons.glyphMap;
  */
 export type SessionKind = 'own_workout' | 'pt_session' | 'group_class' | 'rest';
 
+// `hue` is a getter on every entry, not a plain field: this object is built
+// once at module scope, and a plain field would freeze whatever `color.X`
+// resolved to at that instant — the same reason `toneColor` in
+// `src/design/tokens` is getter-based. Read inline in a render (as every
+// usage is), a getter always reflects the current theme.
 export const kindMeta: Record<
   SessionKind,
   { label: string; tone: Tone; icon: IconName; hue: string }
 > = {
-  own_workout: { label: 'Own workout', tone: 'brand', icon: 'barbell', hue: color.brand },
-  pt_session: { label: 'PT session', tone: 'positive', icon: 'person', hue: color.status.positive },
-  group_class: { label: 'Group class', tone: 'info', icon: 'people', hue: color.status.notable },
-  rest: { label: 'Rest & recovery', tone: 'neutral', icon: 'moon', hue: color.status.neutral },
+  own_workout: {
+    label: 'Own workout',
+    tone: 'brand',
+    icon: 'barbell',
+    get hue() {
+      return color.brand;
+    },
+  },
+  pt_session: {
+    label: 'PT session',
+    tone: 'positive',
+    icon: 'person',
+    get hue() {
+      return color.status.positive;
+    },
+  },
+  group_class: {
+    label: 'Group class',
+    tone: 'info',
+    icon: 'people',
+    get hue() {
+      return color.status.notable;
+    },
+  },
+  rest: {
+    label: 'Rest & recovery',
+    tone: 'neutral',
+    icon: 'moon',
+    get hue() {
+      return color.status.neutral;
+    },
+  },
 };
 
 /**
@@ -74,6 +108,7 @@ export const kindMeta: Record<
  * genuinely different card designs would make a mixed list unreadable.
  */
 export function KindTag({ kind, solid = false }: { kind: SessionKind; solid?: boolean }) {
+  const styles = useThemedStyles(buildMemberStyles);
   const meta = kindMeta[kind];
   return (
     <View
@@ -147,6 +182,7 @@ export function TodayCard({
   disabled = false,
   testID,
 }: TodayCardProps) {
+  const styles = useThemedStyles(buildMemberStyles);
   const meta = kindMeta[kind];
   return (
     <View style={styles.today} testID={testID}>
@@ -247,6 +283,7 @@ export interface WeekStripProps {
 }
 
 export function WeekStrip({ days, today, onPress }: WeekStripProps) {
+  const styles = useThemedStyles(buildMemberStyles);
   const week = weekAround(days, today);
   if (week.length === 0) return null;
 
@@ -370,6 +407,7 @@ export function JourneyBar({
   completionPct,
   onPress,
 }: JourneyBarProps) {
+  const styles = useThemedStyles(buildMemberStyles);
   const pct = completionPct ?? (totalDays ? (currentDay / totalDays) * 100 : 0);
   const remaining = Math.max(0, totalDays - currentDay);
 
@@ -443,6 +481,7 @@ export function PtLine({
   statusTone = 'neutral',
   onPress,
 }: PtLineProps) {
+  const styles = useThemedStyles(buildMemberStyles);
   const body = (
     <Stack gap="sm">
       <Row gap="sm">
@@ -502,6 +541,7 @@ export function FeelingCheckIn({
   busy?: boolean;
   onSelect: (feeling: Feeling) => void;
 }) {
+  const styles = useThemedStyles(buildMemberStyles);
   if (value) {
     const meta = FEELING_META[value];
     return (
@@ -562,6 +602,7 @@ export function NotConnected({
   detail: string;
   icon?: IconName;
 }) {
+  const styles = useThemedStyles(buildMemberStyles);
   return (
     <View style={styles.notConnected}>
       <Ionicons name={icon} size={20} color={color.textTertiary} />
@@ -585,6 +626,7 @@ export function NotConnected({
  * duplicated per screen.
  */
 export function RecentStrength({ trend }: { trend: StrengthTrend }) {
+  const styles = useThemedStyles(buildMemberStyles);
   if (trend.exercises.length === 0) {
     return (
       <NotConnected
@@ -641,6 +683,7 @@ export function BodyCompositionHistoryList({
 }: {
   measurements: BodyComposition[];
 }) {
+  const styles = useThemedStyles(buildMemberStyles);
   const rows = [...measurements].reverse();
   return (
     <Stack gap="sm">
@@ -672,6 +715,7 @@ const EMPTY_BODY_COMPOSITION = {
  * good news depends on the member's own goal, which GymFlow does not know.
  */
 export function BodyCompositionSection({ history }: { history: BodyCompositionHistory }) {
+  const styles = useThemedStyles(buildMemberStyles);
   if (!history.latest) {
     return (
       <NotConnected
@@ -789,6 +833,7 @@ export function BodyCompositionSection({ history }: { history: BodyCompositionHi
  */
 export function CompactBodyComposition({ history }: { history: BodyCompositionHistory }) {
   const [expanded, setExpanded] = useState(false);
+  const styles = useThemedStyles(buildMemberStyles);
 
   if (!history.latest) {
     return (
@@ -845,65 +890,71 @@ export function CompactBodyComposition({ history }: { history: BodyCompositionHi
   );
 }
 
-const styles = StyleSheet.create({
-  scanDate: { width: 64 },
-  weekDay: { flex: 1 },
-  weekPip: { width: 18, height: 18, borderRadius: 9 },
-  grow: { flex: 1 },
-  feelingBigEmoji: { fontSize: 22, lineHeight: 26 },
-  feelingOption: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: space.sm,
-    borderRadius: radii.md,
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  feelingOptionPressed: { backgroundColor: color.surfaceOverlay },
-  feelingOptionBusy: { opacity: 0.5 },
-  feelingEmoji: { fontSize: 22, lineHeight: 26 },
-  kindTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: space.sm,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  today: {
-    flexDirection: 'row',
-    gap: space.lg,
-    backgroundColor: color.surfaceRaised,
-    borderRadius: radii.lg,
-    ...hairline,
-    padding: space.lg,
-  },
-  todayRule: { width: 3, alignSelf: 'stretch', borderRadius: 2 },
-  cta: {
-    height: 48,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondary: { alignSelf: 'center', paddingVertical: space.xs },
-  ctaLabel: { fontFamily: font.sansSemi, letterSpacing: 0.3 },
-  card: {
-    backgroundColor: color.surfaceRaised,
-    borderRadius: radii.lg,
-    ...hairline,
-    padding: space.lg,
-  },
-  cardPressed: { backgroundColor: color.surfaceOverlay, borderColor: color.borderStrong },
-  notConnected: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: space.md,
-    backgroundColor: color.surface,
-    borderRadius: radii.md,
-    ...hairline,
-    padding: space.md,
-  },
-});
+/**
+ * One shared factory rather than a module-scope `StyleSheet.create` — see
+ * `src/design/cards.tsx` for the same pattern and why.
+ */
+function buildMemberStyles() {
+  return StyleSheet.create({
+    scanDate: { width: 64 },
+    weekDay: { flex: 1 },
+    weekPip: { width: 18, height: 18, borderRadius: 9 },
+    grow: { flex: 1 },
+    feelingBigEmoji: { fontSize: 22, lineHeight: 26 },
+    feelingOption: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: space.sm,
+      borderRadius: radii.md,
+      minHeight: 56,
+      justifyContent: 'center',
+    },
+    feelingOptionPressed: { backgroundColor: color.surfaceOverlay },
+    feelingOptionBusy: { opacity: 0.5 },
+    feelingEmoji: { fontSize: 22, lineHeight: 26 },
+    kindTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: space.sm,
+      paddingVertical: 4,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+    },
+    today: {
+      flexDirection: 'row',
+      gap: space.lg,
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.lg,
+      ...hairline,
+      padding: space.lg,
+    },
+    todayRule: { width: 3, alignSelf: 'stretch', borderRadius: 2 },
+    cta: {
+      height: 48,
+      borderRadius: radii.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    secondary: { alignSelf: 'center', paddingVertical: space.xs },
+    ctaLabel: { fontFamily: font.sansSemi, letterSpacing: 0.3 },
+    card: {
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.lg,
+      ...hairline,
+      padding: space.lg,
+    },
+    cardPressed: { backgroundColor: color.surfaceOverlay, borderColor: color.borderStrong },
+    notConnected: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.md,
+      backgroundColor: color.surface,
+      borderRadius: radii.md,
+      ...hairline,
+      padding: space.md,
+    },
+  });
+}

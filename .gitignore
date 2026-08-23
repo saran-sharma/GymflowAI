@@ -26,3 +26,10 @@ ios/
 .mypy_cache
 htmlcov
 .coverage
+
+# source art / personal exports — never shipped
+/Images/
+*.xlsx
+
+# agent-device tooling state
+.agent-device/

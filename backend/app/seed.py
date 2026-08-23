@@ -82,6 +82,7 @@ from app.services import (
     marketing_service,
     pt_service,
     settings_service,
+    workout_template_service,
 )
 from app.services.attendance_service import recompute
 
@@ -1144,6 +1145,9 @@ def seed(db: Session, *, reset: bool = False) -> None:
     branches = ensure_branches(db)
     ensure_settings(db)
     ensure_incentive_rules(db, branches)
+    # Real product data, not demo — every environment gets the default
+    # template pack, seeded or not.
+    workout_template_service.ensure_default_templates(db)
 
     ensure_user(
         db,

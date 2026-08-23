@@ -1,17 +1,20 @@
 /**
- * A trainer editing one client's programming.
+ * A trainer editing one client's programming — the legacy PPL split editor.
  *
- * This is the write side of the same plan a member's Workout screen reads —
- * `PUT /journeys/members/{id}/plan/{split}` already existed server-side with
- * no client anywhere calling it. These tests hold the connection: a trainer
- * can see what is prescribed for a split, change it, and save exactly that
- * split without touching the others.
+ * `plan/[id]` now shows the Program Days screen instead (see
+ * `trainer-program.test.tsx`); this is the pre-templates split-by-split
+ * editor, moved to `plan-legacy/[id]` and kept reachable/working so a member
+ * still on the 45-day journey's own `WorkoutPlan` can have it edited
+ * directly. `PUT /journeys/members/{id}/plan/{split}` is untouched by the
+ * templates work, and these tests hold that connection: a trainer can see
+ * what is prescribed for a split, change it, and save exactly that split
+ * without touching the others.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 
-import TrainerPlanScreen from '../app/(trainer)/plan/[id]';
+import TrainerPlanScreen from '../app/(trainer)/plan-legacy/[id]';
 import { ApiError } from '../src/api/client';
 import type { WorkoutPlan } from '../src/api/types';
 

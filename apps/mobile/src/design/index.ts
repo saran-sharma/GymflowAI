@@ -34,5 +34,6 @@ export * from './motion';
 export * from './navigation';
 export * from './overlay';
 export * from './brand';
+export * from './useThemedStyles';
 
 export { default as tokens } from './tokens';

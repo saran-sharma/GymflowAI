@@ -421,8 +421,13 @@ export interface WorkoutSession {
   branch_id: number;
   journey_id: number | null;
   day_number: number | null;
-  split: WorkoutSplit;
-  split_label: string;
+  /** Null when this session came from a `MemberWorkoutProgram` day instead
+   * of the journey's own PPL rotation — see `program_day_*` below. */
+  split: WorkoutSplit | null;
+  split_label: string | null;
+  program_day_id: number | null;
+  program_day_name: string | null;
+  program_day_category: WorkoutCategory | null;
   session_date: string;
   status: SessionState;
   started_at: string | null;
@@ -537,8 +542,9 @@ export interface BodyCompositionHistory {
 export interface ExerciseSession {
   session_id: number;
   session_date: string;
-  split: WorkoutSplit;
-  split_label: string;
+  split: WorkoutSplit | null;
+  split_label: string | null;
+  program_day_name: string | null;
   sets: WorkoutSet[];
   volume_kg: number;
   top_weight_kg: number;
@@ -1123,4 +1129,119 @@ export interface BroadcastResult {
   branch_id: number | null;
   broadcast_type: BroadcastType;
   sent_at: string;
+}
+
+/* ----------------------------------------- workout templates & programs */
+
+/**
+ * The muscle-focus a workout day is built around — purely a labelling and
+ * illustration concern (it drives which stock image a day shows). Distinct
+ * from `WorkoutSplit`, which is the PPL-specific enum the 45-day journey
+ * still runs on; a template/member-program day uses this open-ended
+ * vocabulary instead, with `custom` as the fallback for a trainer's own
+ * day name that doesn't fit any of the others.
+ */
+export type WorkoutCategory =
+  | 'push'
+  | 'pull'
+  | 'legs'
+  | 'upper'
+  | 'lower'
+  | 'full_body'
+  | 'core'
+  | 'conditioning'
+  | 'mobility'
+  | 'custom';
+
+export interface TemplateExercise {
+  id: number;
+  order_index: number;
+  exercise: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes: string | null;
+}
+
+export interface WorkoutTemplateDay {
+  id: number;
+  order_index: number;
+  name: string;
+  category: WorkoutCategory;
+  image_key: string | null;
+  estimated_duration_minutes: number | null;
+  exercises: TemplateExercise[];
+}
+
+/** A reusable, editable starting point. Applying one to a member copies it —
+ * see `MemberWorkoutProgram` — so editing a template afterward never
+ * rewrites a member's already-assigned copy. PPL is just one of these. */
+export interface WorkoutTemplate {
+  id: number;
+  key: string | null;
+  name: string;
+  description: string | null;
+  category: WorkoutCategory;
+  image_key: string | null;
+  is_system: boolean;
+  branch_id: number | null;
+  days: WorkoutTemplateDay[];
+}
+
+export interface ProgramExercise {
+  id: number;
+  order_index: number;
+  exercise: string;
+  sets: number;
+  reps: string;
+  rest_seconds: number;
+  notes: string | null;
+}
+
+export interface MemberWorkoutProgramDay {
+  id: number;
+  order_index: number;
+  name: string;
+  category: WorkoutCategory;
+  image_key: string | null;
+  estimated_duration_minutes: number | null;
+  exercises: ProgramExercise[];
+}
+
+/** A member's own, independent copy of a (usually template-derived) programme. */
+export interface MemberWorkoutProgram {
+  id: number;
+  member_id: number;
+  source_template_id: number | null;
+  name: string;
+  is_active: boolean;
+  days: MemberWorkoutProgramDay[];
+}
+
+export interface AddProgramDayInput {
+  name: string;
+  category: WorkoutCategory;
+  estimated_duration_minutes?: number | null;
+}
+
+export interface RenameProgramDayInput {
+  name?: string;
+  category?: WorkoutCategory;
+  estimated_duration_minutes?: number | null;
+}
+
+export interface AddProgramExerciseInput {
+  exercise: string;
+  sets?: number;
+  reps?: string;
+  rest_seconds?: number;
+  notes?: string | null;
+}
+
+export interface UpdateProgramExerciseInput {
+  exercise?: string;
+  sets?: number;
+  reps?: string;
+  rest_seconds?: number;
+  notes?: string | null;
 }

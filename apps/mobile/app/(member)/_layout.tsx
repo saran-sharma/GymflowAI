@@ -36,6 +36,8 @@ export default function MemberLayout() {
       <Tabs.Screen name="visits" options={{ href: null }} />
       {/* Pushed from the workout chart while a member is mid-set. */}
       <Tabs.Screen name="exercise/[itemId]" options={{ href: null }} />
+      {/* Pushed from Progress's compact strength rows. */}
+      <Tabs.Screen name="progress-exercise" options={{ href: null }} />
     </Tabs>
   );
 }

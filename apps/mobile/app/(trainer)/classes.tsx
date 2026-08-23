@@ -28,12 +28,14 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 export default function TrainerClassesScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const classes = useApi<GroupClass[]>((token) => api.listClasses(token), []);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -207,7 +209,8 @@ export default function TrainerClassesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   counts: { justifyContent: 'space-between' },
@@ -220,3 +223,4 @@ const styles = StyleSheet.create({
   },
   rosterAction: { paddingHorizontal: space.sm, paddingVertical: 4 },
 });
+}

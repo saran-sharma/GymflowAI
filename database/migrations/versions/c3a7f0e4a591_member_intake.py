@@ -39,12 +39,13 @@ contact_preference_enum = sa.Enum(
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    experience_level_enum.create(bind, checkfirst=True)
-    preferred_training_style_enum.create(bind, checkfirst=True)
-    preferred_time_enum.create(bind, checkfirst=True)
-    contact_preference_enum.create(bind, checkfirst=True)
-
+    # Deliberately no explicit `.create(checkfirst=True)` calls here: each
+    # enum object below is used as a column type in `create_table`, which
+    # already creates the type itself on first use (see the original
+    # `20aa75faece9` migration for the same pattern with `workout_split`).
+    # Calling `.create()` first and then letting `create_table` create it
+    # again raised "type already exists" — checkfirst isn't threaded through
+    # the second, implicit creation.
     op.create_table(
         "member_intakes",
         sa.Column("id", sa.Integer(), nullable=False),

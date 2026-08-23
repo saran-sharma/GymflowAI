@@ -29,36 +29,86 @@ import {
  * onto attendance outcomes, so a colour never means two different things
  * across screens.
  */
+/**
+ * Every entry is a getter, not a plain field: a value copied out of `color`
+ * at import time would freeze at whatever theme was active on first load,
+ * the same reason `elevation`/`hairline`/`toneColor` in `src/design/tokens`
+ * are getters. Read inline in a component body (as every usage below is),
+ * this always reflects the current theme; baked into a module-scope
+ * `StyleSheet.create`, it would not — see `useThemedStyles`.
+ */
 export const colors = {
   // Surfaces, darkest to lightest.
-  bg: color.background,
-  surface: color.surface,
-  card: color.surfaceRaised,
-  raised: color.surfaceOverlay,
-  input: color.surfaceInput,
-  border: color.border,
-  borderStrong: color.borderStrong,
+  get bg() {
+    return color.background;
+  },
+  get surface() {
+    return color.surface;
+  },
+  get card() {
+    return color.surfaceRaised;
+  },
+  get raised() {
+    return color.surfaceOverlay;
+  },
+  get input() {
+    return color.surfaceInput;
+  },
+  get border() {
+    return color.border;
+  },
+  get borderStrong() {
+    return color.borderStrong;
+  },
 
-  // The SLAM red.
-  brand: color.brand,
-  brandSoft: color.brandAccent,
-  brandDeep: color.brandDeep,
+  // The role/auth accent.
+  get brand() {
+    return color.brand;
+  },
+  get brandSoft() {
+    return color.brandAccent;
+  },
+  get brandDeep() {
+    return color.brandDeep;
+  },
 
   // Text.
-  text: color.text,
-  textMuted: color.textSecondary,
-  textFaint: color.textTertiary,
-  textInverse: color.textInverse,
+  get text() {
+    return color.text;
+  },
+  get textMuted() {
+    return color.textSecondary;
+  },
+  get textFaint() {
+    return color.textTertiary;
+  },
+  get textInverse() {
+    return color.textInverse;
+  },
 
   // Outcome hues.
-  onTime: color.status.positive,
-  late: color.status.caution,
-  absent: color.status.critical,
-  earlyExit: color.status.warning,
-  missing: color.status.notable,
-  scheduled: color.status.neutral,
-  info: color.status.info,
-} as const;
+  get onTime() {
+    return color.status.positive;
+  },
+  get late() {
+    return color.status.caution;
+  },
+  get absent() {
+    return color.status.critical;
+  },
+  get earlyExit() {
+    return color.status.warning;
+  },
+  get missing() {
+    return color.status.notable;
+  },
+  get scheduled() {
+    return color.status.neutral;
+  },
+  get info() {
+    return color.status.info;
+  },
+};
 
 /* ----------------------------------------------------- spacing and shape */
 
@@ -107,22 +157,88 @@ export type AttendanceStatus =
   | 'missing_checkout'
   | 'completed';
 
+// Each `color` below is a getter for the same reason `colors` above is:
+// this object is built once at module scope, and a plain field would freeze
+// whatever `colors.X` resolved to at that instant.
 export const statusMeta: Record<
   AttendanceStatus,
   { label: string; color: string; short: string }
 > = {
-  scheduled: { label: 'Not checked in', color: colors.scheduled, short: 'Pending' },
-  on_time: { label: 'On time', color: colors.onTime, short: 'On time' },
-  late: { label: 'Late', color: colors.late, short: 'Late' },
-  early_exit: { label: 'Left early', color: colors.earlyExit, short: 'Early' },
-  late_and_early_exit: { label: 'Late + left early', color: colors.absent, short: 'Late/Early' },
-  absent: { label: 'Absent', color: colors.absent, short: 'Absent' },
-  missing_checkout: { label: 'No check-out', color: colors.missing, short: 'No out' },
-  completed: { label: 'Shift completed', color: colors.onTime, short: 'Done' },
+  scheduled: {
+    label: 'Not checked in',
+    get color() {
+      return colors.scheduled;
+    },
+    short: 'Pending',
+  },
+  on_time: {
+    label: 'On time',
+    get color() {
+      return colors.onTime;
+    },
+    short: 'On time',
+  },
+  late: {
+    label: 'Late',
+    get color() {
+      return colors.late;
+    },
+    short: 'Late',
+  },
+  early_exit: {
+    label: 'Left early',
+    get color() {
+      return colors.earlyExit;
+    },
+    short: 'Early',
+  },
+  late_and_early_exit: {
+    label: 'Late + left early',
+    get color() {
+      return colors.absent;
+    },
+    short: 'Late/Early',
+  },
+  absent: {
+    label: 'Absent',
+    get color() {
+      return colors.absent;
+    },
+    short: 'Absent',
+  },
+  missing_checkout: {
+    label: 'No check-out',
+    get color() {
+      return colors.missing;
+    },
+    short: 'No out',
+  },
+  completed: {
+    label: 'Shift completed',
+    get color() {
+      return colors.onTime;
+    },
+    short: 'Done',
+  },
 };
 
-export const incentiveMeta = {
-  eligible: { label: 'Eligible', color: colors.onTime },
-  not_eligible: { label: 'Not eligible', color: colors.absent },
-  needs_review: { label: 'Needs review', color: colors.late },
-} as const;
+export const incentiveMeta: Record<'eligible' | 'not_eligible' | 'needs_review', { label: string; color: string }> = {
+  eligible: {
+    label: 'Eligible',
+    get color() {
+      return colors.onTime;
+    },
+  },
+  not_eligible: {
+    label: 'Not eligible',
+    get color() {
+      return colors.absent;
+    },
+  },
+  needs_review: {
+    label: 'Needs review',
+    get color() {
+      return colors.late;
+    },
+  },
+};

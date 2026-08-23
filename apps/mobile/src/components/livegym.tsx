@@ -26,10 +26,12 @@ import {
   hairline,
   radii,
   space,
+  useThemedStyles,
 } from '../design';
 import { duration, timeOfDay } from '../utils/format';
 
 export function LiveGym({ data, emptyDetail }: { data: WhoIsInside; emptyDetail: string }) {
+  const styles = useThemedStyles(buildStyles);
   if (data.count === 0) {
     return (
       <EmptyState
@@ -70,17 +72,19 @@ export function LiveGym({ data, emptyDetail }: { data: WhoIsInside; emptyDetail:
   );
 }
 
-const styles = StyleSheet.create({
-  grow: { flex: 1 },
-  list: {
-    backgroundColor: color.surfaceRaised,
-    borderRadius: radii.lg,
-    ...hairline,
-    paddingHorizontal: space.lg,
-  },
-  row: {
-    paddingVertical: space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-});
+function buildStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    list: {
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.lg,
+      ...hairline,
+      paddingHorizontal: space.lg,
+    },
+    row: {
+      paddingVertical: space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: color.border,
+    },
+  });
+}

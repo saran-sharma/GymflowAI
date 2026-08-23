@@ -32,11 +32,13 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel } from '../../src/utils/format';
 
 export default function OwnerMarketingScreen() {
+  const styles = useThemedStyles(buildStyles);
   const router = useRouter();
   const marketing = useApi<MarketingDashboard>((token) => api.marketingDashboard(token), []);
 
@@ -224,6 +226,7 @@ export default function OwnerMarketingScreen() {
  * before the bar is, so every source is legible at any name length.
  */
 function SourceDistribution({ sources }: { sources: SourceFunnel[] }) {
+  const styles = useThemedStyles(buildStyles);
   const max = Math.max(1, ...sources.map((source) => source.joined));
   return (
     <Stack gap="sm" style={styles.distribution}>
@@ -253,6 +256,7 @@ function SourceDistribution({ sources }: { sources: SourceFunnel[] }) {
 }
 
 function FunnelStep({ label, value, tint }: { label: string; value: number; tint: string }) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <View style={styles.step}>
       <Text variant="title" tone={tint}>
@@ -265,7 +269,8 @@ function FunnelStep({ label, value, tint }: { label: string; value: number; tint
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   tiles: { flexDirection: 'row', gap: space.sm },
   distribution: { paddingTop: space.xs },
@@ -291,3 +296,4 @@ const styles = StyleSheet.create({
   },
   footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
 });
+}

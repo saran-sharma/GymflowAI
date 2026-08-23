@@ -27,6 +27,7 @@ from app.db.models import (
     JourneyDay,
     JourneyStatus,
     Member,
+    MemberWorkoutProgramDay,
     RoleKey,
     SessionStatus,
     Trainer,
@@ -172,6 +173,11 @@ def _logged_set_counts(db: Session, items: list[WorkoutSessionItem]) -> dict[int
 def workout_out(db: Session, session: WorkoutSession) -> WorkoutSessionOut:
     items = sorted(session.items, key=lambda i: i.order_index)
     counts = _logged_set_counts(db, items)
+    program_day = (
+        db.get(MemberWorkoutProgramDay, session.member_program_day_id)
+        if session.member_program_day_id
+        else None
+    )
     return WorkoutSessionOut(
         id=session.id,
         member_id=session.member_id,
@@ -179,7 +185,12 @@ def workout_out(db: Session, session: WorkoutSession) -> WorkoutSessionOut:
         journey_id=session.journey_id,
         day_number=session.day_number,
         split=session.split,
-        split_label=SPLIT_LABELS.get(session.split, session.split.value.title()),
+        split_label=(
+            SPLIT_LABELS.get(session.split, session.split.value.title()) if session.split else None
+        ),
+        program_day_id=program_day.id if program_day else None,
+        program_day_name=program_day.name if program_day else None,
+        program_day_category=program_day.category if program_day else None,
         session_date=session.session_date,
         status=session.status,
         started_at=session.started_at,
@@ -366,13 +377,23 @@ def list_workout_sets(
     return journey_service.list_sets(db, item=item)
 
 
-def _exercise_session_out(entry: journey_service.ExerciseSession) -> ExerciseSessionOut:
+def _exercise_session_out(
+    db: Session, entry: journey_service.ExerciseSession
+) -> ExerciseSessionOut:
     past = entry.session
+    program_day = (
+        db.get(MemberWorkoutProgramDay, past.member_program_day_id)
+        if past.member_program_day_id
+        else None
+    )
     return ExerciseSessionOut(
         session_id=past.id,
         session_date=past.session_date,
         split=past.split,
-        split_label=SPLIT_LABELS.get(past.split, past.split.value.title()),
+        split_label=(
+            SPLIT_LABELS.get(past.split, past.split.value.title()) if past.split else None
+        ),
+        program_day_name=program_day.name if program_day else None,
         sets=[WorkoutSetOut.model_validate(row) for row in entry.sets],
         volume_kg=entry.volume_kg,
         top_weight_kg=entry.top_weight_kg,
@@ -408,7 +429,31 @@ def exercise_history(
 
     return WorkoutSetHistory(
         exercise=history.exercise,
-        sessions=[_exercise_session_out(entry) for entry in history.sessions],
+        sessions=[_exercise_session_out(db, entry) for entry in history.sessions],
+        heaviest=(WorkoutSetOut.model_validate(history.heaviest) if history.heaviest else None),
+        best_volume_kg=history.best_volume.volume_kg if history.best_volume else None,
+        best_volume_on=(history.best_volume.session.session_date if history.best_volume else None),
+    )
+
+
+@router.get(
+    "/me/exercises/{exercise}/history",
+    response_model=WorkoutSetHistory,
+)
+def my_exercise_history(
+    exercise: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WorkoutSetHistory:
+    """This member's whole history with one lift, by name — the Progress
+    screen's detailed-exercise view. Unlike the item-scoped history above,
+    this has no open session to hang off, so it needs no `before_session_id`
+    to exclude — there is nothing in progress to exclude it from."""
+    member = current_member(db, user)
+    history = journey_service.exercise_history(db, member_id=member.id, exercise=exercise)
+    return WorkoutSetHistory(
+        exercise=history.exercise,
+        sessions=[_exercise_session_out(db, entry) for entry in history.sessions],
         heaviest=(WorkoutSetOut.model_validate(history.heaviest) if history.heaviest else None),
         best_volume_kg=history.best_volume.volume_kg if history.best_volume else None,
         best_volume_on=(history.best_volume.session.session_date if history.best_volume else None),

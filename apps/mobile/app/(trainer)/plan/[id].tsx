@@ -1,197 +1,292 @@
 /**
- * A trainer's programming for one client — the workout they are prescribing.
+ * A trainer's programming for one client — Program Days, not a fixed split.
  *
- * This is the write side of the same plan the member's Workout screen reads
- * from (`GET /journeys/me/workout/today` resolves the day's split against
- * `WorkoutPlanItem` rows, falling back to the generic library only when a
- * member has none). Saving a split here is what "trainer posts a workout"
- * means today: the exact exercises, sets, reps and rest a member sees the
- * next time that split comes around in their rotation.
+ * Replaces the old PUSH | PULL | LEGS | CARDIO | ASSESSMENT tab bar (still
+ * reachable at `plan-legacy/[id]` for a member on the 45-day journey's own
+ * `WorkoutPlan`, which this screen does not touch). A member with a
+ * `MemberWorkoutProgram` — built from a template or from scratch — gets
+ * arbitrary trainer-named days here instead: "Day 1 — Upper Strength" is a
+ * real name, not PPL relabelled.
  *
- * One split at a time, on purpose — the server scopes the write the same
- * way, so an edit to Push can never silently drop Pull.
+ * Every action round-trips through the real API immediately; there is no
+ * local-only draft state that could look saved and then vanish on
+ * navigation, unlike the legacy split editor's batch-save-per-split model.
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
-import type { PlanItem, PlanItemUpsert, WorkoutPlan, WorkoutSplit } from '../../../src/api/types';
+import type {
+  MemberWorkoutProgram,
+  MemberWorkoutProgramDay,
+  WorkoutCategory,
+} from '../../../src/api/types';
+import { categoryMeta, WorkoutArtwork } from '../../../src/components/programme';
 import {
   Banner,
   Body,
   Button,
   Card,
+  Chips,
+  Divider,
   EmptyState,
   ErrorState,
-  Eyebrow,
   Input,
+  LinkButton,
   Loading,
   Row,
   Screen,
-  Segmented,
+  Sheet,
   Spacer,
   Stack,
   Text,
+  TappableCard,
   color,
   space,
+  useThemedStyles,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
 
-const EDITABLE_SPLITS: { value: WorkoutSplit; label: string }[] = [
-  { value: 'push', label: 'Push' },
-  { value: 'pull', label: 'Pull' },
-  { value: 'legs', label: 'Legs' },
-  { value: 'cardio', label: 'Cardio' },
-  { value: 'assessment', label: 'Assessment' },
-];
+const CATEGORY_OPTIONS: { value: WorkoutCategory; label: string }[] = (
+  Object.keys(categoryMeta) as WorkoutCategory[]
+).map((value) => ({ value, label: categoryMeta[value].label }));
 
-type DraftItem = PlanItemUpsert & { key: string };
-
-let nextKey = 0;
-function blankItem(split: WorkoutSplit): DraftItem {
-  nextKey += 1;
-  return {
-    key: `new-${nextKey}`,
-    split,
-    exercise: '',
-    sets: 3,
-    reps: '8-12',
-    rest_seconds: 60,
-    notes: null,
-  };
+function dayCategoryLine(day: MemberWorkoutProgramDay): string {
+  const exerciseCount = day.exercises.length;
+  const parts = [`${exerciseCount} exercise${exerciseCount === 1 ? '' : 's'}`];
+  if (day.estimated_duration_minutes) parts.push(`~${day.estimated_duration_minutes} min`);
+  return parts.join(' · ');
 }
 
-function draftsFor(plan: WorkoutPlan | null, split: WorkoutSplit): DraftItem[] {
-  const items = (plan?.items ?? [])
-    .filter((i) => i.split === split)
-    .sort((a, b) => a.order_index - b.order_index);
-  if (items.length === 0) return [];
-  return items.map((item: PlanItem) => ({
-    key: `existing-${item.id}`,
-    split,
-    exercise: item.exercise,
-    sets: item.sets,
-    reps: item.reps,
-    rest_seconds: item.rest_seconds,
-    notes: item.notes,
-  }));
-}
-
-export default function TrainerPlanScreen() {
+export default function TrainerProgramScreen() {
+  const styles = useThemedStyles(buildStyles);
   const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const { withToken } = useAuth();
   const memberId = Number(id);
 
-  const plan = useApi<WorkoutPlan | null>((token) => api.memberPlan(memberId, token), [memberId]);
+  const program = useApi<MemberWorkoutProgram | null>(
+    (token) => api.memberWorkoutProgram(memberId, token),
+    [memberId],
+  );
 
-  const [split, setSplit] = useState<WorkoutSplit>('push');
-  const [drafts, setDrafts] = useState<DraftItem[]>([]);
+  /* Reached repeatedly via `router.replace`/`router.back` from templates,
+   * the day editor, and the day-add/rename sheets — all of which write
+   * through the real API and expect this list to reflect it immediately.
+   * Expo Router can resolve those navigations back onto an already-mounted
+   * instance of this screen (same route, same params), which does not
+   * re-run `useApi`'s effect on its own: without this, applying a template
+   * left the screen showing its stale pre-apply state (still "no personal
+   * program yet") even though the apply had already succeeded server-side.
+   */
+  const refreshOnReturn = useRef(program.refresh);
+  refreshOnReturn.current = program.refresh;
+  const arrived = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!arrived.current) {
+        arrived.current = true;
+        return;
+      }
+      void refreshOnReturn.current();
+    }, []),
+  );
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
-  // Re-seed the draft whenever the split changes or fresh data arrives —
-  // never merge, since the server is always this split's whole truth. Does
-  // not touch `saved`: a successful save triggers its own refresh, and that
-  // refresh must not erase the confirmation it just earned.
-  useEffect(() => {
-    setDrafts(draftsFor(plan.data ?? null, split));
-  }, [plan.data, split]);
+  const [addDayVisible, setAddDayVisible] = useState(false);
+  const [addDayName, setAddDayName] = useState('');
+  const [addDayCategory, setAddDayCategory] = useState<WorkoutCategory>('full_body');
+  const [addDayDuration, setAddDayDuration] = useState('');
 
-  // Switching splits is a fresh screen in every other sense — clear the
-  // previous split's error/confirmation so they cannot bleed into this one.
-  useEffect(() => {
-    setError(null);
-    setSaved(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [split]);
+  const [menuDay, setMenuDay] = useState<MemberWorkoutProgramDay | null>(null);
 
-  const updateItem = useCallback((key: string, patch: Partial<DraftItem>) => {
-    setSaved(false);
-    setDrafts((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  const [renameDay, setRenameDayState] = useState<MemberWorkoutProgramDay | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renameCategory, setRenameCategory] = useState<WorkoutCategory>('full_body');
+
+  const openRename = useCallback((day: MemberWorkoutProgramDay) => {
+    setMenuDay(null);
+    setRenameDayState(day);
+    setRenameName(day.name);
+    setRenameCategory(day.category);
   }, []);
 
-  const removeItem = useCallback((key: string) => {
-    setSaved(false);
-    setDrafts((rows) => rows.filter((row) => row.key !== key));
-  }, []);
-
-  // Order is the array position itself — `save` below sends drafts in this
-  // order and the server assigns `order_index` from it, so swapping two rows
-  // here is the whole of "reorder."
-  const moveItem = useCallback((key: string, direction: -1 | 1) => {
-    setSaved(false);
-    setDrafts((rows) => {
-      const index = rows.findIndex((row) => row.key === key);
-      const target = index + direction;
-      if (index === -1 || target < 0 || target >= rows.length) return rows;
-      const next = [...rows];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }, []);
-
-  const addItem = useCallback(() => {
-    setSaved(false);
-    setDrafts((rows) => [...rows, blankItem(split)]);
-  }, [split]);
-
-  const save = useCallback(async () => {
+  const startFromScratch = useCallback(async () => {
     setError(null);
     setBusy(true);
     try {
-      const payload: PlanItemUpsert[] = drafts
-        .filter((d) => d.exercise.trim().length > 0)
-        .map((d) => ({
-          split,
-          exercise: d.exercise.trim(),
-          sets: d.sets,
-          reps: d.reps,
-          rest_seconds: d.rest_seconds,
-          notes: d.notes?.trim() ? d.notes.trim() : null,
-        }));
-      await withToken((token) => api.replacePlanSplit(memberId, split, payload, token));
-      await plan.refresh();
-      setSaved(true);
-    } catch (caught) {
-      setError(
-        caught instanceof ApiError ? caught.message : 'Could not save. Check your connection.',
+      await withToken((token) =>
+        api.createCustomProgram(memberId, `${name ? `${name}'s` : "Member's"} program`, token),
       );
+      await program.refresh();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not start a new programme.');
     } finally {
       setBusy(false);
     }
-  }, [drafts, memberId, plan, split, withToken]);
+  }, [memberId, name, program, withToken]);
 
-  if (plan.loading) return <Loading />;
+  const submitAddDay = useCallback(async () => {
+    if (!addDayName.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await withToken((token) =>
+        api.addProgramDay(
+          memberId,
+          {
+            name: addDayName.trim(),
+            category: addDayCategory,
+            estimated_duration_minutes: addDayDuration ? Number(addDayDuration) : null,
+          },
+          token,
+        ),
+      );
+      await program.refresh();
+      setAddDayVisible(false);
+      setAddDayName('');
+      setAddDayDuration('');
+      setAddDayCategory('full_body');
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not add that day.');
+    } finally {
+      setBusy(false);
+    }
+  }, [addDayCategory, addDayDuration, addDayName, memberId, program, withToken]);
 
-  if (plan.error) {
-    const offline = plan.error.code === OFFLINE_CODE;
-    const noJourney = plan.error.status === 404;
+  const submitRename = useCallback(async () => {
+    if (!renameDay || !renameName.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await withToken((token) =>
+        api.renameProgramDay(
+          memberId,
+          renameDay.id,
+          { name: renameName.trim(), category: renameCategory },
+          token,
+        ),
+      );
+      await program.refresh();
+      setRenameDayState(null);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not rename that day.');
+    } finally {
+      setBusy(false);
+    }
+  }, [memberId, program, renameCategory, renameDay, renameName, withToken]);
+
+  const moveDay = useCallback(
+    async (day: MemberWorkoutProgramDay, direction: -1 | 1) => {
+      const days = program.data?.days ?? [];
+      const index = days.findIndex((d) => d.id === day.id);
+      const target = index + direction;
+      if (index === -1 || target < 0 || target >= days.length) return;
+      const reordered = [...days];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      setMenuDay(null);
+      setError(null);
+      setBusy(true);
+      try {
+        await withToken((token) =>
+          api.reorderProgramDays(
+            memberId,
+            reordered.map((d) => d.id),
+            token,
+          ),
+        );
+        await program.refresh();
+      } catch (caught) {
+        setError(caught instanceof ApiError ? caught.message : 'Could not reorder days.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [memberId, program, withToken],
+  );
+
+  const duplicateDay = useCallback(
+    async (day: MemberWorkoutProgramDay) => {
+      setMenuDay(null);
+      setError(null);
+      setBusy(true);
+      try {
+        await withToken(async (token) => {
+          const created = await api.addProgramDay(
+            memberId,
+            {
+              name: `${day.name} (Copy)`,
+              category: day.category,
+              estimated_duration_minutes: day.estimated_duration_minutes,
+            },
+            token,
+          );
+          for (const exercise of day.exercises) {
+            await api.addProgramExercise(
+              memberId,
+              created.id,
+              {
+                exercise: exercise.exercise,
+                sets: exercise.sets,
+                reps: exercise.reps,
+                rest_seconds: exercise.rest_seconds,
+                notes: exercise.notes,
+              },
+              token,
+            );
+          }
+        });
+        await program.refresh();
+      } catch (caught) {
+        setError(caught instanceof ApiError ? caught.message : 'Could not duplicate that day.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [memberId, program, withToken],
+  );
+
+  const deleteDay = useCallback(
+    async (day: MemberWorkoutProgramDay) => {
+      setMenuDay(null);
+      setError(null);
+      setBusy(true);
+      try {
+        await withToken((token) => api.deleteProgramDay(memberId, day.id, token));
+        await program.refresh();
+      } catch (caught) {
+        setError(caught instanceof ApiError ? caught.message : 'Could not delete that day.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [memberId, program, withToken],
+  );
+
+  if (program.loading) return <Loading />;
+
+  if (program.error) {
+    const offline = program.error.code === OFFLINE_CODE;
     return (
       <Screen>
-        {noJourney ? (
-          <EmptyState
-            icon="barbell-outline"
-            title="No programme to edit yet"
-            detail="This member has no General Training journey, so there is no plan for a split-by-split edit to attach to."
-          />
-        ) : (
-          <ErrorState
-            offline={offline}
-            title={offline ? undefined : 'Could not load this plan'}
-            detail={offline ? undefined : plan.error.message}
-            onRetry={plan.reload}
-          />
-        )}
+        <ErrorState
+          offline={offline}
+          title={offline ? undefined : 'Could not load this programme'}
+          detail={offline ? undefined : program.error.message}
+          onRetry={program.reload}
+        />
       </Screen>
     );
   }
+
+  const days = program.data?.days ?? [];
 
   return (
     <Screen>
@@ -199,11 +294,10 @@ export default function TrainerPlanScreen() {
         <Stack gap="xxs">
           <Text variant="title">Edit programming</Text>
           <Text variant="body" tone={color.textSecondary}>
-            {name ? `${name}'s ` : ''}exact exercises, sets, reps and rest for one split at a time.
+            {name ? `${name} · ` : ''}
+            {program.data ? 'Personalized program' : 'No personalized program yet'}
           </Text>
         </Stack>
-
-        <Segmented options={EDITABLE_SPLITS} value={split} onChange={setSplit} testIDPrefix="plan-split" />
 
         {error ? (
           <Banner tone="critical" icon="alert-circle-outline">
@@ -211,145 +305,260 @@ export default function TrainerPlanScreen() {
           </Banner>
         ) : null}
 
-        {saved ? (
-          <Banner tone="positive" icon="checkmark-circle-outline">
-            <Text variant="label" tone={color.status.positive} style={styles.grow}>
-              Saved. The member sees this the next time{' '}
-              {EDITABLE_SPLITS.find((s) => s.value === split)?.label.toLowerCase()} comes around.
-            </Text>
-          </Banner>
-        ) : null}
-
-        {drafts.length === 0 ? (
-          <Card>
-            <Text variant="body" tone={color.textSecondary}>
-              No exercises prescribed for {EDITABLE_SPLITS.find((s) => s.value === split)?.label}{' '}
-              yet. Add the first one below.
-            </Text>
-          </Card>
+        {!program.data ? (
+          <>
+            <EmptyState
+              icon="barbell-outline"
+              title="Build this member's program"
+              detail="Start from one of GymFlow's templates — including Push / Pull / Legs, now just one option among several — or build a fully custom program from nothing."
+            />
+            <Button
+              title="Browse workout templates"
+              icon="albums-outline"
+              onPress={() =>
+                router.push({
+                  pathname: '/(trainer)/templates',
+                  params: { memberId: String(memberId), name: name ?? '' },
+                } as never)
+              }
+              testID="browse-templates"
+            />
+            <Button
+              title="Start from scratch"
+              variant="secondary"
+              icon="add-circle-outline"
+              loading={busy}
+              onPress={() => void startFromScratch()}
+              testID="start-from-scratch"
+            />
+          </>
         ) : (
-          drafts.map((row, index) => (
-            <Card key={row.key} testID={`plan-row-${index}`}>
-              <Row gap="sm">
-                <Eyebrow>Exercise {index + 1}</Eyebrow>
-                <Spacer />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Move up"
-                  onPress={() => moveItem(row.key, -1)}
-                  disabled={index === 0}
-                  hitSlop={8}
-                  testID={`plan-move-up-${index}`}
-                >
-                  <Ionicons
-                    name="arrow-up-circle-outline"
-                    size={20}
-                    color={index === 0 ? color.border : color.textTertiary}
-                  />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Move down"
-                  onPress={() => moveItem(row.key, 1)}
-                  disabled={index === drafts.length - 1}
-                  hitSlop={8}
-                  testID={`plan-move-down-${index}`}
-                >
-                  <Ionicons
-                    name="arrow-down-circle-outline"
-                    size={20}
-                    color={index === drafts.length - 1 ? color.border : color.textTertiary}
-                  />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove exercise"
-                  onPress={() => removeItem(row.key)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="close-circle-outline" size={20} color={color.textTertiary} />
-                </Pressable>
-              </Row>
-              <Input
-                placeholder="Exercise name"
-                value={row.exercise}
-                onChangeText={(text) => updateItem(row.key, { exercise: text })}
-                testID={`plan-exercise-${index}`}
+          <>
+            <Row gap="sm">
+              <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+                PROGRAM DAYS
+              </Text>
+              <LinkButton
+                title="Browse templates"
+                testID="browse-templates-link"
+                onPress={() =>
+                  router.push({
+                    pathname: '/(trainer)/templates',
+                    params: { memberId: String(memberId), name: name ?? '' },
+                  } as never)
+                }
               />
-              <Row gap="sm">
-                <Stack style={styles.third}>
-                  <Input
-                    label="Sets"
-                    keyboardType="number-pad"
-                    value={String(row.sets)}
-                    onChangeText={(text) =>
-                      updateItem(row.key, { sets: Math.max(1, Number(text) || 1) })
-                    }
-                    testID={`plan-sets-${index}`}
-                  />
-                </Stack>
-                <Stack style={styles.third}>
-                  <Input
-                    label="Reps"
-                    value={row.reps}
-                    onChangeText={(text) => updateItem(row.key, { reps: text })}
-                    testID={`plan-reps-${index}`}
-                  />
-                </Stack>
-                <Stack style={styles.third}>
-                  <Input
-                    label="Rest (s)"
-                    keyboardType="number-pad"
-                    value={String(row.rest_seconds)}
-                    onChangeText={(text) =>
-                      updateItem(row.key, { rest_seconds: Math.max(0, Number(text) || 0) })
-                    }
-                    testID={`plan-rest-${index}`}
-                  />
-                </Stack>
-              </Row>
-              <Input
-                placeholder="Notes for the member (optional)"
-                value={row.notes ?? ''}
-                onChangeText={(text) => updateItem(row.key, { notes: text })}
-                testID={`plan-notes-${index}`}
-              />
-            </Card>
-          ))
+            </Row>
+
+            {days.map((day, index) => (
+              <TappableCard
+                key={day.id}
+                testID={`program-day-${day.id}`}
+                accessibilityLabel={`Open ${day.name}`}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(trainer)/plan-day/[dayId]',
+                    params: {
+                      dayId: String(day.id),
+                      memberId: String(memberId),
+                      dayName: day.name,
+                    },
+                  } as never)
+                }
+              >
+                <WorkoutArtwork category={day.category} testID={`program-day-art-${day.id}`} />
+                <Row gap="sm">
+                  <Stack gap="xxs" style={styles.grow}>
+                    <Text variant="label" tone={color.textTertiary}>
+                      Day {index + 1}
+                    </Text>
+                    <Text variant="heading">{day.name}</Text>
+                    <Text variant="label" tone={color.textSecondary}>
+                      {dayCategoryLine(day)}
+                    </Text>
+                  </Stack>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`More actions for ${day.name}`}
+                    onPress={() => setMenuDay(day)}
+                    hitSlop={12}
+                    testID={`program-day-menu-${day.id}`}
+                  >
+                    <Ionicons name="ellipsis-vertical" size={20} color={color.textTertiary} />
+                  </Pressable>
+                </Row>
+              </TappableCard>
+            ))}
+
+            <Button
+              title="Add workout day"
+              variant="secondary"
+              icon="add"
+              onPress={() => setAddDayVisible(true)}
+              testID="add-workout-day"
+            />
+          </>
         )}
-
-        <Button
-          title="Add exercise"
-          variant="secondary"
-          icon="add"
-          onPress={addItem}
-          testID="plan-add-exercise"
-        />
-
-        <Button
-          title="Save changes"
-          size="lg"
-          loading={busy}
-          onPress={() => void save()}
-          testID="plan-save"
-        />
-
-        <Text
-          variant="label"
-          tone={color.brandAccent}
-          accessibilityRole="button"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(trainer)/clients'))}
-          style={styles.back}
-        >
-          Back to client
-        </Text>
       </Body>
+
+      <Sheet
+        visible={menuDay !== null}
+        onClose={() => setMenuDay(null)}
+        title={menuDay?.name}
+        testID="day-menu-sheet"
+      >
+        {menuDay ? (
+          <Stack gap="xs">
+            <Button
+              title="Edit exercises"
+              variant="secondary"
+              icon="list-outline"
+              onPress={() => {
+                const day = menuDay;
+                setMenuDay(null);
+                router.push({
+                  pathname: '/(trainer)/plan-day/[dayId]',
+                  params: {
+                    dayId: String(day.id),
+                    memberId: String(memberId),
+                    dayName: day.name,
+                  },
+                } as never);
+              }}
+              testID="menu-edit-exercises"
+            />
+            <Button
+              title="Rename / change category"
+              variant="secondary"
+              icon="create-outline"
+              onPress={() => openRename(menuDay)}
+              testID="menu-rename"
+            />
+            <Button
+              title="Duplicate day"
+              variant="secondary"
+              icon="copy-outline"
+              loading={busy}
+              onPress={() => void duplicateDay(menuDay)}
+              testID="menu-duplicate"
+            />
+            <Row gap="sm">
+              <View style={styles.half}>
+                <Button
+                  title="Move up"
+                  variant="secondary"
+                  icon="arrow-up"
+                  disabled={(program.data?.days ?? [])[0]?.id === menuDay.id}
+                  onPress={() => void moveDay(menuDay, -1)}
+                  testID="menu-move-up"
+                />
+              </View>
+              <View style={styles.half}>
+                <Button
+                  title="Move down"
+                  variant="secondary"
+                  icon="arrow-down"
+                  disabled={
+                    (program.data?.days ?? [])[(program.data?.days.length ?? 1) - 1]?.id ===
+                    menuDay.id
+                  }
+                  onPress={() => void moveDay(menuDay, 1)}
+                  testID="menu-move-down"
+                />
+              </View>
+            </Row>
+            <Divider />
+            <Button
+              title="Delete day"
+              variant="destructive"
+              icon="trash-outline"
+              loading={busy}
+              onPress={() => void deleteDay(menuDay)}
+              testID="menu-delete"
+            />
+          </Stack>
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        visible={renameDay !== null}
+        onClose={() => setRenameDayState(null)}
+        title="Rename day"
+        testID="rename-sheet"
+        footer={
+          <Button
+            title="Save"
+            loading={busy}
+            onPress={() => void submitRename()}
+            testID="rename-save"
+          />
+        }
+      >
+        <Input
+          label="Day name"
+          value={renameName}
+          onChangeText={setRenameName}
+          testID="rename-input"
+        />
+        <Spacer />
+        <Text variant="label" tone={color.textTertiary}>
+          Category
+        </Text>
+        <Chips
+          options={CATEGORY_OPTIONS}
+          value={renameCategory}
+          onChange={setRenameCategory}
+          testIDPrefix="rename-category"
+        />
+      </Sheet>
+
+      <Sheet
+        visible={addDayVisible}
+        onClose={() => setAddDayVisible(false)}
+        title="Add workout day"
+        testID="add-day-sheet"
+        footer={
+          <Button
+            title="Add day"
+            loading={busy}
+            onPress={() => void submitAddDay()}
+            testID="add-day-save"
+          />
+        }
+      >
+        <Input
+          label="Day name"
+          placeholder="Day 4 — Upper Strength"
+          value={addDayName}
+          onChangeText={setAddDayName}
+          testID="add-day-name"
+        />
+        <Spacer />
+        <Text variant="label" tone={color.textTertiary}>
+          Category
+        </Text>
+        <Chips
+          options={CATEGORY_OPTIONS}
+          value={addDayCategory}
+          onChange={setAddDayCategory}
+          testIDPrefix="add-day-category"
+        />
+        <Spacer />
+        <Input
+          label="Estimated duration (minutes, optional)"
+          keyboardType="number-pad"
+          value={addDayDuration}
+          onChangeText={setAddDayDuration}
+          testID="add-day-duration"
+        />
+      </Sheet>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  third: { flex: 1 },
-  grow: { flex: 1 },
-  back: { paddingVertical: space.md, textAlign: 'center' },
-});
+function buildStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    half: { flex: 1 },
+  });
+}

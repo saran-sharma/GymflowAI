@@ -44,6 +44,7 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
@@ -62,6 +63,7 @@ const STATUS_META: Record<
 };
 
 export default function MemberPtScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const packageInfo = useApi<PTPackage | null>((token) => api.myPtPackage(token), []);
   const sessions = useApi<PTSession[]>((token) => api.myPtSessions(token), []);
@@ -383,7 +385,8 @@ export default function MemberPtScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   half: { flex: 1 },
   splitRule: { width: 1, backgroundColor: color.border },
@@ -407,3 +410,4 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
 });
+}

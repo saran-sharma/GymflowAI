@@ -46,6 +46,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
@@ -76,6 +77,7 @@ const SESSION_TONE: Record<string, 'positive' | 'caution' | 'critical' | 'neutra
 };
 
 export default function TrainerClientDetailScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const memberId = Number(id);
@@ -347,7 +349,7 @@ export default function TrainerClientDetailScreen() {
             workouts.map((workout) => (
               <Row key={workout.id} gap="md" style={styles.row}>
                 <Stack gap="xxs" style={styles.grow}>
-                  <Text variant="body">{workout.split_label}</Text>
+                  <Text variant="body">{workout.split_label ?? workout.program_day_name}</Text>
                   <Text variant="label" tone={color.textTertiary}>
                     {dayLabel(workout.session_date)}
                     {workout.day_number ? ` · day ${workout.day_number}` : ''}
@@ -404,7 +406,8 @@ export default function TrainerClientDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   row: {
     paddingVertical: space.sm,
@@ -413,3 +416,4 @@ const styles = StyleSheet.create({
   },
   back: { paddingVertical: space.md },
 });
+}

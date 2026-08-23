@@ -24,6 +24,7 @@ from app.db.models import (
     PackageStatus,
     RsvpResponse,
     SessionStatus,
+    WorkoutCategory,
     WorkoutSplit,
 )
 from app.domain.records import RecordKind
@@ -140,8 +141,13 @@ class WorkoutSessionOut(BaseModel):
     branch_id: int
     journey_id: int | None = None
     day_number: int | None = None
-    split: WorkoutSplit
-    split_label: str
+    split: WorkoutSplit | None = None
+    split_label: str | None = None
+    # Set instead of `split`/`split_label` when this session came from a
+    # `MemberWorkoutProgram` day rather than the journey's PPL rotation.
+    program_day_id: int | None = None
+    program_day_name: str | None = None
+    program_day_category: WorkoutCategory | None = None
     session_date: date
     status: SessionStatus
     started_at: datetime | None = None
@@ -234,8 +240,9 @@ class ExerciseSessionOut(BaseModel):
 
     session_id: int
     session_date: date
-    split: WorkoutSplit
-    split_label: str
+    split: WorkoutSplit | None = None
+    split_label: str | None = None
+    program_day_name: str | None = None
     sets: list[WorkoutSetOut] = []
     volume_kg: float
     top_weight_kg: float
@@ -649,6 +656,114 @@ class ClassRosterEntry(BaseModel):
     member_name: str
     response: RsvpResponse
     attended: bool | None = None
+
+
+# ------------------------------------------------------ workout templates
+
+
+class TemplateExerciseOut(ORMModel):
+    id: int
+    order_index: int
+    exercise: str
+    sets: int
+    reps: str
+    rest_seconds: int
+    notes: str | None = None
+
+
+class TemplateDayOut(ORMModel):
+    id: int
+    order_index: int
+    name: str
+    category: WorkoutCategory
+    image_key: str | None = None
+    estimated_duration_minutes: int | None = None
+    exercises: list[TemplateExerciseOut] = []
+
+
+class WorkoutTemplateOut(ORMModel):
+    id: int
+    key: str | None = None
+    name: str
+    description: str | None = None
+    category: WorkoutCategory
+    image_key: str | None = None
+    is_system: bool
+    branch_id: int | None = None
+    days: list[TemplateDayOut] = []
+
+
+class ApplyTemplateRequest(BaseModel):
+    template_id: int
+
+
+class CreateCustomProgramRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ProgramExerciseOut(ORMModel):
+    id: int
+    order_index: int
+    exercise: str
+    sets: int
+    reps: str
+    rest_seconds: int
+    notes: str | None = None
+
+
+class ProgramDayOut(ORMModel):
+    id: int
+    order_index: int
+    name: str
+    category: WorkoutCategory
+    image_key: str | None = None
+    estimated_duration_minutes: int | None = None
+    exercises: list[ProgramExerciseOut] = []
+
+
+class MemberWorkoutProgramOut(ORMModel):
+    id: int
+    member_id: int
+    source_template_id: int | None = None
+    name: str
+    is_active: bool
+    days: list[ProgramDayOut] = []
+
+
+class AddProgramDayRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: WorkoutCategory
+    estimated_duration_minutes: int | None = Field(default=None, ge=1, le=240)
+
+
+class RenameProgramDayRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    category: WorkoutCategory | None = None
+    estimated_duration_minutes: int | None = Field(default=None, ge=1, le=240)
+
+
+class ReorderDaysRequest(BaseModel):
+    day_ids: list[int] = Field(min_length=1)
+
+
+class AddProgramExerciseRequest(BaseModel):
+    exercise: str = Field(min_length=1, max_length=120)
+    sets: int = Field(default=3, ge=1, le=20)
+    reps: str = Field(default="10", min_length=1, max_length=32)
+    rest_seconds: int = Field(default=60, ge=0, le=600)
+    notes: str | None = Field(default=None, max_length=160)
+
+
+class UpdateProgramExerciseRequest(BaseModel):
+    exercise: str | None = Field(default=None, min_length=1, max_length=120)
+    sets: int | None = Field(default=None, ge=1, le=20)
+    reps: str | None = Field(default=None, min_length=1, max_length=32)
+    rest_seconds: int | None = Field(default=None, ge=0, le=600)
+    notes: str | None = Field(default=None, max_length=160)
+
+
+class ReorderExercisesRequest(BaseModel):
+    exercise_ids: list[int] = Field(min_length=1)
 
 
 __all__ = [name for name in dir() if name[0].isupper()]

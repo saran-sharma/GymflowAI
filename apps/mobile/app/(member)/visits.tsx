@@ -35,6 +35,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { dayLabel, duration, timeOfDay } from '../../src/utils/format';
@@ -53,6 +54,7 @@ function daysAgo(iso: string, from = new Date()): number {
 }
 
 export default function MemberAttendanceScreen() {
+  const styles = useThemedStyles(buildStyles);
   const visits = useApi<MemberVisit[]>((token) => api.memberVisits(token), []);
   const activity = useApi<ActivityEntry[]>((token) => api.memberActivity(token, 120), []);
   const home = useApi<MemberHome>((token) => api.memberHome(token), []);
@@ -202,10 +204,12 @@ export default function MemberAttendanceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   visit: {
     paddingVertical: space.md,
     borderBottomWidth: 1,
     borderBottomColor: color.border,
   },
 });
+}

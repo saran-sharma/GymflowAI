@@ -56,7 +56,7 @@ from app.domain.records import (
     volume_of,
 )
 from app.domain.workout_library import exercises_for
-from app.services import alert_service, settings_service
+from app.services import alert_service, settings_service, workout_template_service
 
 
 class JourneyError(HTTPException):
@@ -690,6 +690,44 @@ def start_workout(
     )
     if existing is not None:
         return existing
+
+    # A personalized program supersedes the journey's own PPL rotation the
+    # moment one is assigned — see the templates system in
+    # app.services.workout_template_service. The 45-day journey itself is
+    # untouched either way; only where today's *exercises* come from changes.
+    program = workout_template_service.active_program(db, member.id)
+    if program is not None and program.days:
+        chosen_day = workout_template_service.resolve_today_program_day(db, program)
+        assert chosen_day is not None  # program.days is non-empty, guaranteed above
+        session = WorkoutSession(
+            member_id=member.id,
+            branch_id=member.branch_id,
+            journey_id=None,
+            journey_day_id=None,
+            day_number=None,
+            member_program_day_id=chosen_day.id,
+            split=None,
+            session_date=session_date,
+            status=SessionStatus.IN_PROGRESS,
+            supervising_trainer_id=supervising_trainer_id,
+            started_at=now_utc(),
+            is_demo=member.is_demo,
+        )
+        db.add(session)
+        db.flush()
+        for exercise in chosen_day.exercises:
+            db.add(
+                WorkoutSessionItem(
+                    session_id=session.id,
+                    order_index=exercise.order_index,
+                    exercise=exercise.exercise,
+                    sets=exercise.sets,
+                    reps=exercise.reps,
+                    rest_seconds=exercise.rest_seconds,
+                )
+            )
+        db.flush()
+        return session
 
     day_row: JourneyDay | None = None
     day_number: int | None = None

@@ -31,8 +31,17 @@ import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { Journey, JourneyDay, WorkoutItem, WorkoutSession } from '../../src/api/types';
+import type {
+  ActivityEntry,
+  Journey,
+  JourneyDay,
+  MemberWorkoutProgram,
+  MemberWorkoutProgramDay,
+  WorkoutItem,
+  WorkoutSession,
+} from '../../src/api/types';
 import { KindTag, TodayCard } from '../../src/components/member';
+import { CategoryBadge, WorkoutArtwork } from '../../src/components/programme';
 import {
   Badge,
   Banner,
@@ -55,6 +64,7 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useShowMore } from '../../src/hooks/useShowMore';
@@ -71,11 +81,36 @@ const SPLIT_LABEL: Record<string, string> = {
 };
 
 export default function MemberWorkoutScreen() {
+  const styles = useThemedStyles(buildStyles);
   const router = useRouter();
   const { withToken } = useAuth();
   const journey = useApi<Journey | null>((token) => api.myJourney(token), []);
   const workout = useApi<WorkoutSession | null>((token) => api.todayWorkout(token), []);
   const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
+
+  // A personalized program — from a template or built from scratch —
+  // supersedes the journey's own PPL rotation the moment a trainer assigns
+  // one. `today` is what "start workout" would use right now, shown before
+  // any session exists so the preview card is never empty.
+  const programState = useApi<{
+    program: MemberWorkoutProgram;
+    today: MemberWorkoutProgramDay | null;
+  } | null>(async (token) => {
+    const me = await api.memberMe(token);
+    const program = await api.memberWorkoutProgram(me.member_id, token);
+    if (!program) return null;
+    const today = await api.memberProgramToday(me.member_id, token);
+    return { program, today };
+  }, []);
+
+  // Recent own-workouts, sourced from the same activity feed Progress uses —
+  // the one list that stays meaningful whether a member is on a program, a
+  // journey, or (briefly) both.
+  const activity = useApi<ActivityEntry[]>((token) => api.memberActivity(token, 40), []);
+  const recentActivity = useShowMore(
+    (activity.data ?? []).filter((entry) => entry.kind === 'own_workout'),
+    3,
+  );
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +131,9 @@ export default function MemberWorkoutScreen() {
     void journey.refresh();
     void workout.refresh();
     void days.refresh();
-  }, [journey, workout, days]);
+    void programState.refresh();
+    void activity.refresh();
+  }, [journey, workout, days, programState, activity]);
 
   /* Re-read the chart whenever the member comes back to it.
    *
@@ -142,7 +179,9 @@ export default function MemberWorkoutScreen() {
     [withToken, refreshAll],
   );
 
-  if (journey.loading || workout.loading) return <Loading label="Loading today's workout" />;
+  if (journey.loading || workout.loading || programState.loading) {
+    return <Loading label="Loading today's workout" />;
+  }
 
   if (journey.error) {
     const offline = journey.error.code === OFFLINE_CODE;
@@ -159,6 +198,42 @@ export default function MemberWorkoutScreen() {
   }
 
   const session = workout.data;
+  const hasProgram = !!programState.data;
+
+  // A personalized program is the active plan the moment a trainer assigns
+  // one — even for a member who is, separately, still inside their 45-day
+  // journey. It gets its own render entirely rather than reusing the
+  // assessment/rest/journey-inactive branches below, which are the journey's
+  // own PPL concerns and do not apply to a trainer-named program day.
+  if (hasProgram) {
+    return (
+      <ProgramWorkout
+        programState={programState.data!}
+        session={session}
+        busy={busy}
+        error={error}
+        recentActivity={recentActivity}
+        onStart={() => void run((token) => api.startWorkout(token))}
+        onFinish={(sessionId) =>
+          Alert.alert('Finish workout?', 'This records today as complete.', [
+            { text: 'Not yet', style: 'cancel' },
+            {
+              text: 'Finish',
+              onPress: () => void run((token) => api.completeWorkout(sessionId, token)),
+            },
+          ])
+        }
+        onOpenExercise={(itemId, sessionId) =>
+          router.push({
+            pathname: '/(member)/exercise/[itemId]',
+            params: { itemId: String(itemId), sessionId: String(sessionId) },
+          })
+        }
+        refreshing={workout.refreshing}
+        onRefresh={refreshAll}
+      />
+    );
+  }
 
   if (!plan) {
     return (
@@ -353,6 +428,162 @@ export default function MemberWorkoutScreen() {
 }
 
 /**
+ * The workout screen for a member with a personalized program.
+ *
+ * Shows the trainer-defined day name throughout — never converted back into
+ * Push/Pull/Legs — and reuses the exact same `ExerciseRow` chart and
+ * finish/start actions as the journey path, since the underlying
+ * `WorkoutSession`/`WorkoutItem`/`WorkoutSet` logging is unchanged either way.
+ */
+function ProgramWorkout({
+  programState,
+  session,
+  busy,
+  error,
+  recentActivity,
+  onStart,
+  onFinish,
+  onOpenExercise,
+  refreshing,
+  onRefresh,
+}: {
+  programState: { program: MemberWorkoutProgram; today: MemberWorkoutProgramDay | null };
+  session: WorkoutSession | null;
+  busy: boolean;
+  error: string | null;
+  recentActivity: ReturnType<typeof useShowMore<ActivityEntry>>;
+  onStart: () => void;
+  onFinish: (sessionId: number) => void;
+  onOpenExercise: (itemId: number, sessionId: number) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const styles = useThemedStyles(buildStyles);
+  const { program, today } = programState;
+  const done = session?.status === 'completed';
+
+  return (
+    <Screen>
+      <Body
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.brand} />
+        }
+      >
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
+
+        {!session ? (
+          today ? (
+            <Card>
+              <WorkoutArtwork category={today.category} testID="workout-today-art" />
+              <Row gap="sm">
+                <KindTag kind="own_workout" />
+                <Spacer />
+                <CategoryBadge category={today.category} />
+              </Row>
+              <Text variant="title">{today.name}</Text>
+              <Text variant="body" tone={color.textSecondary}>
+                {today.exercises.length} exercise{today.exercises.length === 1 ? '' : 's'}
+                {today.estimated_duration_minutes ? ` · ~${today.estimated_duration_minutes} min` : ''}
+              </Text>
+              <Button title="Start workout" size="lg" icon="play" loading={busy} onPress={onStart} />
+            </Card>
+          ) : (
+            <EmptyState
+              icon="barbell-outline"
+              title="No workout days yet"
+              detail="Your trainer is still building your program."
+            />
+          )
+        ) : (
+          <>
+            <Card>
+              <WorkoutArtwork category={session.program_day_category} testID="workout-session-art" />
+              <Row gap="sm">
+                <KindTag kind="own_workout" />
+                <Spacer />
+                <Badge
+                  label={done ? 'Completed' : `${session.completed_items} of ${session.total_items}`}
+                  tone={done ? 'positive' : 'brand'}
+                  solid={done}
+                />
+              </Row>
+              <Text variant="title">{session.program_day_name ?? 'Workout'}</Text>
+              <ProgressBar
+                value={session.total_items ? (session.completed_items / session.total_items) * 100 : 0}
+                tone={done ? 'positive' : 'brand'}
+              />
+            </Card>
+
+            <Section title="Exercises">
+              {session.items.map((item) => (
+                <ExerciseRow
+                  key={item.id}
+                  item={item}
+                  onOpen={() => onOpenExercise(item.id, session.id)}
+                />
+              ))}
+            </Section>
+
+            {!done ? (
+              <Button
+                title="Finish workout"
+                size="lg"
+                icon="checkmark-done"
+                loading={busy}
+                onPress={() => onFinish(session.id)}
+              />
+            ) : (
+              <Banner tone="positive" icon="checkmark-circle-outline">
+                Workout recorded. Nice work.
+              </Banner>
+            )}
+          </>
+        )}
+
+        {program.days.length > 0 ? (
+          <Section title="Program">
+            {program.days.map((day, index) => (
+              <Row key={day.id} gap="sm" style={styles.programRow}>
+                <Text variant="label" tone={color.textTertiary} style={styles.dayNumber}>
+                  Day {index + 1}
+                </Text>
+                <Text variant="body" style={styles.grow}>
+                  {day.name}
+                </Text>
+                <CategoryBadge category={day.category} />
+              </Row>
+            ))}
+          </Section>
+        ) : null}
+
+        <Section title="Recent sessions" action={recentActivity.toggle}>
+          {recentActivity.visible.length === 0 ? (
+            <Text variant="label" tone={color.textTertiary}>
+              Your completed workouts will be listed here.
+            </Text>
+          ) : (
+            recentActivity.visible.map((entry, index) => (
+              <Row key={`${entry.reference_id}-${index}`} gap="md" style={styles.historyRow}>
+                <Stack gap="xxs" style={styles.grow}>
+                  <Text variant="body">{entry.detail ?? entry.title}</Text>
+                  <Text variant="label" tone={color.textTertiary}>
+                    {dayLabel(entry.on)}
+                  </Text>
+                </Stack>
+              </Row>
+            ))
+          )}
+        </Section>
+      </Body>
+    </Screen>
+  );
+}
+
+/**
  * One exercise on the chart.
  *
  * The row states progress rather than offering a tick box: an exercise is
@@ -360,6 +591,7 @@ export default function MemberWorkoutScreen() {
  * sets recorded would be offering to contradict the member's own data.
  */
 function ExerciseRow({ item, onOpen }: { item: WorkoutItem; onOpen: () => void }) {
+  const styles = useThemedStyles(buildStyles);
   const done = item.status === 'completed';
   const started = item.sets_logged > 0;
 
@@ -396,6 +628,7 @@ function ExerciseRow({ item, onOpen }: { item: WorkoutItem; onOpen: () => void }
 }
 
 function HistoryRow({ day }: { day: JourneyDay }) {
+  const styles = useThemedStyles(buildStyles);
   const tone =
     day.status === 'completed' ? 'positive' : day.status === 'missed' ? 'critical' : 'neutral';
   const label =
@@ -414,9 +647,16 @@ function HistoryRow({ day }: { day: JourneyDay }) {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   dayNumber: { minWidth: 26 },
+  programRow: {
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
   exercise: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -435,3 +675,4 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
 });
+}

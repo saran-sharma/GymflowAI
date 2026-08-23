@@ -12,6 +12,7 @@
  * no interpolated points between two real measurements.
  */
 
+import { useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -20,6 +21,7 @@ import * as api from '../../src/api/endpoints';
 import type {
   ActivityEntry,
   BodyCompositionHistory,
+  ExerciseTrend,
   Journey,
   JourneyDay,
   MemberActivity,
@@ -33,7 +35,6 @@ import {
   kindMeta,
 } from '../../src/components/member';
 import {
-  Badge,
   Body,
   Card,
   EmptyState,
@@ -47,13 +48,27 @@ import {
   StatCard,
   StatRow,
   Stack,
+  TappableCard,
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useShowMore } from '../../src/hooks/useShowMore';
 import { dayLabel } from '../../src/utils/format';
+
+/**
+ * The change since the previous logged session, from real `points` only —
+ * never a stored or invented figure. Null (no arrow shown) for a lift with
+ * fewer than two sessions, since one point has nothing to compare against.
+ */
+function recentDelta(trend: ExerciseTrend): number | null {
+  if (trend.points.length < 2) return null;
+  const last = trend.points[trend.points.length - 1].top_weight_kg;
+  const previous = trend.points[trend.points.length - 2].top_weight_kg;
+  return last - previous;
+}
 
 /**
  * A bar's x-axis caption on the consistency chart: the week-starting day of
@@ -74,14 +89,38 @@ function weekLabel(iso: string): string {
 }
 
 /** The timeline's kinds, mapped onto the shared session vocabulary. */
+// `hue` is a getter on every entry — this object is built once at module
+// scope, and a plain field would freeze whatever `color.status.X` (or
+// `kindMeta.X.hue`, itself a getter) resolved to at that instant.
 const TIMELINE: Record<ActivityEntry['kind'], { label: string; hue: string }> = {
-  gym_visit: { label: 'Gym visit', hue: color.status.info },
-  own_workout: { label: kindMeta.own_workout.label, hue: kindMeta.own_workout.hue },
-  pt_session: { label: kindMeta.pt_session.label, hue: kindMeta.pt_session.hue },
-  group_class: { label: kindMeta.group_class.label, hue: kindMeta.group_class.hue },
+  gym_visit: {
+    label: 'Gym visit',
+    get hue() {
+      return color.status.info;
+    },
+  },
+  own_workout: {
+    label: kindMeta.own_workout.label,
+    get hue() {
+      return kindMeta.own_workout.hue;
+    },
+  },
+  pt_session: {
+    label: kindMeta.pt_session.label,
+    get hue() {
+      return kindMeta.pt_session.hue;
+    },
+  },
+  group_class: {
+    label: kindMeta.group_class.label,
+    get hue() {
+      return kindMeta.group_class.hue;
+    },
+  },
 };
 
 export default function MemberProgressScreen() {
+  const router = useRouter();
   const journey = useApi<Journey | null>((token) => api.myJourney(token), []);
   const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
   const timeline = useApi<ActivityEntry[]>((token) => api.memberActivity(token, 40), []);
@@ -108,6 +147,8 @@ export default function MemberProgressScreen() {
   // component never breaks the rule that hooks run in the same order every
   // render.
   const recent = useShowMore(entries, 3);
+  const strengthRows = useShowMore(strength.data?.exercises ?? [], 4);
+  const styles = useThemedStyles(buildStyles);
 
   if (timeline.loading && stats.loading) return <Loading label="Loading your progress" />;
 
@@ -179,34 +220,18 @@ export default function MemberProgressScreen() {
         ) : null}
 
         {strength.data && strength.data.exercises.length > 0 ? (
-          <Section title="Strength">
-            {strength.data.exercises.map((trend) => (
-              <Card key={trend.exercise}>
-                <Row gap="sm">
-                  <Text variant="body" style={styles.grow}>
-                    {trend.exercise}
-                  </Text>
-                  {trend.is_recent_pr ? <Badge label="PR" tone="brand" solid /> : null}
-                  <Spacer />
-                  <Text variant="label" tone={color.textTertiary}>
-                    {trend.heaviest_kg > 0 ? `best ${trend.heaviest_kg}kg` : ''}
-                  </Text>
-                </Row>
-                {trend.points.length > 1 ? (
-                  <BarChart
-                    data={trend.points.map((point) => ({
-                      label: weekLabel(point.session_date),
-                      value: point.top_weight_kg,
-                    }))}
-                    tint={color.status.notable}
-                    height={60}
-                  />
-                ) : (
-                  <Text variant="label" tone={color.textTertiary}>
-                    One session logged so far — a trend needs at least two.
-                  </Text>
-                )}
-              </Card>
+          <Section title="Strength" action={strengthRows.toggle}>
+            {strengthRows.visible.map((trend) => (
+              <StrengthRow
+                key={trend.exercise}
+                trend={trend}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(member)/progress-exercise',
+                    params: { exercise: trend.exercise },
+                  })
+                }
+              />
             ))}
           </Section>
         ) : null}
@@ -266,12 +291,55 @@ export default function MemberProgressScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  grow: { flex: 1 },
-  entry: {
-    paddingVertical: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
-  },
-  rule: { width: 3, alignSelf: 'stretch', minHeight: 34, borderRadius: 2 },
-});
+/**
+ * One lift, compact: name, PR, and the change since the previous session —
+ * never a chart. Tapping opens the real trend chart and recent sessions
+ * (`progress-exercise`) for a member who wants more than a glance.
+ */
+function StrengthRow({ trend, onPress }: { trend: ExerciseTrend; onPress: () => void }) {
+  const styles = useThemedStyles(buildStyles);
+  const delta = recentDelta(trend);
+  const deltaTone =
+    delta === null
+      ? color.textTertiary
+      : delta > 0
+        ? color.status.positive
+        : delta < 0
+          ? color.textSecondary
+          : color.textTertiary;
+  const deltaLabel =
+    delta === null ? '' : delta > 0 ? `↑ +${delta}kg` : delta < 0 ? `↓ ${delta}kg` : '→ 0kg';
+
+  return (
+    <TappableCard onPress={onPress} accessibilityLabel={`Open ${trend.exercise} trend`}>
+      <Row gap="sm">
+        <Text variant="body" style={styles.grow}>
+          {trend.exercise}
+        </Text>
+      </Row>
+      <Row gap="sm">
+        <Text variant="label" tone={color.textSecondary}>
+          {trend.heaviest_kg > 0 ? `PR · ${trend.heaviest_kg}kg` : 'No PR yet'}
+        </Text>
+        <Spacer />
+        {delta !== null ? (
+          <Text variant="label" tone={deltaTone}>
+            {deltaLabel}
+          </Text>
+        ) : null}
+      </Row>
+    </TappableCard>
+  );
+}
+
+function buildStyles() {
+  return StyleSheet.create({
+    grow: { flex: 1 },
+    entry: {
+      paddingVertical: space.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: color.border,
+    },
+    rule: { width: 3, alignSelf: 'stretch', minHeight: 34, borderRadius: 2 },
+  });
+}

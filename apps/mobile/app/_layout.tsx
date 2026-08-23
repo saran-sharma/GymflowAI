@@ -30,6 +30,7 @@ import { Loading } from '../src/components/ui';
 import { configureForegroundBehaviour } from '../src/notifications';
 import { AuthProvider, homeRouteForRole, useAuth } from '../src/store/AuthContext';
 import { NetworkProvider } from '../src/store/NetworkContext';
+import { ThemeProvider, useTheme } from '../src/store/ThemeContext';
 import { colors } from '../src/theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -59,6 +60,44 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * The theme-aware chrome — background, status bar icon colour, and the
+ * navigator's own content background — plus everything that already lived
+ * here. Rendered as a *child* of `ThemeProvider`, not alongside it: a
+ * component only re-renders when its own state (or an ancestor's) changes,
+ * and the resolved scheme lives in `ThemeProvider`'s state, not
+ * `RootLayout`'s — so this has to sit below it in the tree to ever see a
+ * theme switch.
+ */
+function ThemedApp() {
+  const { resolvedScheme } = useTheme();
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <SafeAreaProvider>
+        <NetworkProvider>
+          <AuthProvider>
+            <StatusBar style={resolvedScheme === 'dark' ? 'light' : 'dark'} />
+            <AuthGate>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: colors.bg },
+                  animation: 'fade',
+                }}
+              >
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="(trainer)" />
+                <Stack.Screen name="(owner)" />
+                <Stack.Screen name="(member)" />
+              </Stack>
+            </AuthGate>
+          </AuthProvider>
+        </NetworkProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+
 export default function RootLayout() {
   // Every typeface the design system names, loaded before anything paints.
   // A screen rendered against a family that has not arrived falls back to the
@@ -79,28 +118,8 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <SafeAreaProvider>
-        <NetworkProvider>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <AuthGate>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.bg },
-                  animation: 'fade',
-                }}
-              >
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(trainer)" />
-                <Stack.Screen name="(owner)" />
-                <Stack.Screen name="(member)" />
-              </Stack>
-            </AuthGate>
-          </AuthProvider>
-        </NetworkProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ThemeProvider>
+      <ThemedApp />
+    </ThemeProvider>
   );
 }

@@ -91,7 +91,7 @@ describe('the strength section', () => {
     expect(screen.queryByText('Strength')).toBeNull();
   });
 
-  it('shows each trained lift with a PR badge when the latest session set the record', async () => {
+  it('shows each trained lift compactly, with its PR and the change since the last session', async () => {
     mockStrength.mockResolvedValue({
       exercises: [
         {
@@ -107,11 +107,11 @@ describe('the strength section', () => {
     } satisfies StrengthTrend);
     await open();
     expect(screen.getByText('Bench press')).toBeTruthy();
-    expect(screen.getByText('PR')).toBeTruthy();
-    expect(screen.getByText('best 55kg')).toBeTruthy();
+    expect(screen.getByText('PR · 55kg')).toBeTruthy();
+    expect(screen.getByText('↑ +5kg')).toBeTruthy();
   });
 
-  it('says a trend needs at least two sessions rather than charting a single point', async () => {
+  it('shows no delta arrow for a lift logged only once — nothing to compare against', async () => {
     mockStrength.mockResolvedValue({
       exercises: [
         {
@@ -123,12 +123,12 @@ describe('the strength section', () => {
       ],
     } satisfies StrengthTrend);
     await open();
-    expect(
-      screen.getByText('One session logged so far — a trend needs at least two.'),
-    ).toBeTruthy();
+    expect(screen.getByText('Deadlift')).toBeTruthy();
+    expect(screen.getByText('PR · 100kg')).toBeTruthy();
+    expect(screen.queryByText(/↑|↓|→/)).toBeNull();
   });
 
-  it('shows no PR badge when the latest session did not set the record', async () => {
+  it('shows a down arrow, not an alarming one, when the latest session was lighter', async () => {
     mockStrength.mockResolvedValue({
       exercises: [
         {
@@ -144,7 +144,28 @@ describe('the strength section', () => {
     } satisfies StrengthTrend);
     await open();
     expect(screen.getByText('Squat')).toBeTruthy();
-    expect(screen.queryByText('PR')).toBeNull();
+    expect(screen.getByText('↓ -20kg')).toBeTruthy();
+    // Still the all-time best, not the latest session's weight.
+    expect(screen.getByText('PR · 120kg')).toBeTruthy();
+  });
+
+  it('shows more than the initial rows on request, and collapses again', async () => {
+    mockStrength.mockResolvedValue({
+      exercises: ['Bench press', 'Squat', 'Deadlift', 'Overhead press', 'Barbell row'].map(
+        (exercise) => ({
+          exercise,
+          points: [{ session_date: '2026-08-12', top_weight_kg: 100, volume_kg: 500 }],
+          heaviest_kg: 100,
+          is_recent_pr: false,
+        }),
+      ),
+    } satisfies StrengthTrend);
+    await open();
+    expect(screen.queryByText('Barbell row')).toBeNull();
+    fireEvent.press(screen.getByText(/Show 1 more/));
+    expect(screen.getByText('Barbell row')).toBeTruthy();
+    fireEvent.press(screen.getByText('Show less'));
+    expect(screen.queryByText('Barbell row')).toBeNull();
   });
 });
 

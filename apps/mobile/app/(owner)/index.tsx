@@ -68,6 +68,7 @@ import {
   color,
   space,
   toneColor,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
@@ -107,6 +108,7 @@ interface AttentionEntry {
 }
 
 export default function OwnerDashboardScreen() {
+  const styles = useThemedStyles(buildStyles);
   const router = useRouter();
   const { user } = useAuth();
   const [period, setPeriod] = useState<Period>('week');
@@ -501,6 +503,7 @@ function AttentionRow({
   onPress?: () => void;
   withDivider: boolean;
 }) {
+  const styles = useThemedStyles(buildStyles);
   const hue = toneColor[SEVERITY_TONE[severity]];
   const row = (
     <Row gap="sm" align="center" style={styles.attentionRow}>
@@ -540,7 +543,8 @@ function AttentionRow({
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   heroName: { fontSize: 34, lineHeight: 38, letterSpacing: -1 },
   broadcastButton: {
@@ -558,3 +562,4 @@ const styles = StyleSheet.create({
   attentionPressed: { backgroundColor: color.surfaceOverlay },
   attentionDot: { width: 8, height: 8, borderRadius: 4 },
 });
+}

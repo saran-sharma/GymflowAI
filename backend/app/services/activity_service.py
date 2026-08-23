@@ -25,6 +25,7 @@ from app.db.models import (
     GroupClass,
     GroupClassAttendance,
     Member,
+    MemberWorkoutProgramDay,
     PersonType,
     PTSession,
     SessionStatus,
@@ -107,13 +108,20 @@ def timeline(
     if end is not None:
         workout_stmt = workout_stmt.where(WorkoutSession.session_date <= end)
     for workout in db.scalars(workout_stmt).all():
+        if workout.split is not None:
+            detail = workout.split.value.replace("_", " ").upper()
+        elif workout.member_program_day_id is not None:
+            program_day = db.get(MemberWorkoutProgramDay, workout.member_program_day_id)
+            detail = program_day.name if program_day else None
+        else:
+            detail = None
         entries.append(
             ActivityEntry(
                 kind=KIND_OWN_WORKOUT,
                 on=workout.session_date,
                 at=workout.completed_at,
                 title="Own workout",
-                detail=workout.split.value.replace("_", " ").upper(),
+                detail=detail,
                 reference_id=workout.id,
                 branch_id=workout.branch_id,
             )

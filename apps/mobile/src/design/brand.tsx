@@ -13,6 +13,8 @@ import Svg, { Path, Rect } from 'react-native-svg';
 
 import { Stack, Text } from './primitives';
 import { color, radii, space } from './tokens';
+import { useThemedStyles } from './useThemedStyles';
+import { useTheme } from '../store/ThemeContext';
 
 /** The supplied artwork: 484 × 226 in the source, so height follows width. */
 const LOGO = require('../../assets/slam-logo.png');
@@ -23,17 +25,42 @@ export interface SlamLogoProps {
   testID?: string;
 }
 
-/** The full lockup. Use on sign-in, splash and anywhere SLAM is being named. */
+/**
+ * The full lockup. Use on sign-in, splash and anywhere SLAM is being named.
+ *
+ * The supplied artwork is a white wordmark — built for a dark ground, and
+ * there is no separate light-mode export to swap in. Rather than invent one,
+ * light mode sits it on a small dark plate sized to the mark itself, the
+ * same near-black the artwork was always designed against; dark mode is
+ * unchanged, with nothing behind it.
+ */
 export function SlamLogo({ width = 200, testID = 'slam-logo' }: SlamLogoProps) {
-  return (
+  const { resolvedScheme } = useTheme();
+  const height = width / LOGO_ASPECT;
+  const image = (
     <Image
       source={LOGO}
-      style={{ width, height: width / LOGO_ASPECT }}
+      style={{ width, height }}
       resizeMode="contain"
       accessibilityRole="image"
       accessibilityLabel="SLAM Fitness Studio"
       testID={testID}
     />
+  );
+  if (resolvedScheme !== 'light') return image;
+  return (
+    <View
+      style={{
+        width: width + space.md,
+        height: height + space.md,
+        borderRadius: radii.md,
+        backgroundColor: '#0A0A0A',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {image}
+    </View>
   );
 }
 
@@ -98,11 +125,19 @@ export function Avatar({
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase() ?? '')
       .join('') || '?';
+  const themed = useThemedStyles(() => ({
+    avatar: {
+      backgroundColor: color.surfaceOverlay,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+  }));
 
   return (
     <View
       style={[
-        styles.avatar,
+        themed.avatar,
         {
           width: size,
           height: size,
@@ -127,8 +162,18 @@ export function Avatar({
  * anything the seeder produced says so where it is shown.
  */
 export function DemoTag() {
+  const themed = useThemedStyles(() => ({
+    demo: {
+      paddingHorizontal: space.sm,
+      paddingVertical: 3,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: color.border,
+      backgroundColor: color.surfaceOverlay,
+    },
+  }));
   return (
-    <View style={styles.demo}>
+    <View style={themed.demo}>
       <Text variant="caption" caps tone={color.textTertiary}>
         Demo
       </Text>
@@ -139,18 +184,4 @@ export function DemoTag() {
 const styles = StyleSheet.create({
   lockup: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   slam: { lineHeight: 28 },
-  avatar: {
-    backgroundColor: color.surfaceOverlay,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  demo: {
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surfaceOverlay,
-  },
 });

@@ -56,6 +56,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { dayLabel, daysAgoLabel, membershipDaysLabel, money } from '../../../src/utils/format';
@@ -65,6 +66,7 @@ const WORKOUT_TONE: Record<string, 'positive' | 'neutral'> = {
 };
 
 export default function OwnerMemberScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const memberId = Number(id);
@@ -330,7 +332,7 @@ export default function OwnerMemberScreen() {
                   tone={WORKOUT_TONE[todayWorkout.status] ?? 'neutral'}
                 />
               </Row>
-              <Text variant="body">{todayWorkout.split_label}</Text>
+              <Text variant="body">{todayWorkout.split_label ?? todayWorkout.program_day_name}</Text>
             </Card>
           ) : (
             <Text variant="label" tone={color.textTertiary}>
@@ -345,7 +347,7 @@ export default function OwnerMemberScreen() {
               {workouts.slice(0, 6).map((workout) => (
                 <Row key={workout.id} gap="md" style={styles.row}>
                   <Stack gap="xxs" style={styles.grow}>
-                    <Text variant="body">{workout.split_label}</Text>
+                    <Text variant="body">{workout.split_label ?? workout.program_day_name}</Text>
                     <Text variant="label" tone={color.textTertiary}>
                       {dayLabel(workout.session_date)}
                     </Text>
@@ -398,7 +400,8 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   row: {
     paddingVertical: space.sm,
@@ -406,3 +409,4 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
 });
+}

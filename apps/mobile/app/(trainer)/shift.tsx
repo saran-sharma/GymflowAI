@@ -30,6 +30,7 @@ import {
   Screen,
   Txt,
 } from '../../src/components/ui';
+import { useThemedStyles } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
@@ -39,6 +40,7 @@ import { relativeMinutes, timeOfDay } from '../../src/utils/format';
 type Action = 'check_in' | 'check_out';
 
 export default function TrainerShiftScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const { isOnline } = useNetwork();
   const router = useRouter();
@@ -279,6 +281,7 @@ function Detail({
   value: string;
   valueColor?: string;
 }) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <Row style={styles.detail}>
       <Txt variant="label" color={colors.textMuted}>
@@ -308,6 +311,7 @@ function PinDialog({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const styles = useThemedStyles(buildStyles);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.modalBackdrop}>
@@ -345,7 +349,8 @@ function PinDialog({
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   header: { gap: spacing.xs, marginBottom: spacing.sm },
   shiftRow: { gap: spacing.xs, marginTop: spacing.xs },
   confirm: { borderWidth: 1.5 },
@@ -372,3 +377,4 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
   },
 });
+}

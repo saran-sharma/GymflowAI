@@ -30,6 +30,7 @@ import {
   Body,
   Button,
   Card,
+  Chips,
   Divider,
   Eyebrow,
   Input,
@@ -48,7 +49,14 @@ import { useApi } from '../hooks/useApi';
 import { PUSH_ENABLED, registerForPush } from '../notifications';
 import { useAuth } from '../store/AuthContext';
 import { useNetwork } from '../store/NetworkContext';
+import { type ThemePreference, useTheme } from '../store/ThemeContext';
 import { NotConnected } from './member';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
 
 const roleLabels: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -75,6 +83,7 @@ export function ProfilePanel({
 }) {
   const { user, signOut, withToken, refreshUser } = useAuth();
   const { isOnline, type } = useNetwork();
+  const { preference, setPreference } = useTheme();
   const router = useRouter();
 
   // Whatever the server says this person may see. One request, and the only
@@ -239,6 +248,19 @@ export function ProfilePanel({
 
         {/* --------------------------------------------------- preferences */}
         <Section title="Preferences">
+          <Card>
+            <Eyebrow>Appearance</Eyebrow>
+            <Chips
+              options={THEME_OPTIONS}
+              value={preference}
+              onChange={setPreference}
+              testIDPrefix="theme-preference"
+            />
+            <Text variant="label" tone={color.textTertiary}>
+              System follows your device's own Light/Dark setting.
+            </Text>
+          </Card>
+
           <Card>
             <Row gap="sm">
               <Eyebrow>Notifications</Eyebrow>

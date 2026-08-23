@@ -390,6 +390,14 @@ export const exerciseHistory = (sessionId: number, itemId: number, token: string
     token,
   });
 
+/** This member's whole history with one lift, by name — Progress's detailed
+ * per-exercise view, reached without an open session to hang off. */
+export const myExerciseHistory = (exercise: string, token: string) =>
+  request<WorkoutSetHistory>(
+    `/journeys/me/exercises/${encodeURIComponent(exercise)}/history`,
+    { token },
+  );
+
 export const completeWorkout = (sessionId: number, token: string) =>
   request<WorkoutSession>(`/journeys/workouts/${sessionId}/complete`, { method: 'POST', token });
 
@@ -678,3 +686,118 @@ export const whoIsInside = (token: string, branchId?: number) =>
     `/attendance/inside${branchId ? `?branch_id=${branchId}` : ''}`,
     { token },
   );
+
+/* --------------------------------------------------- workout templates & programs */
+
+export const workoutTemplates = (token: string, branchId?: number) =>
+  request<import('./types').WorkoutTemplate[]>(
+    `/workout-templates${branchId ? `?branch_id=${branchId}` : ''}`,
+    { token },
+  );
+
+export const workoutTemplate = (templateId: number, token: string) =>
+  request<import('./types').WorkoutTemplate>(`/workout-templates/${templateId}`, { token });
+
+export const memberWorkoutProgram = (memberId: number, token: string) =>
+  request<import('./types').MemberWorkoutProgram | null>(
+    `/members/${memberId}/program`,
+    { token },
+  );
+
+/** Which programme day "start workout" would use right now, without
+ * actually starting anything — the Workout screen's preview card. */
+export const memberProgramToday = (memberId: number, token: string) =>
+  request<import('./types').MemberWorkoutProgramDay | null>(
+    `/members/${memberId}/program/today`,
+    { token },
+  );
+
+export const applyWorkoutTemplate = (memberId: number, templateId: number, token: string) =>
+  request<import('./types').MemberWorkoutProgram>(`/members/${memberId}/program/apply-template`, {
+    method: 'POST',
+    body: { template_id: templateId },
+    token,
+  });
+
+export const createCustomProgram = (memberId: number, name: string, token: string) =>
+  request<import('./types').MemberWorkoutProgram>(`/members/${memberId}/program/custom`, {
+    method: 'POST',
+    body: { name },
+    token,
+  });
+
+export const addProgramDay = (
+  memberId: number,
+  payload: import('./types').AddProgramDayInput,
+  token: string,
+) =>
+  request<import('./types').MemberWorkoutProgramDay>(`/members/${memberId}/program/days`, {
+    method: 'POST',
+    body: payload,
+    token,
+  });
+
+export const renameProgramDay = (
+  memberId: number,
+  dayId: number,
+  payload: import('./types').RenameProgramDayInput,
+  token: string,
+) =>
+  request<import('./types').MemberWorkoutProgramDay>(
+    `/members/${memberId}/program/days/${dayId}`,
+    { method: 'PUT', body: payload, token },
+  );
+
+export const reorderProgramDays = (memberId: number, dayIds: number[], token: string) =>
+  request<import('./types').MemberWorkoutProgramDay[]>(
+    `/members/${memberId}/program/days/reorder`,
+    { method: 'PUT', body: { day_ids: dayIds }, token },
+  );
+
+export const deleteProgramDay = (memberId: number, dayId: number, token: string) =>
+  request<void>(`/members/${memberId}/program/days/${dayId}`, { method: 'DELETE', token });
+
+export const addProgramExercise = (
+  memberId: number,
+  dayId: number,
+  payload: import('./types').AddProgramExerciseInput,
+  token: string,
+) =>
+  request<import('./types').MemberWorkoutProgramDay>(
+    `/members/${memberId}/program/days/${dayId}/exercises`,
+    { method: 'POST', body: payload, token },
+  );
+
+export const updateProgramExercise = (
+  memberId: number,
+  dayId: number,
+  exerciseId: number,
+  payload: import('./types').UpdateProgramExerciseInput,
+  token: string,
+) =>
+  request<import('./types').MemberWorkoutProgramDay>(
+    `/members/${memberId}/program/days/${dayId}/exercises/${exerciseId}`,
+    { method: 'PUT', body: payload, token },
+  );
+
+export const reorderProgramExercises = (
+  memberId: number,
+  dayId: number,
+  exerciseIds: number[],
+  token: string,
+) =>
+  request<import('./types').MemberWorkoutProgramDay>(
+    `/members/${memberId}/program/days/${dayId}/exercises/reorder`,
+    { method: 'PUT', body: { exercise_ids: exerciseIds }, token },
+  );
+
+export const removeProgramExercise = (
+  memberId: number,
+  dayId: number,
+  exerciseId: number,
+  token: string,
+) =>
+  request<void>(`/members/${memberId}/program/days/${dayId}/exercises/${exerciseId}`, {
+    method: 'DELETE',
+    token,
+  });

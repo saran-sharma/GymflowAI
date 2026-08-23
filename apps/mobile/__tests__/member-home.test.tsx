@@ -102,6 +102,9 @@ function aWorkout(items: WorkoutItem[], partial: Partial<WorkoutSession> = {}): 
     day_number: 6,
     split: 'push',
     split_label: 'Push',
+    program_day_id: null,
+    program_day_name: null,
+    program_day_category: null,
     session_date: '2026-08-17',
     status: 'in_progress',
     started_at: '2026-08-17T08:00:00Z',
@@ -318,6 +321,29 @@ describe('while the workout is under way', () => {
     mockHome.mockResolvedValue(aHome({ today_workout: aWorkout(untouched) }));
     await openHome();
     expect(screen.getByText('0 of 2 exercises done')).toBeTruthy();
+  });
+
+  it('titles a program-based session with the trainer-given day name, not the journey split it has no split for', async () => {
+    // Regression: a `MemberWorkoutProgram` session has `split`/`split_label`
+    // null by design (see `program_day_name` on `WorkoutSession`) — the title
+    // used to fall straight through to `journey.split_today`, which is
+    // whatever the *journey's own* rotation happens to say today and can
+    // name a completely different day than the one actually assigned and
+    // shown on the Workout tab.
+    mockHome.mockResolvedValue(
+      aHome({
+        journey: aJourney({ split_today: 'push' }),
+        today_workout: aWorkout(items, {
+          split: null,
+          split_label: null,
+          program_day_id: 501,
+          program_day_name: 'Upper Strength',
+        }),
+      }),
+    );
+    await openHome();
+    expect(screen.getByText('Upper Strength')).toBeTruthy();
+    expect(screen.queryByText('PUSH')).toBeNull();
   });
 });
 

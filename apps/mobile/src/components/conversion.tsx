@@ -31,6 +31,7 @@ import {
   Text,
   color,
   space,
+  useThemedStyles,
 } from '../design';
 
 export type ConversionState =
@@ -95,6 +96,7 @@ export function ConvertToPt({
   const [asking, setAsking] = useState(false);
   const sizes = options.length ? options : FALLBACK_OPTIONS;
   const [size, setSize] = useState(String(sizes[0]));
+  const styles = useThemedStyles(buildStyles);
 
   if (state === 'not_eligible') return null;
 
@@ -201,20 +203,22 @@ export function ConvertToPt({
   );
 }
 
-const styles = StyleSheet.create({
-  active: {
-    borderWidth: 1,
-    borderColor: color.status.positive,
-    borderRadius: 12,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-  },
-  paused: {
-    borderWidth: 1,
-    borderColor: color.status.caution,
-    borderRadius: 12,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-  },
-  sizes: { gap: space.sm, paddingTop: space.sm },
-});
+function buildStyles() {
+  return StyleSheet.create({
+    active: {
+      borderWidth: 1,
+      borderColor: color.status.positive,
+      borderRadius: 12,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    paused: {
+      borderWidth: 1,
+      borderColor: color.status.caution,
+      borderRadius: 12,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    sizes: { gap: space.sm, paddingTop: space.sm },
+  });
+}

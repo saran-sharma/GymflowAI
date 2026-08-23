@@ -22,6 +22,7 @@ import {
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { colors, HIT_TARGET, radius, spacing, typography } from '../theme';
+import { useThemedStyles } from '../design/useThemedStyles';
 
 /* ------------------------------------------------------------------ layout */
 
@@ -31,6 +32,7 @@ export function Screen({
   style,
   ...rest
 }: ViewProps & { edges?: Edge[] }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <SafeAreaView style={styles.screen} edges={edges}>
       <View style={[styles.screenInner, style]} {...rest}>
@@ -41,6 +43,7 @@ export function Screen({
 }
 
 export function Body({ children, contentContainerStyle, ...rest }: ScrollViewProps) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <ScrollView
       style={styles.body}
@@ -54,6 +57,7 @@ export function Body({ children, contentContainerStyle, ...rest }: ScrollViewPro
 }
 
 export function Card({ children, style, ...rest }: ViewProps) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={[styles.card, style]} {...rest}>
       {children}
@@ -62,6 +66,7 @@ export function Card({ children, style, ...rest }: ViewProps) {
 }
 
 export function Row({ children, style, ...rest }: ViewProps) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={[styles.row, style]} {...rest}>
       {children}
@@ -70,6 +75,7 @@ export function Row({ children, style, ...rest }: ViewProps) {
 }
 
 export function Divider() {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return <View style={styles.divider} />;
 }
 
@@ -92,6 +98,7 @@ export function Txt({
 }
 
 export function Eyebrow({ children, color = colors.textFaint }: { children: React.ReactNode; color?: string }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <Txt variant="caption" color={color} style={styles.eyebrow}>
       {typeof children === 'string' ? children.toUpperCase() : children}
@@ -118,6 +125,7 @@ export function Button({
   disabled,
   ...rest
 }: ButtonProps) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   const isDisabled = disabled || loading;
   const palette = {
     primary: { bg: colors.brand, fg: colors.text, border: 'transparent' },
@@ -186,6 +194,7 @@ export function Badge({
   color?: string;
   filled?: boolean;
 }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View
       style={[
@@ -211,6 +220,7 @@ export function Badge({
 }
 
 export function Dot({ color }: { color: string }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
@@ -229,6 +239,7 @@ export function StatTile({
   accent?: string;
   onPress?: () => void;
 }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   const content = (
     <>
       <Eyebrow>{label}</Eyebrow>
@@ -262,6 +273,7 @@ export function StatTile({
 
 /** A thin horizontal meter. Used for punctuality and occupancy. */
 export function Meter({ value, color = colors.brand }: { value: number; color?: string }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   const clamped = Math.max(0, Math.min(100, value || 0));
   return (
     <View style={styles.meterTrack}>
@@ -273,6 +285,7 @@ export function Meter({ value, color = colors.brand }: { value: number; color?: 
 /* ------------------------------------------------------------------ states */
 
 export function Loading({ label = 'Loading' }: { label?: string }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel={label}>
       <ActivityIndicator color={colors.brand} size="large" />
@@ -292,6 +305,7 @@ export function EmptyState({
   title: string;
   detail?: string;
 }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={styles.centered}>
       <Ionicons name={icon} size={40} color={colors.textFaint} />
@@ -319,6 +333,7 @@ export function ErrorState({
   /** Losing signal is not a server fault, and should not look like one. */
   offline?: boolean;
 }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={styles.centered}>
       <Ionicons
@@ -345,6 +360,7 @@ export function ErrorState({
 
 /** The offline bar. Shown wherever an action needs the server. */
 export function OfflineNotice({ message }: { message: string }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   return (
     <View style={styles.offline} accessibilityRole="alert">
       <Ionicons name="cloud-offline-outline" size={18} color={colors.brandSoft} />
@@ -364,6 +380,7 @@ export function Banner({
   children: React.ReactNode;
   testID?: string;
 }) {
+  const styles = useThemedStyles(buildLegacyUiStyles);
   const tint = {
     info: colors.info,
     warning: colors.late,
@@ -388,75 +405,89 @@ export function Banner({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  screenInner: { flex: 1 },
-  body: { flex: 1 },
-  bodyContent: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  eyebrow: { textTransform: 'uppercase' },
-  button: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  buttonInner: { gap: spacing.sm },
-  buttonIcon: { marginRight: 2 },
-  badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  tile: {
-    flex: 1,
-    minWidth: 92,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: 2,
-  },
-  tilePressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
-  tileValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1 },
-  meterTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.raised,
-    overflow: 'hidden',
-  },
-  meterFill: { height: '100%', borderRadius: 3 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
-  stateText: { marginTop: spacing.sm, textAlign: 'center' },
-  stateDetail: { textAlign: 'center', maxWidth: 320 },
-  stateAction: { marginTop: spacing.md, minWidth: 180 },
-  offline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: `${colors.brandDeep}22`,
-    borderColor: `${colors.brand}55`,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  offlineText: { flex: 1 },
-  banner: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-});
+/**
+ * One shared factory rather than a module-scope `StyleSheet.create` — see
+ * `src/design/cards.tsx` for the same pattern and why. This legacy
+ * component library predates `src/design` but still backs several trainer
+ * and owner screens, so it needs the same live-theme treatment.
+ */
+function buildLegacyUiStyles() {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.bg },
+    screenInner: { flex: 1 },
+    body: { flex: 1 },
+    bodyContent: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.lg,
+      gap: spacing.sm,
+    },
+    row: { flexDirection: 'row', alignItems: 'center' },
+    divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+    eyebrow: { textTransform: 'uppercase' },
+    button: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      paddingHorizontal: spacing.lg,
+    },
+    buttonInner: { gap: spacing.sm },
+    buttonIcon: { marginRight: 2 },
+    badge: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+    },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    tile: {
+      flex: 1,
+      minWidth: 92,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.md,
+      gap: 2,
+    },
+    tilePressed: { backgroundColor: colors.raised, borderColor: colors.borderStrong },
+    tileValue: { fontSize: 28, fontWeight: '800' as const, letterSpacing: -1 },
+    meterTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.raised,
+      overflow: 'hidden' as const,
+    },
+    meterFill: { height: '100%' as const, borderRadius: 3 },
+    centered: {
+      flex: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      padding: spacing.xl,
+      gap: spacing.sm,
+    },
+    stateText: { marginTop: spacing.sm, textAlign: 'center' as const },
+    stateDetail: { textAlign: 'center' as const, maxWidth: 320 },
+    stateAction: { marginTop: spacing.md, minWidth: 180 },
+    offline: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+      backgroundColor: `${colors.brandDeep}22`,
+      borderColor: `${colors.brand}55`,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+    offlineText: { flex: 1 },
+    banner: {
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+  });
+}

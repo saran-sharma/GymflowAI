@@ -31,6 +31,7 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
@@ -46,10 +47,18 @@ const KINDS: { key: CorrectionKind; label: string }[] = [
 ];
 
 const STATUS_COLOR: Record<AttendanceCorrection['status'], string> = {
-  pending: color.status.caution,
-  approved: color.status.positive,
-  rejected: color.status.critical,
-  withdrawn: color.textTertiary,
+  get pending() {
+    return color.status.caution;
+  },
+  get approved() {
+    return color.status.positive;
+  },
+  get rejected() {
+    return color.status.critical;
+  },
+  get withdrawn() {
+    return color.textTertiary;
+  },
 };
 
 /** Days worth appealing. A clean shift has nothing to correct. */
@@ -62,6 +71,7 @@ const CORRECTABLE = new Set([
 ]);
 
 export default function TrainerCorrectionsScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken, user } = useAuth();
   const history = useApi<AttendanceDay[]>((token) => api.myAttendanceHistory(token), []);
   const corrections = useApi<AttendanceCorrection[]>((token) => api.listCorrections(token), []);
@@ -292,7 +302,8 @@ export default function TrainerCorrectionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   cardHead: { justifyContent: 'space-between' },
   detail: { justifyContent: 'space-between', paddingVertical: 3 },
   footnote: { textAlign: 'center', lineHeight: 18, marginTop: space.lg },
@@ -316,3 +327,4 @@ const styles = StyleSheet.create({
   },
   kindSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
 });
+}

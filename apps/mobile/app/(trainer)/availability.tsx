@@ -38,6 +38,7 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
@@ -66,6 +67,7 @@ function shortDay(iso: string): { weekday: string; day: string } {
 }
 
 export default function TrainerAvailabilityScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const published = useApi<AvailabilitySlot[]>((token) => api.myAvailability(token, 14), []);
 
@@ -293,7 +295,8 @@ export default function TrainerAvailabilityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   hour: {
     minWidth: 68,
@@ -316,3 +319,4 @@ const styles = StyleSheet.create({
   },
   summaryDay: { minWidth: 62 },
 });
+}

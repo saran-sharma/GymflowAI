@@ -28,12 +28,14 @@ import {
   color,
   radii,
   space,
+  useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel, timeOfDay } from '../../src/utils/format';
 
 export default function OwnerClassesScreen() {
+  const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
   const classes = useApi<GroupClass[]>((token) => api.listClasses(token), []);
   const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
@@ -239,7 +241,8 @@ export default function OwnerClassesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function buildStyles() {
+  return StyleSheet.create({
   grow: { flex: 1 },
   cardHead: { justifyContent: 'space-between' },
   counts: { justifyContent: 'space-between' },
@@ -264,3 +267,4 @@ const styles = StyleSheet.create({
   chipSelected: { borderColor: color.brand, backgroundColor: `${color.brand}22` },
   timeRow: { gap: space.sm, alignItems: 'flex-start' },
 });
+}

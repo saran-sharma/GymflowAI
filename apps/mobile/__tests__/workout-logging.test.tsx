@@ -92,6 +92,7 @@ function aPastSession(sets: WorkoutSet[], partial: Partial<ExerciseSession> = {}
     session_date: '2026-08-12',
     split: 'push',
     split_label: 'Push',
+    program_day_name: null,
     sets,
     volume_kg: sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0),
     top_weight_kg: Math.max(...sets.map((s) => s.weight_kg), 0),
