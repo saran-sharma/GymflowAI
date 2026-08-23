@@ -57,6 +57,7 @@ import {
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
+import { useShowMore } from '../../src/hooks/useShowMore';
 import { useAuth } from '../../src/store/AuthContext';
 import { dayLabel } from '../../src/utils/format';
 
@@ -78,6 +79,18 @@ export default function MemberWorkoutScreen() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Computed here, before every early return below (loading, error, no plan
+  // yet), so this hook always runs in the same order every render — an
+  // empty list on a render where there is no plan or day data yet is a fine
+  // input, a hook reached only on some renders would not be.
+  const plan = journey.data;
+  const history = plan
+    ? (days.data ?? [])
+        .filter((day) => day.day_number < plan.current_day)
+        .sort((a, b) => b.day_number - a.day_number)
+    : [];
+  const recent = useShowMore(history, 3);
 
   const refreshAll = useCallback(() => {
     void journey.refresh();
@@ -145,7 +158,6 @@ export default function MemberWorkoutScreen() {
     );
   }
 
-  const plan = journey.data;
   const session = workout.data;
 
   if (!plan) {
@@ -170,9 +182,6 @@ export default function MemberWorkoutScreen() {
   const journeyInactive = plan.phase === 'complete';
   const journeyDone = plan.status === 'completed';
   const done = session?.status === 'completed';
-  const history = (days.data ?? [])
-    .filter((day) => day.day_number < plan.current_day)
-    .sort((a, b) => b.day_number - a.day_number);
 
   return (
     <Screen>
@@ -329,13 +338,13 @@ export default function MemberWorkoutScreen() {
           )
         ) : null}
 
-        <Section title="Recent sessions">
+        <Section title="Recent sessions" action={recent.toggle}>
           {history.length === 0 ? (
             <Text variant="label" tone={color.textTertiary}>
               Completed days will be listed here as you work through the programme.
             </Text>
           ) : (
-            history.slice(0, 20).map((day) => <HistoryRow key={day.day_number} day={day} />)
+            recent.visible.map((day) => <HistoryRow key={day.day_number} day={day} />)
           )}
         </Section>
       </Body>

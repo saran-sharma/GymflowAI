@@ -9,11 +9,17 @@
  * telling the member which week was which.
  */
 
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import MemberProgressScreen from '../app/(member)/progress';
-import type { BodyCompositionHistory, MemberActivity, MemberMe, StrengthTrend } from '../src/api/types';
+import type {
+  ActivityEntry,
+  BodyCompositionHistory,
+  MemberActivity,
+  MemberMe,
+  StrengthTrend,
+} from '../src/api/types';
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
@@ -279,5 +285,51 @@ describe('the body composition section', () => {
     expect(screen.getByText('Weight trend')).toBeTruthy();
     expect(screen.queryByText('Body fat trend')).toBeNull();
     expect(screen.queryByText(/% BF/)).toBeNull();
+  });
+});
+
+function anEntry(partial: Partial<ActivityEntry> = {}): ActivityEntry {
+  return {
+    kind: 'gym_visit',
+    on: '2026-08-01',
+    at: null,
+    title: 'Gym visit',
+    detail: null,
+    reference_id: 1,
+    branch_id: 1,
+    ...partial,
+  };
+}
+
+describe('recent activity, compact by default', () => {
+  it('shows only the first 3 entries with a "Show N more" toggle', async () => {
+    mockTimeline.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) => anEntry({ on: `2026-08-0${i + 1}`, reference_id: i })),
+    );
+    await open();
+
+    expect(screen.getAllByText('Gym visit')).toHaveLength(3);
+    expect(screen.getByText('Show 4 more')).toBeTruthy();
+  });
+
+  it('expands to the full list already fetched, then collapses back', async () => {
+    mockTimeline.mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => anEntry({ on: `2026-08-0${i + 1}`, reference_id: i })),
+    );
+    await open();
+
+    fireEvent.press(screen.getByText('Show 2 more'));
+    expect(screen.getAllByText('Gym visit')).toHaveLength(5);
+    expect(screen.getByText('Show less')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Show less'));
+    expect(screen.getAllByText('Gym visit')).toHaveLength(3);
+  });
+
+  it('shows no toggle when there are 3 or fewer entries', async () => {
+    mockTimeline.mockResolvedValue([anEntry(), anEntry({ reference_id: 2 })]);
+    await open();
+
+    expect(screen.queryByText(/Show \d+ more/)).toBeNull();
   });
 });

@@ -52,6 +52,7 @@ import {
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
+import { useShowMore } from '../../src/hooks/useShowMore';
 import { dayLabel } from '../../src/utils/format';
 
 /**
@@ -102,6 +103,12 @@ export default function MemberProgressScreen() {
     void bodyComposition.refresh();
   }, [journey, timeline, stats, strength, bodyComposition]);
 
+  const entries = timeline.data ?? [];
+  // Called unconditionally, before either early return below, so this
+  // component never breaks the rule that hooks run in the same order every
+  // render.
+  const recent = useShowMore(entries, 3);
+
   if (timeline.loading && stats.loading) return <Loading label="Loading your progress" />;
 
   if (timeline.error) {
@@ -118,7 +125,6 @@ export default function MemberProgressScreen() {
     );
   }
 
-  const entries = timeline.data ?? [];
   const totals = stats.data?.totals;
   const weekly = stats.data?.weekly ?? [];
   const plan = journey.data;
@@ -226,7 +232,7 @@ export default function MemberProgressScreen() {
           </Card>
         ) : null}
 
-        <Section title="Recent activity">
+        <Section title="Recent activity" action={recent.toggle}>
           {entries.length === 0 ? (
             <EmptyState
               icon="footsteps-outline"
@@ -234,7 +240,7 @@ export default function MemberProgressScreen() {
               detail="Your visits, workouts, PT sessions and classes appear here as they happen."
             />
           ) : (
-            entries.map((entry, index) => {
+            recent.visible.map((entry, index) => {
               const meta = TIMELINE[entry.kind];
               return (
                 <Row

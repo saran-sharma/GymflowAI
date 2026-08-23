@@ -12,7 +12,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import React from 'react';
 
 import MemberWorkoutScreen from '../app/(member)/workout';
-import type { Journey, WorkoutItem, WorkoutSession } from '../src/api/types';
+import type { Journey, JourneyDay, WorkoutItem, WorkoutSession } from '../src/api/types';
 
 const mockPush = jest.fn();
 
@@ -247,5 +247,41 @@ describe('a journey that is no longer active', () => {
     expect(screen.getByText('General Training is on hold')).toBeTruthy();
     expect(screen.queryByText('General Training complete')).toBeNull();
     expect(screen.queryByText('Start today’s workout')).toBeNull();
+  });
+});
+
+describe('recent sessions, compact by default', () => {
+  function aDay(dayNumber: number): JourneyDay {
+    return {
+      day_number: dayNumber,
+      planned_on: `2026-08-${String(dayNumber).padStart(2, '0')}`,
+      split: 'push',
+      status: 'completed',
+      completed_at: `2026-08-${String(dayNumber).padStart(2, '0')}T18:00:00Z`,
+    };
+  }
+
+  it('shows only the 3 most recent completed days, with a "Show N more" toggle', async () => {
+    mockJourney.mockResolvedValue(aJourney({ current_day: 8 }));
+    mockToday.mockResolvedValue(aSession([anItem()]));
+    mockDays.mockResolvedValue([1, 2, 3, 4, 5, 6, 7].map(aDay));
+    await openChart();
+
+    expect(screen.getAllByText('Done')).toHaveLength(3);
+    expect(screen.getByText('Show 4 more')).toBeTruthy();
+  });
+
+  it('expands to the full history already fetched, then collapses back', async () => {
+    mockJourney.mockResolvedValue(aJourney({ current_day: 6 }));
+    mockToday.mockResolvedValue(aSession([anItem()]));
+    mockDays.mockResolvedValue([1, 2, 3, 4, 5].map(aDay));
+    await openChart();
+
+    fireEvent.press(screen.getByText('Show 2 more'));
+    expect(screen.getAllByText('Done')).toHaveLength(5);
+    expect(screen.getByText('Show less')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Show less'));
+    expect(screen.getAllByText('Done')).toHaveLength(3);
   });
 });
