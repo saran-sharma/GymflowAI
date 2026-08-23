@@ -122,6 +122,21 @@ export default function TrainerPlanScreen() {
     setDrafts((rows) => rows.filter((row) => row.key !== key));
   }, []);
 
+  // Order is the array position itself — `save` below sends drafts in this
+  // order and the server assigns `order_index` from it, so swapping two rows
+  // here is the whole of "reorder."
+  const moveItem = useCallback((key: string, direction: -1 | 1) => {
+    setSaved(false);
+    setDrafts((rows) => {
+      const index = rows.findIndex((row) => row.key === key);
+      const target = index + direction;
+      if (index === -1 || target < 0 || target >= rows.length) return rows;
+      const next = [...rows];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }, []);
+
   const addItem = useCallback(() => {
     setSaved(false);
     setDrafts((rows) => [...rows, blankItem(split)]);
@@ -218,6 +233,34 @@ export default function TrainerPlanScreen() {
               <Row gap="sm">
                 <Eyebrow>Exercise {index + 1}</Eyebrow>
                 <Spacer />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Move up"
+                  onPress={() => moveItem(row.key, -1)}
+                  disabled={index === 0}
+                  hitSlop={8}
+                  testID={`plan-move-up-${index}`}
+                >
+                  <Ionicons
+                    name="arrow-up-circle-outline"
+                    size={20}
+                    color={index === 0 ? color.border : color.textTertiary}
+                  />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Move down"
+                  onPress={() => moveItem(row.key, 1)}
+                  disabled={index === drafts.length - 1}
+                  hitSlop={8}
+                  testID={`plan-move-down-${index}`}
+                >
+                  <Ionicons
+                    name="arrow-down-circle-outline"
+                    size={20}
+                    color={index === drafts.length - 1 ? color.border : color.textTertiary}
+                  />
+                </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Remove exercise"

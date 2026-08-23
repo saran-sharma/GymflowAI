@@ -157,6 +157,20 @@ describe('editing and saving one split', () => {
     expect(items[0].exercise).toBe('Bench press');
   });
 
+  it('reorders exercises, and saves in the new order', async () => {
+    await draw();
+    expect(screen.getByTestId('plan-move-up-0').props.accessibilityState.disabled).toBe(true);
+
+    fireEvent.press(screen.getByTestId('plan-move-down-0'));
+    fireEvent.press(screen.getByTestId('plan-save'));
+
+    await waitFor(() => expect(mockReplacePlanSplit).toHaveBeenCalledTimes(1));
+    const items = mockReplacePlanSplit.mock.calls[0][2];
+    expect(items).toHaveLength(2);
+    expect(items[0].exercise).toBe('Overhead press');
+    expect(items[1].exercise).toBe('Bench press');
+  });
+
   it('confirms the save and refreshes from the server response', async () => {
     await draw();
     fireEvent.press(screen.getByTestId('plan-save'));
