@@ -805,6 +805,80 @@ def test_a_duplicate_scan_is_logged_distinctly_from_a_new_one(
     assert len(duplicate) == 1
 
 
+def test_debug_capture_is_off_by_default(client, db, world, auth, enable_access_control, caplog):
+    import logging
+
+    branch = world["branches"]["ngk"]
+    enable_method(db, branch.id)
+    db.commit()
+    _register_device(client, auth, world)
+
+    with caplog.at_level(logging.DEBUG, logger="gymflow.hardware.fingerprint.debug"):
+        client.post(
+            f"/api/v1/hardware/fingerprint/x2008/{SECRET}/iclock/cdata?SN=CUB7250201499&table=ATTLOG",
+            content="1\t2026-08-21 08:00:00\t0\t1\n",
+            headers=ADMS_HEADERS,
+        )
+
+    assert [r for r in caplog.records if "adms_debug_capture" in r.message] == []
+
+
+def test_debug_capture_logs_safe_fields_and_redacts_the_secret(
+    client, db, world, auth, enable_access_control, monkeypatch, caplog
+):
+    import logging
+
+    monkeypatch.setattr(settings, "fingerprint_adms_debug_capture", True)
+
+    branch = world["branches"]["ngk"]
+    enable_method(db, branch.id)
+    db.commit()
+    _register_device(client, auth, world)
+
+    with caplog.at_level(logging.DEBUG, logger="gymflow.hardware.fingerprint.debug"):
+        resp = client.post(
+            f"/api/v1/hardware/fingerprint/x2008/{SECRET}/iclock/cdata?SN=CUB7250201499&table=ATTLOG",
+            content="1\t2026-08-21 08:00:00\t0\t1\n",
+            headers=ADMS_HEADERS,
+        )
+    assert resp.status_code == 200
+
+    captured = [r for r in caplog.records if "adms_debug_capture" in r.message]
+    assert len(captured) == 1
+    message = captured[0].message
+
+    # The one thing that must never appear: the shared secret itself.
+    assert SECRET not in message
+    assert "***" in message
+
+    # What it must contain, per the Phase 1 capture requirements.
+    assert "'method': 'POST'" in message
+    assert "device_serial': 'CUB7250201499'" in message
+    assert "'enrolled_id': '1'" in message
+    assert "raw_body': '1\\t2026-08-21 08:00:00\\t0\\t1\\n'" in message
+    assert "template" not in message.lower()
+
+
+def test_debug_capture_covers_the_handshake_get_too(
+    client, world, auth, enable_access_control, monkeypatch, caplog
+):
+    import logging
+
+    monkeypatch.setattr(settings, "fingerprint_adms_debug_capture", True)
+    _register_device(client, auth, world)
+
+    with caplog.at_level(logging.DEBUG, logger="gymflow.hardware.fingerprint.debug"):
+        resp = client.get(
+            f"/api/v1/hardware/fingerprint/x2008/{SECRET}/iclock/cdata?SN=CUB7250201499"
+        )
+    assert resp.status_code == 200
+
+    captured = [r for r in caplog.records if "adms_debug_capture" in r.message]
+    assert len(captured) == 1
+    assert "'method': 'GET'" in captured[0].message
+    assert SECRET not in captured[0].message
+
+
 def test_wrong_secret_is_rejected(client, world, enable_access_control):
     resp = client.post(
         "/api/v1/hardware/fingerprint/x2008/not-the-secret/iclock/cdata?SN=CUB7250201499&table=ATTLOG",

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 # endpoints already apply — a member sees only themselves, a trainer only
 # members at their own branch, and only staff (never a member) can write.
 from app.api.v1.journeys import _load_member, assert_can_read_member, assert_can_write_member
+from app.core.clock import branch_today
 from app.core.deps import get_current_user
 from app.db.models import (
     MemberWorkoutProgram,
@@ -106,7 +107,9 @@ def member_program_today(
     program = workout_template_service.active_program(db, member.id)
     if program is None:
         return None
-    day = workout_template_service.resolve_today_program_day(db, program)
+    day = workout_template_service.resolve_today_program_day(
+        program, on=branch_today(member.branch.timezone)
+    )
     return ProgramDayOut.model_validate(day) if day else None
 
 

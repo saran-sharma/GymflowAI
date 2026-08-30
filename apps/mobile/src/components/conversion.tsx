@@ -102,31 +102,35 @@ export function ConvertToPt({
 
   if (state === 'already_pt') {
     return (
-      <Row gap="sm" style={styles.active} testID="pt-active">
-        <Ionicons name="checkmark-circle" size={18} color={color.status.positive} />
-        <Text variant="label" tone={color.status.positive}>
-          PT ACTIVE
-        </Text>
-        <Spacer />
+      <Stack gap="xxs" style={styles.active} testID="pt-active">
+        <Row gap="sm">
+          <Ionicons name="checkmark-circle" size={18} color={color.status.positive} />
+          <Text variant="label" tone={color.status.positive} style={styles.bannerTitle}>
+            PT ACTIVE
+          </Text>
+        </Row>
         <Text variant="label" tone={color.textTertiary}>
           Your programming is the active plan
         </Text>
-      </Row>
+      </Stack>
     );
   }
 
   if (state === 'paused_membership_expired') {
+    // Stacked, not a single Row: on a narrow phone the title and the
+    // explanation together overflow one line and the tail was being clipped.
     return (
-      <Row gap="sm" style={styles.paused} testID="pt-paused-membership-expired">
-        <Ionicons name="pause-circle" size={18} color={color.status.caution} />
-        <Text variant="label" tone={color.status.caution}>
-          PT PAUSED — MEMBERSHIP EXPIRED
-        </Text>
-        <Spacer />
+      <Stack gap="xxs" style={styles.paused} testID="pt-paused-membership-expired">
+        <Row gap="sm">
+          <Ionicons name="pause-circle" size={18} color={color.status.caution} />
+          <Text variant="label" tone={color.status.caution} style={styles.bannerTitle}>
+            PT PAUSED — MEMBERSHIP EXPIRED
+          </Text>
+        </Row>
         <Text variant="label" tone={color.textTertiary}>
           Sessions and package are kept; renew to resume
         </Text>
-      </Row>
+      </Stack>
     );
   }
 
@@ -219,6 +223,9 @@ function buildStyles() {
       paddingHorizontal: space.md,
       paddingVertical: space.sm,
     },
+    // Let the title take the row's remaining width and wrap rather than
+    // push its own tail (or a sibling) off the right edge.
+    bannerTitle: { flexShrink: 1 },
     sizes: { gap: space.sm, paddingTop: space.sm },
   });
 }

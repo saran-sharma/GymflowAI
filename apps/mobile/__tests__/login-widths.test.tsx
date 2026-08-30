@@ -4,14 +4,17 @@ import { Dimensions } from 'react-native';
 import LoginScreen from '../app/(auth)/login';
 
 jest.mock('../src/store/AuthContext', () => ({
-  useAuth: () => ({ signIn: jest.fn() }),
+  useAuth: () => ({ signIn: jest.fn(), signOut: jest.fn() }),
   homeRouteForRole: () => '/(member)',
 }));
 jest.mock('../src/store/NetworkContext', () => ({
   useNetwork: () => ({ isOnline: true }),
   OFFLINE_MESSAGE: 'offline',
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ replace: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: jest.fn() }),
+  useLocalSearchParams: () => ({}),
+}));
 
 // Every phone width the brief names, plus a short device.
 for (const [w, h, label] of [

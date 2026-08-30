@@ -2,7 +2,7 @@
  * GymFlow's two-step sign-in. The server deliberately accepts the identifier
  * only with a password, so the first step never claims an account was found.
  */
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -33,6 +33,7 @@ import {
   space,
   useThemedStyles,
 } from '../../src/design';
+import type { Role } from '../../src/api/types';
 import { homeRouteForRole, useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
 
@@ -41,6 +42,27 @@ const RESET_UNAVAILABLE =
   'Password resets are arranged by your SLAM branch until self-service reset is available.';
 
 type Step = 'identify' | 'password' | 'reset' | 'success';
+type RoleFamily = 'member' | 'trainer' | 'owner';
+
+/** How the role-select screen labelled each option. */
+const CHOSEN_LABEL: Record<RoleFamily, string> = {
+  member: 'Member',
+  trainer: 'Trainer',
+  owner: 'Gym Owner',
+};
+/** How to name the account the person actually signed in with. */
+const ACTUAL_LABEL: Record<RoleFamily, string> = {
+  member: 'a member',
+  trainer: 'a trainer',
+  owner: 'an owner or manager',
+};
+
+/** The three role-select "families" — owner covers owner/manager/admin. */
+function roleFamily(role: Role): RoleFamily {
+  if (role === 'trainer') return 'trainer';
+  if (role === 'member') return 'member';
+  return 'owner';
+}
 
 function messageFor(error: ApiError | null, online: boolean): string | null {
   if (!error) return null;
@@ -72,10 +94,20 @@ function greeting(name: string): string {
 
 export default function LoginScreen() {
   const styles = useThemedStyles(buildStyles);
-  const { signIn } = useAuth();
+  const { signIn, signOut } = useAuth();
   const { isOnline } = useNetwork();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
+  // Context only — set when the user came via the "How are you using
+  // GymFlow?" screen. Never sent to the server; used only to refuse an
+  // obvious "picked Owner, signed in as a Member" mismatch after the backend
+  // has already authenticated and returned the authoritative role.
+  const params = useLocalSearchParams<{ expected?: string }>();
+  const expectedFamily: RoleFamily | null =
+    params.expected === 'member' || params.expected === 'trainer' || params.expected === 'owner'
+      ? params.expected
+      : null;
+  const [roleMismatch, setRoleMismatch] = useState<string | null>(null);
 
   const [step, setStep] = useState<Step>('identify');
   const [identifier, setIdentifier] = useState('');
@@ -103,6 +135,7 @@ export default function LoginScreen() {
   function changeIdentifier(value: string) {
     setIdentifier(value);
     setError(null);
+    setRoleMismatch(null);
   }
 
   function continueToPassword() {
@@ -118,10 +151,29 @@ export default function LoginScreen() {
     if (!identifierValid || !passwordValid || busy) return;
     setBusy(true);
     setError(null);
+    setRoleMismatch(null);
     try {
       // This existing endpoint authenticates both email and mobile identifiers,
-      // then returns the authoritative role used for navigation.
+      // then returns the authoritative role used for navigation. `expected`
+      // is NOT part of this request — the server decides the role, full stop.
       const user = await signIn(identifier, password);
+
+      // Additive guard, not an authorization decision: the backend already
+      // said what this account is. If the person told us on the previous
+      // screen that they were an owner and this is a member account, refuse
+      // to continue and say so plainly rather than silently dropping them
+      // into the member app.
+      const actual = roleFamily(user.role);
+      if (expectedFamily && expectedFamily !== actual) {
+        await signOut();
+        setRoleMismatch(
+          `You chose "${CHOSEN_LABEL[expectedFamily]}", but you signed in with ${ACTUAL_LABEL[actual]} ` +
+            `account. Choose the right option, or contact your SLAM branch if this looks wrong.`,
+        );
+        setStep('password');
+        return;
+      }
+
       setSuccessName(user.full_name.split(' ')[0] || 'there');
       setStep('success');
       setTimeout(() => router.replace(homeRouteForRole(user.role) as never), 500);
@@ -140,6 +192,7 @@ export default function LoginScreen() {
     setPassword('');
     setPasswordTouched(false);
     setError(null);
+    setRoleMismatch(null);
     setStep('identify');
   }
 
@@ -188,6 +241,11 @@ export default function LoginScreen() {
                   {isReset ? 'Reset your password' : 'Welcome back.'}
                 </Text>
                 {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
+                {roleMismatch ? (
+                  <Banner tone="critical" icon="alert-circle-outline" testID="login-role-mismatch">
+                    {roleMismatch}
+                  </Banner>
+                ) : null}
                 {errorText ? (
                   <Banner tone="critical" icon="alert-circle-outline" testID="login-error">
                     {errorText}
@@ -271,6 +329,17 @@ export default function LoginScreen() {
                       onPress={() => void submit()}
                       style={styles.primary}
                     />
+                    {roleMismatch ? (
+                      <Pressable
+                        onPress={() => router.replace('/(auth)/role-select')}
+                        accessibilityRole="button"
+                        testID="login-choose-role"
+                      >
+                        <Text variant="label" tone={GOLD} style={styles.centered}>
+                          Choose a different role
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </Stack>
                 ) : null}
 

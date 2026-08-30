@@ -11,8 +11,10 @@ the system's assumption; the 45-day journey's own PPL rotation
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -21,7 +23,6 @@ from app.db.models import (
     MemberWorkoutProgramDay,
     MemberWorkoutProgramExercise,
     WorkoutCategory,
-    WorkoutSession,
     WorkoutTemplate,
     WorkoutTemplateDay,
     WorkoutTemplateExercise,
@@ -122,28 +123,45 @@ def active_program(db: Session, member_id: int) -> MemberWorkoutProgram | None:
     )
 
 
-def resolve_today_program_day(
-    db: Session, program: MemberWorkoutProgram
-) -> MemberWorkoutProgramDay | None:
-    """Which of this programme's days "today" is, on a simple rotation.
+def program_anchor_date(program: MemberWorkoutProgram) -> date:
+    """Day 0 of the rotation — the date the programme was set up.
 
-    A custom programme has no calendar the way the 45-day journey does, so
-    there is no date to resolve a day from. Instead this counts every
-    `WorkoutSession` ever opened against one of this programme's days and
-    takes that count modulo the day count — Day 1, Day 2, Day 3, Day 1, ...
-    repeating in the order a trainer arranged them. Counting rather than
-    storing a cursor means reordering/adding/removing days just changes what
-    the next count lands on, with nothing to keep in sync by hand.
+    ``created_at`` is a UTC instant; its date is a stable reference point, and
+    since the rotation only needs to advance one step per calendar day the
+    exact anchor does not matter, only that every caller uses the same one.
+    """
+    return program.created_at.date()
+
+
+def resolve_program_day_for_date(
+    program: MemberWorkoutProgram, on: date
+) -> MemberWorkoutProgramDay | None:
+    """Which of this programme's days falls on ``on``, on a calendar rotation.
+
+    Day 1, Day 2, Day 3, Day 1, … stepping once per calendar day from
+    ``program_anchor_date``, in the order the trainer arranged them. This is
+    a pure function of the date, so "what does the Workout screen preview
+    say" and "what does Start actually open" can never disagree, and asking
+    twice on the same day gives the same day — the previous rule counted
+    ``WorkoutSession`` rows, which drifted every time a workout was started
+    and never lined up with the calendar the week strip shows.
     """
     days = sorted(program.days, key=lambda d: d.order_index)
     if not days:
         return None
-    day_ids = [d.id for d in days]
-    count = (
-        db.scalar(select(func.count()).where(WorkoutSession.member_program_day_id.in_(day_ids)))
-        or 0
-    )
-    return days[count % len(days)]
+    offset = (on - program_anchor_date(program)).days
+    return days[offset % len(days)]
+
+
+def resolve_today_program_day(
+    program: MemberWorkoutProgram, *, on: date
+) -> MemberWorkoutProgramDay | None:
+    """``resolve_program_day_for_date`` for the branch's current date.
+
+    ``on`` is always the caller's ``branch_today(...)`` — never a device
+    clock — so "today" here is the same date the server uses everywhere else.
+    """
+    return resolve_program_day_for_date(program, on)
 
 
 def apply_template(

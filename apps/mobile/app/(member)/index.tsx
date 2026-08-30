@@ -10,7 +10,7 @@
  * server-side — which is how Day 45 completes without anyone pressing anything.
  */
 
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -21,6 +21,7 @@ import type {
   Feeling,
   JourneyDay,
   MemberHome,
+  MemberIntake,
   Payment,
   WorkoutItem,
   WorkoutSession,
@@ -111,6 +112,11 @@ export default function MemberHomeScreen() {
   // that exists today. It is not a repeated measurement, so there is no
   // trend to show against it; see `renderWeight` for the honest framing.
   const weight = useApi<Assessment | null>((token) => api.myAssessment(token), []);
+  // First-time fitness onboarding. `null` means the front desk created the
+  // account without an intake and the member has never filled one in — send
+  // them to the questionnaire before Home. Any saved row (even one field)
+  // counts as done. A failed fetch does not trap the member on a redirect.
+  const intake = useApi<MemberIntake | null>((token) => api.myIntake(token), []);
 
   const [checkinBusy, setCheckinBusy] = useState(false);
   const [checkinError, setCheckinError] = useState<string | null>(null);
@@ -157,7 +163,11 @@ export default function MemberHomeScreen() {
     }, []),
   );
 
-  if (home.loading) return <SkeletonScreen cards={3} />;
+  if (home.loading || intake.loading) return <SkeletonScreen cards={3} />;
+
+  if (!intake.error && intake.data === null) {
+    return <Redirect href="/(member)/onboarding" />;
+  }
 
   if (home.error || !home.data) {
     const offline = home.error?.code === OFFLINE_CODE;

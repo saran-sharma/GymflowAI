@@ -17,8 +17,12 @@ import { AuthProvider } from '../src/store/AuthContext';
 import { NetworkProvider } from '../src/store/NetworkContext';
 
 const mockReplace = jest.fn();
+// Mutable so a test can simulate arriving from the role-select screen with a
+// chosen role, e.g. `mockParams.expected = 'owner'`.
+const mockParams: { expected?: string } = {};
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), back: jest.fn() }),
+  useLocalSearchParams: () => mockParams,
 }));
 
 const mockLogin = jest.fn();
@@ -65,6 +69,7 @@ async function fillCredentials(identifier = 'owner@slam.demo', password = 'SlamD
 beforeEach(() => {
   mockReplace.mockReset();
   mockLogin.mockReset();
+  delete mockParams.expected;
 });
 
 it('shows the SLAM logo, the product name and the positioning line', async () => {
@@ -244,4 +249,72 @@ it('names the branch as the way to create an account, without a fake button', as
   // Accounts are created by the branch, not from the app — there is nothing
   // here for a member to press, unlike the old "Create account" affordance.
   expect(screen.queryByTestId('contact-branch')).toBeNull();
+});
+
+/**
+ * Role-select is context, not authorization.
+ *
+ * The role picked on "How are you using GymFlow?" arrives here as `expected`.
+ * It is NEVER sent to the server (the auth call is identifier + password
+ * only), and it NEVER changes what an account can do — the backend's
+ * `user.role` is authoritative and drives routing. All `expected` does is
+ * refuse to drop someone into the wrong app after they clearly picked wrong.
+ */
+describe('the chosen role is checked against the server, never trusted', () => {
+  async function attempt(expected: string | undefined, actualRole: string) {
+    if (expected) mockParams.expected = expected;
+    mockLogin.mockResolvedValue(signedInAs(actualRole));
+    await renderLogin();
+    await fillCredentials();
+    fireEvent.press(screen.getByTestId('login-submit'));
+  }
+
+  it.each([
+    ['owner', 'owner', '/(owner)'],
+    ['owner', 'branch_manager', '/(owner)'],
+    ['owner', 'super_admin', '/(owner)'],
+    ['trainer', 'trainer', '/(trainer)'],
+    ['member', 'member', '/(member)'],
+  ])('chose %s, signed in as %s -> lands in %s', async (expected, actual, route) => {
+    await attempt(expected, actual);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith(route), { timeout: 2000 });
+    expect(screen.queryByTestId('login-role-mismatch')).toBeNull();
+  });
+
+  it.each([
+    ['member', 'owner'],
+    ['trainer', 'owner'],
+    ['owner', 'trainer'],
+    ['owner', 'member'],
+    ['member', 'trainer'],
+  ])('chose %s, signed in as %s -> refused, no navigation', async (expected, actual) => {
+    await attempt(expected, actual);
+    await waitFor(() => expect(screen.getByTestId('login-role-mismatch')).toBeTruthy());
+    expect(mockReplace).not.toHaveBeenCalled();
+    // The person can pick again without retyping their identifier.
+    expect(screen.getByTestId('login-choose-role')).toBeTruthy();
+  });
+
+  it('never sends the chosen role to the server', async () => {
+    await attempt('owner', 'member');
+    await waitFor(() => expect(mockLogin).toHaveBeenCalled());
+    // Exactly identifier + password + client name. No fourth "role" argument,
+    // and none of the three carries the chosen role.
+    for (const call of mockLogin.mock.calls) {
+      expect(call).toEqual(['owner@slam.demo', 'SlamDemo2026!', 'GymFlow Mobile']);
+    }
+  });
+
+  it('a member who picked "Owner" still cannot reach the owner app', async () => {
+    await attempt('owner', 'member');
+    await waitFor(() => expect(screen.getByTestId('login-role-mismatch')).toBeTruthy());
+    expect(mockReplace).not.toHaveBeenCalledWith('/(owner)');
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('with no role picked, login works and routes on the server role alone', async () => {
+    await attempt(undefined, 'owner');
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(owner)'), { timeout: 2000 });
+    expect(screen.queryByTestId('login-role-mismatch')).toBeNull();
+  });
 });

@@ -25,6 +25,8 @@ lets two different people's data end up on the wrong record.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -181,6 +183,51 @@ def parse_workbook(path: str | Path, sheet_name: str | None = None) -> list[Pars
         return parsed
     finally:
         workbook.close()
+
+
+def parse_csv_export(raw: bytes) -> list[ParsedRow]:
+    """Read a LookinBody120 auto-export CSV (Setup Menu → "Export Data as
+    CSV/Image Files") — the automatic per-scan path, as opposed to the
+    manual bulk Excel export ``parse_workbook`` reads.
+
+    Deliberately an adapter, not a second importer: this function's only job
+    is turning CSV text into the exact same ``ParsedRow`` shape
+    ``parse_workbook`` produces, reusing ``_resolve_headers`` unchanged so
+    every downstream stage (``normalize_row``, ``classify_rows``,
+    ``import_matched``) is shared code, not a parallel copy that could drift.
+
+    UNVERIFIED against a real per-scan export: the vendor documentation
+    found for this feature confirms the auto-export exists and where it
+    writes files, but not this CSV's exact header text or encoding. This
+    assumes the same canonical column names as the bulk export
+    (``REQUIRED_COLUMNS``) and a UTF-8-with-optional-BOM encoding (the
+    common case for Windows-software CSV output) — both need confirming
+    against a real file from the gym PC before this path is trusted with
+    real data. Raises ``HeaderValidationError`` exactly like
+    ``parse_workbook`` if the header doesn't match, rather than guessing.
+    """
+    text = raw.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text))
+    rows_iter = iter(reader)
+    try:
+        header = next(rows_iter)
+    except StopIteration as exc:
+        raise HeaderValidationError("The InBody CSV export has no header row.") from exc
+
+    columns = _resolve_headers(tuple(header))
+
+    parsed: list[ParsedRow] = []
+    for row_number, raw_values in enumerate(rows_iter, start=2):
+        if not raw_values or all(not str(v).strip() for v in raw_values):
+            continue  # blank row
+        # Excel's cell types (datetime objects, floats) don't exist in CSV
+        # text — every value here is a plain string. `normalize_row`'s own
+        # parsers (`_parse_number`, `_parse_datetime`, ...) already accept
+        # strings as their fallback path, so no separate CSV-typed variant
+        # of `normalize_row` is needed.
+        values: tuple[Any, ...] = tuple(raw_values)
+        parsed.append(ParsedRow(row_number=row_number, columns=columns, values=values))
+    return parsed
 
 
 # --------------------------------------------------------------- normalizing
@@ -696,6 +743,7 @@ __all__ = [
     "format_report",
     "import_matched",
     "normalize_row",
+    "parse_csv_export",
     "parse_workbook",
     "summarize",
 ]

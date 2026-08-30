@@ -333,27 +333,63 @@ export function TrendStat({
 
 /* ---------------------------------------------------------------- chart */
 
-/** A simple weekly bar chart. No library, no axes it cannot justify. */
+/**
+ * A simple bar chart. No library, no axes it cannot justify.
+ *
+ * `baseline` decides what the bottom of the chart means:
+ *
+ * - `'zero'` (default) — bars are drawn as a fraction of the largest value,
+ *   from a true zero. Right for counts that start at nothing (workouts per
+ *   week on the consistency chart).
+ * - `'auto'` — bars are drawn across the data's own min→max range, with the
+ *   shortest real bar kept visible. Right for a *trend in a measurement*
+ *   whose values are large but move by a small fraction of their magnitude
+ *   (a 72.5 → 80 kg lift progression, a weight/body-fat trend) — a
+ *   zero-baseline would render those as near-identical full-height bars.
+ *
+ * Either way the numbers are the real ones: `auto` only changes how the
+ * spread is mapped to pixels, never the values or their order.
+ */
+const AUTO_FLOOR_PCT = 14;
+
 export function BarChart({
   data,
   tint = color.brand,
   height = 90,
+  baseline = 'zero',
 }: {
   data: { label: string; value: number }[];
   tint?: string;
   height?: number;
+  baseline?: 'zero' | 'auto';
 }) {
+  const positives = data.map((d) => d.value).filter((v) => v > 0);
   const max = Math.max(1, ...data.map((d) => d.value));
+  const min = baseline === 'auto' && positives.length > 0 ? Math.min(...positives) : 0;
+  const span = max - min;
+
+  const barPct = (value: number): number => {
+    if (!value) return 0;
+    if (baseline === 'auto') {
+      // Every real value the same -> a flat row of full bars is honest.
+      if (span <= 0) return 100;
+      return AUTO_FLOOR_PCT + ((value - min) / span) * (100 - AUTO_FLOOR_PCT);
+    }
+    return Math.max(6, (value / max) * 100);
+  };
+
   return (
     <View style={[styles.chart, { height }]}>
       {data.map((point, index) => (
         <View key={`${point.label}-${index}`} style={styles.chartColumn}>
           <View style={styles.chartTrack}>
             <View
+              testID="bar-chart-bar"
+              accessibilityLabel={`${point.label}: ${point.value}`}
               style={[
                 styles.chartBar,
                 {
-                  height: `${Math.max(point.value ? 6 : 0, (point.value / max) * 100)}%`,
+                  height: `${barPct(point.value)}%`,
                   backgroundColor: point.value ? tint : color.surfaceOverlay,
                 },
               ]}

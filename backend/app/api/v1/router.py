@@ -11,6 +11,7 @@ from app.api.v1 import (
     branches,
     classes,
     hardware,
+    inbody,
     incentives,
     journeys,
     marketing,
@@ -25,6 +26,7 @@ from app.api.v1 import (
     trainers,
     users,
     workout_templates,
+    yoactiv,
 )
 
 api_router = APIRouter()
@@ -48,6 +50,8 @@ api_router.include_router(performance.router)
 api_router.include_router(alerts.router)
 api_router.include_router(settings.router)
 api_router.include_router(hardware.router)
+api_router.include_router(inbody.router)
 api_router.include_router(workout_templates.router)
+api_router.include_router(yoactiv.router)
 
 __all__ = ["api_router"]

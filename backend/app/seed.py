@@ -231,7 +231,16 @@ MEMBERS = [
     ("SLAM-ALD", "Lakshmi Iyer", "Annual + PT", 30, 19, "google", "AUG-TRANSFORM", None),
     ("SLAM-ALD", "Rohit Desai", "Quarterly", 0, 43, "referral", None, "Nikhil Verma"),
     ("SLAM-ALD", "Ayesha Khan", "Monthly", 0, 11, "website", None, None),
+    # Discontinued — demonstrates lifecycle handling. Registered long ago,
+    # membership lapsed, and the account was deactivated rather than deleted;
+    # marked `is_active=False` in a dedicated pass below, after creation, so
+    # every state (history, PRs, attendance) that already exists for a member
+    # this old is preserved exactly as it would be for a real discontinued
+    # member.
+    ("SLAM-NGK", "Farah Sheikh", "Monthly", 0, None, "walk_in", None, None),
 ]
+
+DISCONTINUED_MEMBER_NAME = "Farah Sheikh"
 
 # Campaigns SLAM ran. Nothing here carries a price — pricing has not been
 # supplied, and inventing one would put a fake number in front of a member.
@@ -1291,6 +1300,24 @@ def seed(db: Session, *, reset: bool = False) -> None:
             fresh_members.append((member, branch, journey_day, pt_sessions))
     db.flush()
 
+    # Discontinued demo persona: deactivated, not deleted — everything
+    # created for her above (membership, visits) stays exactly as it is, the
+    # same as a real discontinued member's history would.
+    discontinued = members_by_name.get(DISCONTINUED_MEMBER_NAME)
+    if discontinued is not None and discontinued.is_active:
+        discontinued.is_active = False
+        old_membership = db.scalar(
+            select(Membership)
+            .where(Membership.member_id == discontinued.id)
+            .order_by(Membership.ends_on.desc())
+        )
+        if old_membership is not None:
+            old_membership.status = MembershipStatus.EXPIRED
+            old_membership.ends_on = branch_today(discontinued.branch.timezone) - timedelta(
+                days=180
+            )
+        db.flush()
+
     # Referrals, second pass: the referring member has to exist first.
     for _code, name, _plan, _pt, _day, source_key, _campaign, referred_by in MEMBERS:
         if source_key != "referral" or not referred_by:
@@ -1404,6 +1431,7 @@ def main() -> None:
     print(f"  trainer login       : vikas.menon@slam.demo / {DEMO_PASSWORD}")
     print(f"  member login        : aditya.rao@member.slam.demo / {DEMO_PASSWORD}")
     print(f"  trainer check-in PIN: {DEMO_PIN}")
+    print("  discontinued member : farah.sheikh@member.slam.demo (deactivated, for lifecycle demo)")
 
 
 if __name__ == "__main__":

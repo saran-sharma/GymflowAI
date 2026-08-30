@@ -18,10 +18,13 @@ run at all.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Member
+from app.api.v1.auth import normalise_phone
+from app.db.models import Member, User
 from app.integrations.base import ExternalMember
 
 
@@ -56,4 +59,85 @@ def link_member(db: Session, member: Member, external_member: ExternalMember) ->
     return member
 
 
-__all__ = ["find_member_by_external_ref", "link_member"]
+@dataclass(frozen=True)
+class MemberMatch:
+    """The outcome of resolving one Yoactiv record to a GymFlow ``Member``.
+
+    ``method`` is how the link was made, in descending order of trust:
+
+    * ``external_ref`` — this Yoactiv ``Member_ID`` is already stamped on a
+      GymFlow member. Definitive.
+    * ``email`` — exact, case-normalised match on ``User.email`` (unique in
+      GymFlow). Safe to auto-link.
+    * ``phone_unique`` — exactly one active GymFlow member's phone normalises
+      to the same 10 digits. Safe *because it is unique*; two members sharing
+      a phone is ``ambiguous``, not this.
+    * ``ambiguous`` — more than one active member matched by phone. Never
+      linked automatically; a human decides.
+    * ``none`` — nothing matched.
+
+    A name is **never** a match key. It is carried in ``detail`` for a human
+    reading the dead-letter queue, nothing more.
+    """
+
+    member: Member | None
+    method: str
+    detail: str
+
+
+def resolve_member(
+    db: Session,
+    *,
+    yoactiv_member_id: int | str,
+    email: str | None = None,
+    phone: str | None = None,
+    name: str | None = None,
+) -> MemberMatch:
+    external_id = str(yoactiv_member_id)
+
+    linked = db.scalar(select(Member).where(Member.external_ref == external_id))
+    if linked is not None:
+        return MemberMatch(linked, "external_ref", f"already linked to {linked.member_code}")
+
+    if email:
+        by_email = db.scalar(
+            select(Member)
+            .join(User, Member.user_id == User.id)
+            .where(User.email == email.strip().lower(), User.is_active.is_(True))
+        )
+        if by_email is not None:
+            return MemberMatch(by_email, "email", f"exact email match ({by_email.member_code})")
+
+    if phone:
+        wanted = normalise_phone(phone)
+        if len(wanted) == 10:
+            candidates = [
+                member
+                for member, user in db.execute(
+                    select(Member, User)
+                    .join(User, Member.user_id == User.id)
+                    .where(
+                        Member.is_active.is_(True),
+                        User.is_active.is_(True),
+                        User.phone.isnot(None),
+                    )
+                ).all()
+                if normalise_phone(user.phone or "") == wanted
+            ]
+            if len(candidates) == 1:
+                return MemberMatch(
+                    candidates[0],
+                    "phone_unique",
+                    f"unique active phone match ({candidates[0].member_code})",
+                )
+            if len(candidates) > 1:
+                codes = ", ".join(sorted(m.member_code for m in candidates))
+                return MemberMatch(
+                    None, "ambiguous", f"{len(candidates)} active members share this phone: {codes}"
+                )
+
+    hint = f" (Yoactiv name {name!r})" if name else ""
+    return MemberMatch(None, "none", f"no GymFlow member linked, by email or by unique phone{hint}")
+
+
+__all__ = ["MemberMatch", "find_member_by_external_ref", "link_member", "resolve_member"]

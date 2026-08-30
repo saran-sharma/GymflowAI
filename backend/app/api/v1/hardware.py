@@ -13,12 +13,24 @@ Two very different trust models live in this one router:
   `docs/INTEGRATIONS.md` for exactly how that is meant to be set up, and the
   module docstring in `app/integrations/access_control/x2008.py` for what is
   and is not verified about the wire format it parses.
+
+A third, deliberately narrower route lives here too: ``dev_ip_mode_router``,
+mounted at the bare path (no ``/api/v1/hardware/fingerprint`` prefix) because
+that is the only shape the X2008's IP-address ADMS mode can request — that
+mode carries no path at all, so the shared-secret scheme above is physically
+unreachable from it. It is a fallback for the one real-device test where
+Domain Name mode produced no request at all after a reboot, gated behind
+``FINGERPRINT_ADMS_DEV_IP_MODE`` (off by default, refused in production/
+staging) and authenticated by source IP + device serial instead of a secret
+— see the field's docstring in ``core/config.py`` for exactly what that
+does and does not guarantee.
 """
 
 from __future__ import annotations
 
 import hmac
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
@@ -31,7 +43,12 @@ from app.core.deps import assert_branch_access, require_admin, require_managemen
 from app.core.rate_limit import hardware_push_rate_limit
 from app.db.models import Branch, FingerprintDevice, FingerprintEnrollment, Member, User
 from app.db.session import get_db
-from app.integrations.access_control.x2008 import parse_adms_attlog, resolve_member, to_access_event
+from app.integrations.access_control.x2008 import (
+    ParseResult,
+    parse_adms_attlog,
+    resolve_member,
+    to_access_event,
+)
 from app.schemas.hardware import (
     FingerprintDeviceCreate,
     FingerprintDeviceOut,
@@ -42,6 +59,12 @@ from app.services import attendance_service
 
 router = APIRouter(prefix="/hardware/fingerprint", tags=["hardware"])
 logger = logging.getLogger("gymflow.hardware.fingerprint")
+debug_logger = logging.getLogger("gymflow.hardware.fingerprint.debug")
+
+#: Header names (substring match, case-insensitive) never included in a debug
+#: capture, even though today's device push carries none of them — a future
+#: firmware or a reverse proxy in front of it might add one.
+_SENSITIVE_HEADER_SUBSTRINGS = ("authorization", "cookie", "secret", "token", "key")
 
 
 # ------------------------------------------------------------------ devices
@@ -208,6 +231,66 @@ def _authenticate_push(secret_token: str, request: Request, db: Session) -> Fing
     return device
 
 
+def _debug_capture(
+    *,
+    device: FingerprintDevice,
+    request: Request,
+    raw_body: str | None,
+    parsed: ParseResult | None,
+) -> None:
+    """Opt-in, non-production capture for the real X2008 test session.
+
+    Gated by ``settings.fingerprint_adms_debug_capture`` (default off, and
+    refused at boot in production/staging by ``assert_production_safe``).
+    Only runs *after* ``_authenticate_push`` has succeeded, so this never logs
+    an unauthenticated attempt's path/secret. Captures exactly what the Phase
+    1 test plan asked for and nothing else: method, path with the secret path
+    segment redacted, an allow-listed header subset, content-type, the raw
+    ATTLOG body, the parsed record fields, and the resolved device identity.
+    Never logs the shared secret, an Authorization/Cookie header, or anything
+    resembling a fingerprint template — the device never sends one.
+    """
+    if not settings.fingerprint_adms_debug_capture:
+        return
+
+    secret_segment = request.path_params.get("secret_token", "")
+    safe_path = (
+        request.url.path.replace(f"/{secret_segment}", "/***", 1)
+        if secret_segment
+        else request.url.path
+    )
+    headers = {
+        name: value
+        for name, value in request.headers.items()
+        if not any(bad in name.lower() for bad in _SENSITIVE_HEADER_SUBSTRINGS)
+    }
+    payload: dict[str, Any] = {
+        "method": request.method,
+        "path": safe_path,
+        "query": dict(request.query_params),
+        "headers": headers,
+        "content_type": request.headers.get("content-type"),
+        "device_serial": device.serial,
+        "device_id": device.id,
+        "branch_id": device.branch_id,
+    }
+    if raw_body is not None:
+        payload["raw_body"] = raw_body
+    if parsed is not None:
+        payload["malformed_line_count"] = parsed.malformed_line_count
+        payload["parsed_records"] = [
+            {
+                "enrolled_id": r.enrolled_id,
+                "device_time_raw": r.device_time_raw,
+                "device_time_parsed": r.device_time.isoformat() if r.device_time else None,
+                "status_raw": r.status_raw,
+                "verify_type_raw": r.verify_type_raw,
+            }
+            for r in parsed.records
+        ]
+    debug_logger.debug("adms_debug_capture %s", payload)
+
+
 @router.get("/x2008/{secret_token}/iclock/cdata")
 def adms_handshake(
     secret_token: str,
@@ -227,7 +310,8 @@ def adms_handshake(
     traffic and this handler extended — it is not safe to guess the exact
     handshake fields.
     """
-    _authenticate_push(secret_token, request, db)
+    device = _authenticate_push(secret_token, request, db)
+    _debug_capture(device=device, request=request, raw_body=None, parsed=None)
     return PlainTextResponse("OK")
 
 
@@ -254,7 +338,18 @@ async def adms_push(
     that will never fully succeed.
     """
     device = _authenticate_push(secret_token, request, db)
+    return await _handle_adms_push(device=device, request=request, table=table, db=db)
 
+
+async def _handle_adms_push(
+    *, device: FingerprintDevice, request: Request, table: str | None, db: Session
+) -> PlainTextResponse:
+    """Everything after authentication — shared verbatim by the secret-path
+    route above and the dev IP-mode fallback route below, so the two entry
+    points can never drift apart on branch scoping, idempotency, membership
+    gating or logging. Only how ``device`` was authenticated differs between
+    callers; what happens with it here does not.
+    """
     if table and table.upper() != "ATTLOG":
         logger.info("adms_push_ignored device=%s table=%s", device.serial, table)
         return PlainTextResponse("OK")
@@ -268,8 +363,9 @@ async def adms_push(
 
     raw = (await request.body()).decode("utf-8", errors="replace")
     result = parse_adms_attlog(raw)
+    _debug_capture(device=device, request=request, raw_body=raw, parsed=result)
 
-    # Never logged: the request body itself, or any field beyond counts and
+    # Never logged at the INFO level below: the request body itself, or any field beyond counts and
     # the small identifiers already listed above — the device never sends a
     # fingerprint template in the first place, but this is also a hard rule
     # of what this handler is allowed to write to logs.
@@ -338,4 +434,73 @@ async def adms_push(
     return PlainTextResponse("OK")
 
 
-__all__ = ["router"]
+# ------------------------------------------ dev-only IP-mode fallback route
+#
+# See the module docstring and `settings.fingerprint_adms_dev_ip_mode`'s own
+# docstring in `core/config.py` for why this exists and what it does and does
+# not guarantee. Mounted separately, at the bare path, in `app/main.py` —
+# `router` above keeps its `/hardware/fingerprint` prefix untouched.
+
+dev_ip_mode_router = APIRouter()
+
+
+def _authenticate_dev_ip_mode(request: Request, db: Session) -> FingerprintDevice:
+    """Source IP + device serial, both compared against explicit allowlist
+    config values — not a weaker version of `_authenticate_push`, a
+    different, narrower mechanism for the one case that route cannot reach
+    at all: the X2008's IP-address ADMS mode, which carries no path and so
+    has nowhere to put the shared secret.
+
+    All three checks below are required, matching the real-device test's own
+    requirement: source IP, device serial, and device-registry membership
+    (active, registered) — never any one alone.
+    """
+    if not settings.access_control_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if not settings.fingerprint_adms_dev_ip_mode:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    allowed_ip = settings.fingerprint_adms_dev_ip_mode_allowed_ip
+    client_ip = request.client.host if request.client else None
+    if not allowed_ip or client_ip != allowed_ip:
+        logger.warning("adms_dev_ip_mode_auth_failed reason=source_ip_not_allowlisted")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    allowed_serial = settings.fingerprint_adms_dev_ip_mode_allowed_serial
+    serial = request.query_params.get("SN") or request.query_params.get("sn")
+    if not allowed_serial or serial != allowed_serial:
+        logger.warning("adms_dev_ip_mode_auth_failed reason=serial_not_allowlisted")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    device = db.scalar(select(FingerprintDevice).where(FingerprintDevice.serial == serial))
+    if device is None or not device.is_active:
+        logger.warning(
+            "adms_dev_ip_mode_auth_failed reason=device_not_registered serial=%s", serial
+        )
+        raise HTTPException(status_code=404, detail="device not registered")
+    return device
+
+
+@dev_ip_mode_router.get("/iclock/cdata")
+def adms_handshake_dev_ip_mode(
+    request: Request,
+    db: Session = Depends(get_db),
+    _rl: None = Depends(hardware_push_rate_limit),
+) -> PlainTextResponse:
+    device = _authenticate_dev_ip_mode(request, db)
+    _debug_capture(device=device, request=request, raw_body=None, parsed=None)
+    return PlainTextResponse("OK")
+
+
+@dev_ip_mode_router.post("/iclock/cdata")
+async def adms_push_dev_ip_mode(
+    request: Request,
+    table: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _rl: None = Depends(hardware_push_rate_limit),
+) -> PlainTextResponse:
+    device = _authenticate_dev_ip_mode(request, db)
+    return await _handle_adms_push(device=device, request=request, table=table, db=db)
+
+
+__all__ = ["router", "dev_ip_mode_router"]

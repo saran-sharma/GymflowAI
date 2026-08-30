@@ -799,6 +799,69 @@ class AuditLog(Base):
     )
 
 
+# ------------------------------------------------------- yoactiv connector
+
+
+class YoactivSyncCursor(Base, TimestampMixin):
+    """Per-endpoint incremental-sync bookmark for the Yoactiv Data API connector.
+
+    One row per ``(endpoint, branch_id)``. ``window_end`` is the last date
+    (inclusive, in the branch's local calendar) the connector has successfully
+    pulled and committed for this endpoint; the next run asks Yoactiv for
+    ``[window_end - overlap, today]``. It only advances on a fully successful
+    fetch+apply, so a failed run is retried from the same point rather than
+    skipped. ``status`` is one of ``idle`` / ``ok`` / ``error`` / ``stuck``;
+    ``stuck`` (>= 3 consecutive failures) freezes this endpoint while leaving
+    the others running. Nothing here is a secret — the API key never appears
+    in a cursor row.
+    """
+
+    __tablename__ = "yoactiv_sync_cursors"
+    __table_args__ = (
+        UniqueConstraint("endpoint", "branch_id", name="uq_yoactiv_cursor_endpoint_branch"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    window_end: Mapped[date | None] = mapped_column(Date)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="idle", nullable=False)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500))
+    rows_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rows_written: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class YoactivDeadLetter(Base, TimestampMixin):
+    """One Yoactiv row the connector fetched but could not apply — kept, never
+    dropped, so an operator can see and resolve it.
+
+    Keyed ``(endpoint, external_key)`` so a row that keeps failing across runs
+    updates its existing dead-letter entry instead of piling up copies.
+    ``payload`` is the raw row as received; it carries the same member-PII
+    categories GymFlow already stores and never a credential (the API key is
+    not part of any row). Admin-only surface; a resolved row can be purged.
+    """
+
+    __tablename__ = "yoactiv_dead_letters"
+    __table_args__ = (
+        UniqueConstraint("endpoint", "external_key", name="uq_yoactiv_dead_letter_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    external_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # --------------------------------------------------------------- marketing
 
 
@@ -1855,4 +1918,6 @@ __all__ = [
     "WorkoutSessionItem",
     "WorkoutSet",
     "WorkoutSplit",
+    "YoactivDeadLetter",
+    "YoactivSyncCursor",
 ]

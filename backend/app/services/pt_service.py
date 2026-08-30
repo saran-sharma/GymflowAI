@@ -419,6 +419,10 @@ def schedule_session(
     if package.status is not PackageStatus.ACTIVE:
         raise PTError("This PT package is not active.", "package_inactive")
 
+    member = db.get(Member, package.member_id)
+    if member is not None and not member.is_active:
+        raise PTError("This member's account has been discontinued.", "member_inactive")
+
     number = next_session_number(db, package)
     if number > package.sessions_total:
         raise PTError(

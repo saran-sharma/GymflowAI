@@ -537,6 +537,12 @@ def member_event(
             "branch_mismatch",
             status.HTTP_403_FORBIDDEN,
         )
+    if not member.is_active:
+        raise AttendanceError(
+            "This membership has been discontinued. Speak to the front desk.",
+            "member_inactive",
+            status.HTTP_403_FORBIDDEN,
+        )
     verify_branch_credential(
         db, branch=branch, user=user, method=method, qr_token=qr_token, pin=pin
     )
@@ -611,6 +617,19 @@ def record_fingerprint_scan(
         raise AttendanceError(
             "Member is not registered at this branch.",
             "branch_mismatch",
+            status.HTTP_403_FORBIDDEN,
+        )
+    if not member.is_active:
+        logger.warning(
+            "fingerprint_scan_denied reason=member_inactive member_id=%s branch_id=%s "
+            "external_event_id=%s",
+            member.id,
+            branch.id,
+            external_event_id,
+        )
+        raise AttendanceError(
+            "This membership has been discontinued.",
+            "member_inactive",
             status.HTTP_403_FORBIDDEN,
         )
 

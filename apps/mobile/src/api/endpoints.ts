@@ -211,6 +211,8 @@ import type {
   MemberActivity,
   MemberCheckIn,
   MemberHome,
+  MemberIntake,
+  MemberIntakeIn,
   NeedsAttention,
   OccupancyForecast,
   PlanItemUpsert,
@@ -280,6 +282,12 @@ export const myJourneyDays = (token: string) =>
 
 export const myAssessment = (token: string) =>
   request<Assessment | null>('/journeys/me/assessment', { token });
+
+export const myIntake = (token: string) =>
+  request<MemberIntake | null>('/members/me/intake', { token });
+
+export const updateMyIntake = (payload: MemberIntakeIn, token: string) =>
+  request<MemberIntake>('/members/me/intake', { method: 'PUT', body: payload, token });
 
 export const myCardio = (token: string) =>
   request<CardioSession[]>('/journeys/me/cardio', { token });

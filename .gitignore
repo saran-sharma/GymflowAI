@@ -27,9 +27,13 @@ ios/
 htmlcov
 .coverage
 
-# source art / personal exports — never shipped
+# source art / personal exports / vendor artifacts — never shipped
 /Images/
 *.xlsx
+*.csv
+*.msi
+# Vendor API collections carry live keys — kept locally, never committed.
+*.postman_collection.json
 
 # agent-device tooling state
 .agent-device/

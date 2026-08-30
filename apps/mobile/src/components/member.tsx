@@ -43,6 +43,7 @@ import type {
   StrengthTrend,
   WorkoutSplit,
 } from '../api/types';
+import { addDays, parseISODate, toISODate, weekBounds, weekdayInitial } from '../utils/calendar';
 import { BarChart, splitMeta } from './programme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -345,39 +346,27 @@ export function WeekStrip({ days, today, onPress }: WeekStripProps) {
 }
 
 /**
- * Today, as the member's branch reckons it.
+ * Today, as the member's branch reckons it — the same calendar date the
+ * server derived, not the device clock.
  *
- * Derived from the server's own day arithmetic — start date plus the day number
- * it computed — rather than the device clock. A phone in another timezone, or
- * one whose date is simply wrong, would otherwise highlight the wrong column.
+ * `start_date + (current_day - 1)`, done as pure calendar arithmetic
+ * (`addDays`). It must NOT round a device-local `Date` through
+ * `.toISOString()`: on a phone east of UTC (Asia/Kolkata, +5:30) that moved
+ * "today" a day early and the week strip highlighted the wrong split.
  */
 export function journeyToday(journey: { start_date: string; current_day: number }): string {
-  const start = new Date(`${journey.start_date}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return new Date().toISOString().slice(0, 10);
-  start.setDate(start.getDate() + Math.max(0, journey.current_day - 1));
-  return start.toISOString().slice(0, 10);
+  const parsed = parseISODate(journey.start_date);
+  if (!parsed) return toISODate(new Date());
+  return addDays(journey.start_date, Math.max(0, journey.current_day - 1));
 }
 
-/** Monday-to-Sunday around `today`, from whatever days the server sent. */
+/** The days the server sent that fall in the Monday–Sunday week of `today`. */
 export function weekAround(days: JourneyDay[], today: string): JourneyDay[] {
-  const anchor = new Date(`${today}T00:00:00`);
-  if (Number.isNaN(anchor.getTime())) return [];
-  // getDay() is 0 for Sunday; the SLAM week starts on Monday.
-  const monday = new Date(anchor);
-  monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-
-  const from = monday.toISOString().slice(0, 10);
-  const to = sunday.toISOString().slice(0, 10);
+  const bounds = weekBounds(today);
+  if (!bounds) return [];
   return days
-    .filter((day) => day.planned_on >= from && day.planned_on <= to)
+    .filter((day) => day.planned_on >= bounds.monday && day.planned_on <= bounds.sunday)
     .sort((a, b) => a.planned_on.localeCompare(b.planned_on));
-}
-
-function weekdayInitial(iso: string): string {
-  const date = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? '?' : ['S', 'M', 'T', 'W', 'T', 'F', 'S'][date.getDay()];
 }
 
 /* --------------------------------------------------------------- the journey */
@@ -781,6 +770,7 @@ export function BodyCompositionSection({ history }: { history: BodyCompositionHi
                     value: m.weight_kg as number,
                   }))}
                 height={50}
+                baseline="auto"
               />
             </Stack>
           ) : null}
@@ -796,6 +786,7 @@ export function BodyCompositionSection({ history }: { history: BodyCompositionHi
                   }))}
                 tint={color.status.info}
                 height={50}
+                baseline="auto"
               />
             </Stack>
           ) : null}
@@ -811,6 +802,7 @@ export function BodyCompositionSection({ history }: { history: BodyCompositionHi
                   }))}
                 tint={color.status.notable}
                 height={50}
+                baseline="auto"
               />
             </Stack>
           ) : null}

@@ -11,8 +11,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import { Alert } from 'react-native';
 
-import { AccountSheet, rowsForRole } from '../src/components/account';
+import { AccountAvatar, AccountSheet, rowsForRole } from '../src/components/account';
 import type { Role, User } from '../src/api/types';
+import { HIT_TARGET } from '../src/design';
 
 // jest hoists jest.mock above these declarations, so anything the factory
 // closes over has to be `mock`-prefixed to be allowed out of scope.
@@ -156,5 +157,22 @@ describe('the account sheet', () => {
     mockUser = null;
     const { toJSON } = await draw(<AccountSheet visible onClose={jest.fn()} />);
     expect(toJSON()).toBeNull();
+  });
+});
+
+describe('the account avatar tap target', () => {
+  it('is at least HIT_TARGET on a side, whatever the visual avatar size', async () => {
+    mockUser = asUser('trainer');
+    await draw(<AccountAvatar size={40} />); // the smallest size any screen uses
+
+    const { flatten } = require('react-native').StyleSheet;
+    const style = flatten(screen.getByTestId('account-avatar').props.style) as {
+      minWidth?: number;
+      minHeight?: number;
+    };
+    expect(style.minWidth).toBeGreaterThanOrEqual(HIT_TARGET);
+    expect(style.minHeight).toBeGreaterThanOrEqual(HIT_TARGET);
+    // hitSlop is still present as extra forgiveness on top of the box.
+    expect(screen.getByTestId('account-avatar').props.hitSlop).toBeDefined();
   });
 });
