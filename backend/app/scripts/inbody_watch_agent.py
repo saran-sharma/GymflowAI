@@ -40,13 +40,23 @@ Controlled first test (one pass, then exit):
 Prove server-side de-duplication (send one specific file, ignoring state):
 
     python inbody_watch_agent.py ... --resend "C:\\LookinBody120\\EMR\\CSV\\<file>.csv"
+
+One-time historical back-fill, step 1 — classify everything, write nothing:
+
+    python inbody_watch_agent.py ... --dry-run
+
+Writes a review report next to this script (member_code + Local ID +
+measurement time only, no names or phones) and no BodyComposition rows. Read
+it before running the real MATCHED-only import.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -252,6 +262,212 @@ def resend(*, path: Path, url: str, secret: str, branch_id: int, verify) -> None
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def _post_dry_run(
+    *, url: str, secret: str, branch_id: int, path: Path, verify
+) -> tuple[bool, dict]:
+    """POST one file with ``dry_run=true``. Returns ``(ok, payload)`` — the
+    server's JSON on success, or ``{"error": "..."}`` on any failure — so a
+    batch run over hundreds of files is never derailed by one bad file.
+
+    A 429 (the ingest endpoint is rate-limited) is retried a few times with a
+    growing back-off, honouring ``Retry-After`` when the server sends it, so a
+    whole-folder run rides through the limit rather than losing files to it."""
+    import requests
+
+    endpoint = f"{url.rstrip('/')}/api/v1/inbody/ingest/{secret}"
+    content_type = (
+        "text/csv"
+        if path.suffix.lower() == ".csv"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    for attempt in range(1, MAX_RETRIES + 2):
+        try:
+            with path.open("rb") as fh:
+                response = requests.post(
+                    endpoint,
+                    params={"branch_id": branch_id, "dry_run": "true"},
+                    files={"file": (path.name, fh, content_type)},
+                    timeout=60,
+                    verify=verify,
+                )
+            if response.status_code == 429 and attempt <= MAX_RETRIES:
+                wait = float(response.headers.get("Retry-After") or RETRY_BACKOFF_SECONDS * attempt)
+                time.sleep(wait)
+                continue
+            if response.status_code >= 400:
+                try:
+                    detail = str(response.json().get("detail", "") or response.json())
+                except Exception:  # noqa: BLE001 - body may not be JSON
+                    detail = response.text[:200]
+                return False, {"error": f"HTTP {response.status_code}: {detail}"}
+            return True, response.json()
+        except Exception as exc:  # noqa: BLE001 - reported per-file, never fatal
+            if attempt <= MAX_RETRIES:
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            return False, {"error": str(exc)}
+    return False, {"error": "exhausted retries (rate limited)"}
+
+
+def _mask(name: str) -> str:
+    """A stable stand-in for a filename in console output — LookinBody names
+    its exports after the member's phone/InBody ID, so the real name only ever
+    goes into the local report file, never to stdout."""
+    import hashlib
+
+    return "file-" + hashlib.sha1(name.encode()).hexdigest()[:8]  # noqa: S324
+
+
+def dry_run_folder(
+    *,
+    folder: Path,
+    url: str,
+    secret: str,
+    branch_id: int,
+    verify,
+    report_path: Path,
+    interval: float,
+) -> None:
+    """Classify every export in ``folder`` against GymFlow without writing a
+    thing, and produce the review summary for the one-time historical
+    back-fill. Consults and touches no state file. The watched folder is only
+    read.
+
+    ``interval`` is the minimum gap between requests — the ingest endpoint is
+    rate-limited (default 60/min), so the default 1.1s keeps a whole-folder
+    run just under that ceiling instead of losing most files to 429s."""
+    files = [
+        p
+        for p in _export_files(folder)
+        if "processed" not in p.parts and "quarantine" not in p.parts
+    ]
+    eta_min = round(len(files) * interval / 60, 1)
+    logger.info(
+        "dry run: %d export file(s) under %s (~%s min at %.1fs/file)",
+        len(files),
+        folder,
+        eta_min,
+        interval,
+    )
+    if not files:
+        print("No .csv/.xlsx export files found.")
+        return
+
+    per_file: dict[str, dict] = {}
+    errors: list[tuple[str, str]] = []
+    for i, path in enumerate(files, start=1):
+        started = time.monotonic()
+        ok, payload = _post_dry_run(
+            url=url, secret=secret, branch_id=branch_id, path=path, verify=verify
+        )
+        per_file[path.name] = payload
+        if not ok:
+            errors.append((path.name, payload.get("error", "unknown error")))
+        if i % 100 == 0 or i == len(files):
+            logger.info("  ...%d/%d files", i, len(files))
+        if i < len(files):
+            time.sleep(max(0.0, interval - (time.monotonic() - started)))
+
+    totals = {k: 0 for k in ("matched", "duplicate", "ambiguous", "unmatched", "invalid")}
+    total_rows = 0
+    members: set[str] = set()
+    identity: dict[str, dict] = {}
+    earliest: str | None = None
+    latest: str | None = None
+    schema: dict[str, dict] = {}
+    reasons: dict[str, int] = {}
+
+    for name, payload in per_file.items():
+        if "counts" not in payload:
+            continue
+        total_rows += int(payload.get("total_rows", 0))
+        for k, v in payload["counts"].items():
+            if k in totals:
+                totals[k] += int(v)
+        fp = payload.get("header_fingerprint") or "none"
+        bucket = schema.setdefault(
+            fp, {"column_count": payload.get("column_count"), "files": 0, "examples": []}
+        )
+        bucket["files"] += 1
+        if len(bucket["examples"]) < 5:
+            bucket["examples"].append(name)
+        for r in payload.get("rows", []):
+            code = r.get("member_code")
+            cls = r["classification"]
+            if cls in ("matched", "duplicate") and code:
+                members.add(code)
+            if cls in ("unmatched", "invalid", "ambiguous"):
+                # collapse the last-4-digits / member-code specifics so the
+                # shape of the failure is countable
+                key = re.sub(r"\d{2,}", "N", r.get("detail", "") or "").strip()
+                reasons[f"{cls}: {key}"] = reasons.get(f"{cls}: {key}", 0) + 1
+            if cls == "matched":
+                ma = r.get("measured_at")
+                if ma:
+                    earliest = ma if earliest is None or ma < earliest else earliest
+                    latest = ma if latest is None or ma > latest else latest
+                if code and code not in identity:
+                    identity[code] = {
+                        "member_code": code,
+                        "local_id": r.get("external_ref"),
+                        "measured_at": r.get("measured_at"),
+                        "source_file": name,
+                    }
+
+    report = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "folder": str(folder),
+        "branch_id": branch_id,
+        "files_seen": len(files),
+        "files_classified": len(files) - len(errors),
+        "files_errored": len(errors),
+        "total_rows": total_rows,
+        "counts": totals,
+        "unmatched_invalid_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
+        "unique_members": len(members),
+        "earliest_measurement": earliest,
+        "latest_measurement": latest,
+        "identity_samples": list(identity.values())[:20],
+        "schema_variations": schema,
+        "errors": [{"file": n, "error": e} for n, e in errors],
+        "per_file": per_file,
+    }
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True))
+    with contextlib.suppress(OSError):
+        report_path.chmod(0o600)
+
+    print("\n===== InBody historical dry run =====")
+    print(f"folder                : {folder}")
+    print(f"CSV/XLSX files         : {len(files)}")
+    print(f"files classified       : {len(files) - len(errors)}")
+    print(f"files errored          : {len(errors)}")
+    print(f"total rows             : {total_rows}")
+    print(f"  matched              : {totals['matched']}")
+    print(f"  duplicate            : {totals['duplicate']}")
+    print(f"  ambiguous            : {totals['ambiguous']}")
+    print(f"  unmatched            : {totals['unmatched']}")
+    print(f"  invalid              : {totals['invalid']}")
+    print(f"unique members (match) : {len(members)}")
+    print(f"earliest measurement   : {earliest or '-'}")
+    print(f"latest measurement     : {latest or '-'}")
+    print("\nexample identity mappings (member_code  <-  Local ID @ measured_at):")
+    for s in list(identity.values())[:10]:
+        print(f"  {s['member_code']:<16} <- {str(s['local_id']):<14} @ {s['measured_at']}")
+    if reasons:
+        print("\nwhy rows did not match (shape of the failure, counts):")
+        for key, n in sorted(reasons.items(), key=lambda kv: -kv[1])[:12]:
+            print(f"  {n:>5}  {key}")
+    print("\nschema variations (header fingerprint -> files):")
+    for fp, b in schema.items():
+        print(f"  {fp}  cols={b['column_count']}  files={b['files']}  e.g. {b['examples'][:3]}")
+    if errors:
+        print(f"\n{len(errors)} file(s) errored (details in the report):")
+        for name, err in errors[:10]:
+            print(f"  {_mask(name)}: {err}")
+    print(f"\nFull report written to: {report_path}")
+    print("Nothing was written to GymFlow. Review the report before any real import.")
+
+
 def _resolve_verify(args: argparse.Namespace):
     if args.insecure:
         logger.warning(
@@ -302,6 +518,27 @@ def main() -> None:
         metavar="PATH",
         help="Upload exactly this one file once, ignoring state (to prove server-side de-dupe).",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Classify every export in --folder against GymFlow and write a review "
+        "report. Writes nothing, touches no state file. Use before the one-time "
+        "historical back-fill.",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Where --dry-run writes its JSON report. Default: next to this script, "
+        "timestamped. Never inside the watched folder.",
+    )
+    parser.add_argument(
+        "--dry-run-interval",
+        type=float,
+        default=1.1,
+        help="Seconds between --dry-run requests. Default 1.1 keeps a full-folder "
+        "run just under the ingest endpoint's 60/min rate limit.",
+    )
     parser.add_argument("--cacert", help="PEM file to verify the server's TLS certificate against.")
     parser.add_argument(
         "--insecure", action="store_true", help="Skip TLS verification (trusted LAN test only)."
@@ -323,6 +560,21 @@ def main() -> None:
     if not args.folder.is_dir():
         print(f"Folder not found: {args.folder}")
         raise SystemExit(1)
+
+    if args.dry_run:
+        report_path = args.report or Path(__file__).resolve().with_name(
+            "inbody_dryrun_" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + ".json"
+        )
+        dry_run_folder(
+            folder=args.folder,
+            url=args.url,
+            secret=args.secret,
+            branch_id=args.branch_id,
+            verify=verify,
+            report_path=report_path,
+            interval=args.dry_run_interval,
+        )
+        return
 
     try:
         watch(

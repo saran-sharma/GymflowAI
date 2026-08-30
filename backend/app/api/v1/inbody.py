@@ -38,7 +38,9 @@ from app.db.models import Branch
 from app.db.session import get_db
 from app.integrations.inbody.importer import (
     HeaderValidationError,
+    build_dry_run_rows,
     classify_rows,
+    header_signature,
     import_matched,
     parse_csv_export,
     parse_workbook,
@@ -69,6 +71,11 @@ def _authenticate(secret_token: str) -> None:
 async def ingest_export(
     secret_token: str,
     branch_id: int = Query(...),
+    dry_run: bool = Query(
+        False,
+        description="Classify and report only. Writes nothing, commits nothing. "
+        "Used by the one-time historical back-fill before a reviewed real import.",
+    ),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _rl: None = Depends(hardware_push_rate_limit),
@@ -78,6 +85,13 @@ async def ingest_export(
     either path already uses. Only MATCHED, non-duplicate rows are ever
     written; everything else (AMBIGUOUS/UNMATCHED/DUPLICATE/INVALID) is
     reported back, never silently dropped or silently guessed.
+
+    ``dry_run=true`` stops after classification: it returns the same counts
+    plus a PII-stripped per-row breakdown (member_code + Local ID + the
+    branch-timezone-anchored measurement time — never the name or phone the
+    CSV carries) and a column-layout fingerprint, and it neither writes a
+    ``BodyComposition`` nor commits. Nothing about the filename is logged in
+    this mode.
     """
     _authenticate(secret_token)
 
@@ -101,34 +115,51 @@ async def ingest_export(
                 tmp.flush()
                 rows = parse_workbook(Path(tmp.name))
     except HeaderValidationError as exc:
-        logger.warning("inbody_ingest_rejected branch_id=%s reason=%s", branch_id, exc)
-        audit.record(
-            db,
-            action=ACTION_INBODY_INGEST,
-            actor_role="inbody-agent",
-            entity_type="branch",
-            entity_id=branch_id,
-            branch_id=branch_id,
-            details={"filename": filename, "result": "rejected", "reason": str(exc)},
-        )
+        if not dry_run:
+            logger.warning("inbody_ingest_rejected branch_id=%s reason=%s", branch_id, exc)
+            audit.record(
+                db,
+                action=ACTION_INBODY_INGEST,
+                actor_role="inbody-agent",
+                entity_type="branch",
+                entity_id=branch_id,
+                branch_id=branch_id,
+                details={"filename": filename, "result": "rejected", "reason": str(exc)},
+            )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - a malformed upload must 400, never 500
-        logger.warning("inbody_ingest_unreadable branch_id=%s filename=%s", branch_id, filename)
-        audit.record(
-            db,
-            action=ACTION_INBODY_INGEST,
-            actor_role="inbody-agent",
-            entity_type="branch",
-            entity_id=branch_id,
-            branch_id=branch_id,
-            details={"filename": filename, "result": "unreadable"},
-        )
+        if not dry_run:
+            logger.warning("inbody_ingest_unreadable branch_id=%s filename=%s", branch_id, filename)
+            audit.record(
+                db,
+                action=ACTION_INBODY_INGEST,
+                actor_role="inbody-agent",
+                entity_type="branch",
+                entity_id=branch_id,
+                branch_id=branch_id,
+                details={"filename": filename, "result": "unreadable"},
+            )
         raise HTTPException(
             status_code=400, detail="Could not read this file as a CSV or Excel export."
         ) from exc
 
     classified = classify_rows(db, rows)
     counts = summarize(classified)
+
+    if dry_run:
+        fingerprint, column_count = header_signature(rows)
+        dry_rows = build_dry_run_rows(db, classified)
+        # classify_rows is read-only, but make the no-write guarantee explicit.
+        db.rollback()
+        logger.info("inbody_dry_run branch_id=%s total_rows=%d %s", branch_id, len(rows), counts)
+        return {
+            "dry_run": True,
+            "total_rows": len(rows),
+            "counts": counts,
+            "header_fingerprint": fingerprint,
+            "column_count": column_count,
+            "rows": [vars(r) for r in dry_rows],
+        }
     # Only rows already resolved to *this* branch's members ever get written
     # here — `classify_rows` matches by phone against active members
     # regardless of branch, so a file uploaded against the wrong branch_id

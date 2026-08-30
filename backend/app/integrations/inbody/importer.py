@@ -26,7 +26,9 @@ lets two different people's data end up on the wrong record.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
@@ -716,6 +718,68 @@ def format_report(rows: list[ClassifiedRow]) -> str:
     return "\n".join(lines)
 
 
+# ----------------------------------------------------------------- dry run
+
+
+@dataclass(frozen=True)
+class DryRunRow:
+    """A classification projected for a dry-run report, with the personal data
+    stripped. A dry run identifies a member only by ``member_code`` and the
+    scan's own ``Local ID`` — never by the name or phone the CSV carries."""
+
+    row_number: int
+    classification: str
+    member_code: str | None
+    external_ref: str | None
+    measured_at: str | None  # ISO-8601 UTC, branch-timezone anchored; MATCHED only
+    detail: str
+
+
+def build_dry_run_rows(db: Session, classified: list[ClassifiedRow]) -> list[DryRunRow]:
+    """PII-safe projection of :func:`classify_rows` output for a dry-run.
+
+    ``detail`` is carried through as-is — for UNMATCHED it names only the last
+    four digits of the phone, for AMBIGUOUS only member codes, neither of
+    which is a re-identification risk in an operator report.
+    """
+    member_ids = {r.member_id for r in classified if r.member_id is not None}
+    codes: dict[int, str] = {}
+    if member_ids:
+        codes = dict(
+            db.execute(
+                select(Member.id, Member.member_code).where(Member.id.in_(member_ids))
+            ).all()
+        )
+    out: list[DryRunRow] = []
+    for r in classified:
+        reading = r.reading
+        out.append(
+            DryRunRow(
+                row_number=r.row_number,
+                classification=r.classification.value,
+                member_code=codes.get(r.member_id) if r.member_id is not None else None,
+                external_ref=reading.external_ref if reading is not None else None,
+                measured_at=reading.measured_at.isoformat() if reading is not None else None,
+                detail=r.detail,
+            )
+        )
+    return out
+
+
+def header_signature(rows: list[ParsedRow]) -> tuple[str | None, int]:
+    """A short fingerprint of a file's column layout, for spotting historical
+    exports whose schema differs from today's. Derived from the resolved
+    canonical-column map plus the raw column count of the first data row, so a
+    reordered, added or dropped column changes it. ``(None, 0)`` for a file
+    with no data rows."""
+    if not rows:
+        return None, 0
+    first = rows[0]
+    layout = json.dumps(sorted(first.columns.items()), separators=(",", ":"))
+    digest = hashlib.sha1(layout.encode()).hexdigest()[:12]  # noqa: S324 - not security
+    return digest, len(first.values)
+
+
 # -------------------------------------------------------------------- write
 
 
@@ -765,12 +829,15 @@ __all__ = [
     "REQUIRED_COLUMNS",
     "Classification",
     "ClassifiedRow",
+    "DryRunRow",
     "HeaderValidationError",
     "ImportResult",
     "NormalizedReading",
     "ParsedRow",
+    "build_dry_run_rows",
     "classify_rows",
     "format_report",
+    "header_signature",
     "import_matched",
     "normalize_row",
     "parse_csv_export",

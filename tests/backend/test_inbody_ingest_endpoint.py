@@ -179,3 +179,96 @@ def test_a_scan_for_another_branch_does_not_leak_across_branches(
 
     row = db.scalar(select(BodyComposition).where(BodyComposition.member_id == member.id))
     assert row is None
+
+
+# --------------------------------------------------------------- dry run
+
+
+def _dry_run(client, branch_id, content, secret=SECRET, filename="export.csv"):
+    return client.post(
+        f"{API}/{secret}",
+        params={"branch_id": branch_id, "dry_run": "true"},
+        files={"file": (filename, content, "text/csv")},
+    )
+
+
+def test_dry_run_classifies_but_writes_nothing(client, db, world, enable_inbody_ingest):
+    branch = world["branches"]["ngk"]
+    member, user = make_member(db, world["roles"], branch, "Dry Run Match")
+    user.phone = "9000000010"
+    db.commit()
+
+    resp = _dry_run(client, branch.id, _csv_bytes([_row(mobile="9000000010", local_id="LB-DR1")]))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["dry_run"] is True
+    assert body["counts"]["matched"] == 1
+    assert body["total_rows"] == 1
+    assert "written" not in body
+
+    (r,) = body["rows"]
+    assert r["classification"] == "matched"
+    assert r["member_code"] == member.member_code
+    assert r["external_ref"] == "LB-DR1"
+    assert r["measured_at"] is not None
+
+    assert db.scalar(select(BodyComposition).where(BodyComposition.member_id == member.id)) is None
+
+
+def test_dry_run_row_carries_no_name_or_phone(client, db, world, enable_inbody_ingest):
+    branch = world["branches"]["ngk"]
+    member, user = make_member(db, world["roles"], branch, "Zephyr Quibblesworth")
+    user.phone = "9000000011"
+    db.commit()
+
+    resp = _dry_run(
+        client,
+        branch.id,
+        _csv_bytes([_row(name="Zephyr Quibblesworth", id_="9000000011", mobile="9000000011")]),
+    )
+    assert resp.status_code == 200
+    text = resp.text
+    assert "Zephyr Quibblesworth" not in text
+    assert "9000000011" not in text
+    row = resp.json()["rows"][0]
+    assert set(row) == {
+        "row_number",
+        "classification",
+        "member_code",
+        "external_ref",
+        "measured_at",
+        "detail",
+    }
+
+
+def test_dry_run_reports_duplicate_without_writing(client, db, world, enable_inbody_ingest):
+    branch = world["branches"]["ngk"]
+    member, user = make_member(db, world["roles"], branch, "Dry Run Dup")
+    user.phone = "9000000012"
+    db.commit()
+
+    payload = _csv_bytes([_row(mobile="9000000012", local_id="LB-DR-DUP")])
+    assert _upload(client, branch.id, payload).json()["written"] == 1
+
+    resp = _dry_run(client, branch.id, payload)
+    assert resp.status_code == 200
+    assert resp.json()["counts"]["duplicate"] == 1
+    rows = db.scalars(
+        select(BodyComposition).where(BodyComposition.member_id == member.id)
+    ).all()
+    assert len(rows) == 1
+
+
+def test_dry_run_exposes_a_column_layout_fingerprint(client, world, enable_inbody_ingest):
+    branch = world["branches"]["ngk"]
+    resp = _dry_run(client, branch.id, _csv_bytes([_row(mobile="9999999999")]))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["header_fingerprint"]
+    assert body["column_count"] == len(FULL_HEADER)
+
+
+def test_dry_run_still_400s_a_headerless_file(client, world, enable_inbody_ingest):
+    branch = world["branches"]["ngk"]
+    resp = _dry_run(client, branch.id, b"no,real,headers\n1,2,3")
+    assert resp.status_code == 400
