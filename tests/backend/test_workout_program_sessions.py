@@ -89,12 +89,18 @@ def test_program_today_preview_matches_what_start_workout_will_actually_use(
     assert start.json()["split"] is None
     assert start.json()["split_label"] is None
 
-    # The next preview (a new day, since today's session already exists)
-    # points at the second day — proving the preview and the real creation
-    # share one source of truth.
-    next_preview = client.get(f"/api/v1/members/{member.id}/program/today", headers=headers)
-    assert next_preview.status_code == 200
-    assert next_preview.json()["id"] == program.days[1].id
+    # Asking again *the same day* still points at today's day — the preview is
+    # a pure function of the date now, so it can never drift away from the
+    # session "start" already created (or would return). The old rule counted
+    # sessions and silently advanced here.
+    same_day = client.get(f"/api/v1/members/{member.id}/program/today", headers=headers)
+    assert same_day.status_code == 200
+    assert same_day.json()["id"] == program.days[0].id
+
+    # Tomorrow's workout is the second day — the rotation is the calendar.
+    tomorrow = journey_service.start_workout(db, member=member, on=date.today() + timedelta(days=1))
+    db.commit()
+    assert tomorrow.member_program_day_id == program.days[1].id
 
 
 def test_completing_a_program_based_session_does_not_touch_the_journey(db, world):

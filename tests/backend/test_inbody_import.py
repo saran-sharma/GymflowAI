@@ -133,6 +133,111 @@ def test_header_validation_rejects_missing_columns(tmp_path):
     assert "VFL" in message
 
 
+# The exact 87 column headers of SLAM's real LookinBody120 bulk export
+# (InBodyExcelData_2026-08-20_13-21-10.xlsx, 1,345 measurement rows). These
+# are public column names — no member data — captured on 2026-08-30 to
+# verify parse_workbook against the real export shape rather than only the
+# synthetic fixtures above.
+REAL_EXPORT_HEADER_87 = [
+    "1. Name",
+    "2. ID",
+    "3. Height",
+    "4. Date of Birth",
+    "5. Gender",
+    "6. Age",
+    "7. Mobile Number",
+    "8. Phone Number",
+    "9. Zip Code",
+    "10. Address",
+    "11. E-mail",
+    "12. Date of Registration",
+    "13. Memo",
+    "14. Test Date / Time",
+    "15. Weight",
+    "16. Lower Limit (Weight Normal Range)",
+    "17. Upper Limit (Weight Normal Range)",
+    "18. TBW (Total Body Water)",
+    "19. Lower Limit (TBW Normal Range)",
+    "20. Upper Limit (TBW Normal Range)",
+    "21. Protein",
+    "22. Lower Limit (Protein Normal Range)",
+    "23. Upper Limit (Protein Normal Range)",
+    "24. Minerals",
+    "25. Lower Limit (Minerals Normal Range)",
+    "26. Upper Limit (Minerals Normal Range)",
+    "27. BFM (Body Fat Mass)",
+    "28. Lower Limit (BFM Normal Range)",
+    "29. Upper Limit (BFM Normal Range)",
+    "30. SMM (Skeletal Muscle Mass)",
+    "31. Lower Limit (SMM Normal Range)",
+    "32. Upper Limit (SMM Normal Range)",
+    "33. BMI (Body Mass Index)",
+    "34. Lower Limit (BMI Normal Range)",
+    "35. Upper Limit (BMI Normal Range)",
+    "36. PBF (Percent Body Fat)",
+    "37. Lower Limit (PBF Normal Range)",
+    "38. Upper Limit (PBF Normal Range)",
+    "39. FFM of Right Arm",
+    "40. FFM% of Right Arm",
+    "41. FFM of Left Arm",
+    "42. FFM% of Left Arm",
+    "43. FFM of Trunk",
+    "44. FFM% of Trunk",
+    "45. FFM of Right Leg",
+    "46. FFM% of Right Leg",
+    "47. FFM of Left Leg",
+    "48. FFM% of Left Leg",
+    "49. BFM of Right Arm",
+    "50. BFM% of Right Arm",
+    "51. BFM of Left Arm",
+    "52. BFM% of Left Arm",
+    "53. BFM of Trunk",
+    "54. BFM% of Trunk",
+    "55. BFM of Right Leg",
+    "56. BFM% of Right Leg",
+    "57. BFM of Left Leg",
+    "58. BFM% of Left Leg",
+    "59. InBody Score",
+    "60. Target Weight",
+    "61. Weight Control",
+    "62. BFM Control",
+    "63. FFM Control",
+    "64. BMR (Basal Metabolic Rate)",
+    "65. WHR (Waist-Hip Ratio)",
+    "66. Lower Limit (WHR Normal Range)",
+    "67. Upper Limit (WHR Normal Range)",
+    "68. VFL (Visceral Fat Level)",
+    "69. Obesity Degree",
+    "70. Lower Limit (Obesity Degree Normal Range)",
+    "71. Upper Limit (Obesity Degree Normal Range)",
+    "72. 20kHz-RA Impedance",
+    "73. 20kHz-LA Impedance",
+    "74. 20kHz-TR Impedance",
+    "75. 20kHz-RL Impedance",
+    "76. 20kHz-LL Impedance",
+    "77. 100kHz-RA Impedance",
+    "78. 100kHz-LA Impedance",
+    "79. 100kHz-TR Impedance",
+    "80. 100kHz-RL Impedance",
+    "81. 100kHz-LL Impedance",
+    "82. InBody Type",
+    "83. Local ID",
+    "84. Medical History",
+    "85. Group",
+    "86. Lower Limit (BMR Normal Range)",
+    "87. Upper Limit (BMR Normal Range)",
+]
+
+
+def test_parse_workbook_resolves_the_real_87_column_export_header(tmp_path):
+    """The real SLAM export (numbered headers, spelled-out names, ~70 extra
+    columns) must resolve every field parse_workbook needs — not just the
+    trimmed synthetic FULL_HEADER."""
+    path = _write_workbook(tmp_path / "real_header.xlsx", REAL_EXPORT_HEADER_87, [])
+    parsed = parse_workbook(path)  # raises HeaderValidationError if any column is unresolved
+    assert parsed == []  # header-only workbook, no data rows, no PII
+
+
 def test_header_validation_accepts_split_test_date_and_time(tmp_path):
     row = [
         "Aditya Rao",
@@ -169,6 +274,62 @@ def test_parse_workbook_skips_blank_rows(tmp_path):
     )
     parsed = parse_workbook(path)
     assert len(parsed) == 2
+
+
+# --------------------------------------------------- csv adapter (auto-export)
+
+
+def _csv_bytes(header: list[str], rows: list[list], *, bom: bool = False) -> bytes:
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow(["" if v is None else v for v in row])
+    return buf.getvalue().encode("utf-8-sig" if bom else "utf-8")
+
+
+def test_parse_csv_export_reads_the_same_shape_as_the_workbook_path():
+    from app.integrations.inbody.importer import parse_csv_export
+
+    raw = _csv_bytes(FULL_HEADER, [_row()])
+    parsed = parse_csv_export(raw)
+    assert len(parsed) == 1
+    row = parsed[0]
+    reading, errors = normalize_row(row)
+    assert errors == []
+    assert reading.phone_normalized == "9000000001"
+    assert reading.weight_kg == 72.4
+
+
+def test_parse_csv_export_rejects_a_missing_column_by_name():
+    from app.integrations.inbody.importer import parse_csv_export
+
+    incomplete_header = [h for h in FULL_HEADER if h != "Weight"]
+    raw = _csv_bytes(incomplete_header, [[v for v in _row() if v != 72.4]])
+    with pytest.raises(HeaderValidationError, match="Weight"):
+        parse_csv_export(raw)
+
+
+def test_parse_csv_export_skips_blank_rows():
+    from app.integrations.inbody.importer import parse_csv_export
+
+    raw = _csv_bytes(FULL_HEADER, [_row(), [None] * len(FULL_HEADER), _row(local_id="LB-0002")])
+    parsed = parse_csv_export(raw)
+    assert len(parsed) == 2
+
+
+def test_parse_csv_export_tolerates_a_byte_order_mark():
+    """LookinBody120 runs on Windows; a UTF-8 BOM on its CSV export is the
+    common case, not an edge case — the header must still resolve."""
+    from app.integrations.inbody.importer import parse_csv_export
+
+    raw = _csv_bytes(FULL_HEADER, [_row()], bom=True)
+    assert raw.startswith(b"\xef\xbb\xbf")
+    parsed = parse_csv_export(raw)
+    assert len(parsed) == 1
 
 
 # -------------------------------------------------------------- normalizing

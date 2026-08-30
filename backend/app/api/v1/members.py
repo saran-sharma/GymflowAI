@@ -44,6 +44,7 @@ from app.schemas.common import (
     MemberCreateOut,
     MemberCreateRequest,
     MemberEventRequest,
+    MemberIntakeIn,
     MemberIntakeOut,
     MemberMeOut,
     MembershipOut,
@@ -446,6 +447,107 @@ def register_member(
         membership=MembershipOut.model_validate(membership),
         intake=intake_out,
     )
+
+
+# ------------------------------------------------------------- lifecycle
+#
+# "Discontinued" is `Member.is_active = False`, not a delete and not a new
+# status enum — every historical row (memberships, workouts, PRs, attendance,
+# InBody, PT) stays exactly where it is, keyed to a member row that still
+# exists. `attendance_service`/`pt_service` already refuse membership-gated
+# actions once this flag is false; this endpoint only owns the flag itself.
+
+
+@router.post("/{member_id}/deactivate", response_model=MessageOut)
+def deactivate_member(
+    member_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_management),
+) -> MessageOut:
+    member = db.get(Member, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    assert_branch_access(actor, member.branch_id)
+
+    if member.is_active:
+        member.is_active = False
+        db.flush()
+        audit.record(
+            db,
+            action=audit.ACTION_ADMIN_ACTION,
+            actor=actor,
+            entity_type="member",
+            entity_id=member.id,
+            branch_id=member.branch_id,
+            request=request,
+            details={"lifecycle": "deactivated"},
+        )
+    return MessageOut(message="Member discontinued. Their history is preserved.")
+
+
+@router.post("/{member_id}/reactivate", response_model=MessageOut)
+def reactivate_member(
+    member_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_management),
+) -> MessageOut:
+    member = db.get(Member, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    assert_branch_access(actor, member.branch_id)
+
+    if not member.is_active:
+        member.is_active = True
+        db.flush()
+        audit.record(
+            db,
+            action=audit.ACTION_ADMIN_ACTION,
+            actor=actor,
+            entity_type="member",
+            entity_id=member.id,
+            branch_id=member.branch_id,
+            request=request,
+            details={"lifecycle": "reactivated"},
+        )
+    return MessageOut(message="Member reactivated.")
+
+
+# --------------------------------------------------------- self-service intake
+
+
+@router.get("/me/intake", response_model=MemberIntakeOut | None)
+def my_intake(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MemberIntakeOut | None:
+    member = _current_member(db, user)
+    intake = db.scalar(select(MemberIntake).where(MemberIntake.member_id == member.id))
+    return MemberIntakeOut.model_validate(intake) if intake else None
+
+
+@router.put("/me/intake", response_model=MemberIntakeOut)
+def update_my_intake(
+    payload: MemberIntakeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MemberIntakeOut:
+    """The member's own fitness-onboarding answers — same fields staff can
+    enter at registration (`MemberIntakeIn`, reused as-is, not duplicated),
+    filled in later by the member themselves when the front desk left it
+    blank. Whole-row replace, not a patch: an onboarding questionnaire is
+    answered once as a set, not assembled field-by-field across requests."""
+    member = _current_member(db, user)
+    intake = db.scalar(select(MemberIntake).where(MemberIntake.member_id == member.id))
+    if intake is None:
+        intake = MemberIntake(member_id=member.id, **payload.model_dump())
+        db.add(intake)
+    else:
+        for field, value in payload.model_dump().items():
+            setattr(intake, field, value)
+    db.flush()
+    return MemberIntakeOut.model_validate(intake)
 
 
 @router.get("/{member_id}", response_model=TrainerClientDetailOut)

@@ -25,6 +25,7 @@ import {
   Badge,
   Button,
   Divider,
+  HIT_TARGET,
   NavRow,
   Row,
   Sheet,
@@ -382,6 +383,12 @@ export function AccountAvatar({
 
   if (!user) return null;
 
+  // The avatar keeps its visual size; the Pressable is padded out to a full
+  // HIT_TARGET (48) box, centred, so the tap target meets the minimum on a
+  // gym floor without the circle itself growing. `hitSlop` covers any sub-48
+  // size and adds a little forgiveness on top.
+  const slop = Math.max(space.xs, Math.ceil((HIT_TARGET - size) / 2));
+
   return (
     <>
       <Pressable
@@ -389,9 +396,9 @@ export function AccountAvatar({
         accessibilityRole="button"
         accessibilityLabel={`Account: ${user.full_name}`}
         accessibilityHint="Opens your account menu"
-        hitSlop={space.sm}
+        hitSlop={slop}
         testID={testID}
-        style={({ pressed }) => (pressed ? styles.pressed : undefined)}
+        style={({ pressed }) => [styles.avatarTap, pressed ? styles.pressed : null]}
       >
         <Avatar name={user.full_name} size={size} accent />
       </Pressable>
@@ -405,4 +412,10 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   header: { paddingTop: space.sm },
   pressed: { opacity: 0.7 },
+  avatarTap: {
+    minWidth: HIT_TARGET,
+    minHeight: HIT_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

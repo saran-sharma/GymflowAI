@@ -125,6 +125,7 @@ function aDetail(partial: Partial<TrainerClientDetail['client']> = {}): TrainerC
     recent_sessions: [],
     recent_workouts: [],
     activity: [],
+    intake: null,
   } as TrainerClientDetail;
 }
 

@@ -697,7 +697,7 @@ def start_workout(
     # untouched either way; only where today's *exercises* come from changes.
     program = workout_template_service.active_program(db, member.id)
     if program is not None and program.days:
-        chosen_day = workout_template_service.resolve_today_program_day(db, program)
+        chosen_day = workout_template_service.resolve_today_program_day(program, on=session_date)
         assert chosen_day is not None  # program.days is non-empty, guaranteed above
         session = WorkoutSession(
             member_id=member.id,

@@ -16,6 +16,6 @@ export default function Index() {
   const { status, user } = useAuth();
 
   if (status === 'loading') return <Loading label="Starting GymFlow" />;
-  if (status === 'anonymous' || !user) return <Redirect href="/(auth)/login" />;
+  if (status === 'anonymous' || !user) return <Redirect href="/(auth)/role-select" />;
   return <Redirect href={homeRouteForRole(user.role) as never} />;
 }

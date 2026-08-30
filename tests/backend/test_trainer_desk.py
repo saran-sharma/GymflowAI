@@ -64,6 +64,40 @@ def test_client_detail_carries_the_history_a_trainer_needs(client, world, auth):
     assert isinstance(body["recent_sessions"], list)
     assert isinstance(body["recent_workouts"], list)
     assert isinstance(body["activity"], list)
+    # The member's onboarding answers ride along for the "Fitness profile"
+    # section; null until they fill it in.
+    assert "intake" in body
+    assert body["intake"] is None
+
+
+def test_client_detail_carries_the_member_intake_when_it_exists(client, db, world, auth):
+    from app.db.models import MemberIntake
+
+    member = world["member_ngk"]
+    db.add(
+        MemberIntake(
+            member_id=member.id,
+            fitness_goal="Build muscle",
+            experience_level="beginner",
+            training_frequency_per_week=3,
+            preferred_style="strength",
+            wants_pt=True,
+        )
+    )
+    db.commit()
+
+    body = client.get(
+        f"{API}/trainers/me/clients/{member.id}", headers=auth(world["trainer_ngk_user"])
+    ).json()
+    assert body["intake"]["fitness_goal"] == "Build muscle"
+    assert body["intake"]["experience_level"] == "beginner"
+    assert body["intake"]["training_frequency_per_week"] == 3
+    assert body["intake"]["preferred_style"] == "strength"
+    assert body["intake"]["wants_pt"] is True
+
+    # The owner's generalised member-detail reader carries it too.
+    owner_body = client.get(f"{API}/members/{member.id}", headers=auth(world["owner"])).json()
+    assert owner_body["intake"]["fitness_goal"] == "Build muscle"
 
 
 def test_next_pt_session_skips_a_stale_scheduled_session_in_the_past(client, db, world, auth):

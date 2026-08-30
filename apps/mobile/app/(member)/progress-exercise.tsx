@@ -93,6 +93,9 @@ export default function ProgressExerciseScreen() {
               }))}
               tint={color.status.notable}
               height={90}
+              // A lift's working weight moves by a few kg on a base of tens —
+              // scale across the range it actually covers, not from zero.
+              baseline="auto"
             />
           ) : (
             <Text variant="label" tone={color.textTertiary}>

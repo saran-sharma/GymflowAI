@@ -25,10 +25,15 @@ import type {
 const mockPush = jest.fn();
 
 let focusCallback: (() => void | (() => void)) | null = null;
+let lastRedirect: string | null = null;
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),
   useFocusEffect: (callback: () => void | (() => void)) => {
     focusCallback = callback;
+  },
+  Redirect: ({ href }: { href: string }) => {
+    lastRedirect = href;
+    return null;
   },
 }));
 
@@ -36,12 +41,14 @@ const mockHome = jest.fn();
 const mockPayments = jest.fn();
 const mockDays = jest.fn();
 const mockAssessment = jest.fn();
+const mockIntake = jest.fn();
 const mockSubmitCheckIn = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   memberHome: (...a: unknown[]) => mockHome(...a),
   myPayments: (...a: unknown[]) => mockPayments(...a),
   myJourneyDays: (...a: unknown[]) => mockDays(...a),
   myAssessment: (...a: unknown[]) => mockAssessment(...a),
+  myIntake: (...a: unknown[]) => mockIntake(...a),
   submitCheckIn: (...a: unknown[]) => mockSubmitCheckIn(...a),
 }));
 
@@ -221,10 +228,22 @@ const comeBack = focus;
 beforeEach(() => {
   jest.clearAllMocks();
   focusCallback = null;
+  lastRedirect = null;
   mockPayments.mockResolvedValue([]);
   mockDays.mockResolvedValue([]);
   mockHome.mockResolvedValue(aHome());
   mockAssessment.mockResolvedValue(null);
+  // A saved intake -> onboarding is done, Home renders normally.
+  mockIntake.mockResolvedValue({
+    fitness_goal: 'Build muscle',
+    experience_level: 'beginner',
+    training_frequency_per_week: 3,
+    preferred_style: null,
+    preferred_time: null,
+    wants_pt: null,
+    limitations: null,
+    contact_preference: null,
+  });
   mockSubmitCheckIn.mockResolvedValue({
     id: 1,
     work_date: '2026-08-22',
@@ -698,5 +717,28 @@ describe('the daily feeling check-in', () => {
     });
     expect(screen.getByText('That did not save. Try again.')).toBeTruthy();
     expect(screen.getByText('How are you feeling today?')).toBeTruthy();
+  });
+});
+
+describe('first-time fitness onboarding gate', () => {
+  it('redirects to the questionnaire when the member has no saved intake', async () => {
+    mockIntake.mockResolvedValue(null);
+    await openHome();
+    expect(lastRedirect).toBe('/(onboarding)/fitness-journey');
+    // Home content is not rendered behind the redirect.
+    expect(screen.queryByText('SLAM Nagalkeni')).toBeNull();
+  });
+
+  it('shows Home, not onboarding, once any intake row exists', async () => {
+    await openHome(); // beforeEach gives a saved intake
+    expect(lastRedirect).toBeNull();
+    await waitFor(() => expect(screen.getByText('SLAM Nagalkeni')).toBeTruthy());
+  });
+
+  it('does not trap the member on a redirect if the intake fetch fails', async () => {
+    mockIntake.mockRejectedValue(new Error('network'));
+    await openHome();
+    expect(lastRedirect).toBeNull();
+    await waitFor(() => expect(screen.getByText('SLAM Nagalkeni')).toBeTruthy());
   });
 });

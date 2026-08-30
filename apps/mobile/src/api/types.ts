@@ -966,6 +966,9 @@ export interface TrainerClientDetail {
   recent_sessions: PTSession[];
   recent_workouts: WorkoutSession[];
   activity: ActivityEntry[];
+  /** What the member said at onboarding — goal, experience, days, style,
+   *  availability, PT interest, anything to know. Null until they fill it. */
+  intake: MemberIntake | null;
 }
 
 /** What the server returns when a trainer moves a member onto PT. */

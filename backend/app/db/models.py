@@ -316,10 +316,20 @@ capture_method_enum = Enum(CaptureMethod, name="capture_method")
 attendance_status_enum = Enum(AttendanceStatus, name="attendance_status")
 incentive_status_enum = Enum(IncentiveStatus, name="incentive_status")
 membership_status_enum = Enum(MembershipStatus, name="membership_status")
-experience_level_enum = Enum(ExperienceLevel, name="experience_level")
-preferred_training_style_enum = Enum(PreferredTrainingStyle, name="preferred_training_style")
-preferred_time_enum = Enum(PreferredTime, name="preferred_time")
-contact_preference_enum = Enum(ContactPreference, name="contact_preference")
+
+# The member-intake enum types were created (migration c3a7f0e4a591) with the
+# enum *values* as Postgres labels ("beginner"), not the member *names*
+# ("BEGINNER") that SQLAlchemy persists by default. `values_callable` makes
+# the ORM read and write those value labels, so
+# `MemberIntake(experience_level=ExperienceLevel.BEGINNER)` stores "beginner"
+# and round-trips — without it, every write to member_intakes is a DataError.
+_by_value = {"values_callable": lambda enum_cls: [member.value for member in enum_cls]}
+experience_level_enum = Enum(ExperienceLevel, name="experience_level", **_by_value)
+preferred_training_style_enum = Enum(
+    PreferredTrainingStyle, name="preferred_training_style", **_by_value
+)
+preferred_time_enum = Enum(PreferredTime, name="preferred_time", **_by_value)
+contact_preference_enum = Enum(ContactPreference, name="contact_preference", **_by_value)
 notification_status_enum = Enum(NotificationStatus, name="notification_status")
 journey_type_enum = Enum(JourneyType, name="journey_type")
 journey_status_enum = Enum(JourneyStatus, name="journey_status")
@@ -797,6 +807,69 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+
+# ------------------------------------------------------- yoactiv connector
+
+
+class YoactivSyncCursor(Base, TimestampMixin):
+    """Per-endpoint incremental-sync bookmark for the Yoactiv Data API connector.
+
+    One row per ``(endpoint, branch_id)``. ``window_end`` is the last date
+    (inclusive, in the branch's local calendar) the connector has successfully
+    pulled and committed for this endpoint; the next run asks Yoactiv for
+    ``[window_end - overlap, today]``. It only advances on a fully successful
+    fetch+apply, so a failed run is retried from the same point rather than
+    skipped. ``status`` is one of ``idle`` / ``ok`` / ``error`` / ``stuck``;
+    ``stuck`` (>= 3 consecutive failures) freezes this endpoint while leaving
+    the others running. Nothing here is a secret — the API key never appears
+    in a cursor row.
+    """
+
+    __tablename__ = "yoactiv_sync_cursors"
+    __table_args__ = (
+        UniqueConstraint("endpoint", "branch_id", name="uq_yoactiv_cursor_endpoint_branch"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    window_end: Mapped[date | None] = mapped_column(Date)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="idle", nullable=False)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500))
+    rows_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rows_written: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class YoactivDeadLetter(Base, TimestampMixin):
+    """One Yoactiv row the connector fetched but could not apply — kept, never
+    dropped, so an operator can see and resolve it.
+
+    Keyed ``(endpoint, external_key)`` so a row that keeps failing across runs
+    updates its existing dead-letter entry instead of piling up copies.
+    ``payload`` is the raw row as received; it carries the same member-PII
+    categories GymFlow already stores and never a credential (the API key is
+    not part of any row). Admin-only surface; a resolved row can be purged.
+    """
+
+    __tablename__ = "yoactiv_dead_letters"
+    __table_args__ = (
+        UniqueConstraint("endpoint", "external_key", name="uq_yoactiv_dead_letter_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), index=True)
+    external_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurrences: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --------------------------------------------------------------- marketing
@@ -1855,4 +1928,6 @@ __all__ = [
     "WorkoutSessionItem",
     "WorkoutSet",
     "WorkoutSplit",
+    "YoactivDeadLetter",
+    "YoactivSyncCursor",
 ]

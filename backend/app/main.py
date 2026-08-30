@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.v1.hardware import dev_ip_mode_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 
@@ -113,6 +114,12 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    # No prefix, deliberately: the X2008's IP-address ADMS mode requests a
+    # bare `/iclock/cdata` with no path of its own to customize. Always
+    # mounted, same as every other route here — gated at request time by
+    # `FINGERPRINT_ADMS_DEV_IP_MODE` inside the handler, not by conditional
+    # registration, matching the pattern the rest of this file already uses.
+    app.include_router(dev_ip_mode_router, include_in_schema=False)
 
     @app.get("/", include_in_schema=False)
     def root() -> dict:

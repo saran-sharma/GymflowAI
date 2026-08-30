@@ -18,6 +18,7 @@ import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
 import type { BodyCompositionHistory, StrengthTrend, TrainerClientDetail } from '../../../src/api/types';
 import { ConvertToPt, conversionState } from '../../../src/components/conversion';
+import { FitnessProfile } from '../../../src/components/fitness-profile';
 import {
   CompactBodyComposition,
   JourneyBar,
@@ -166,7 +167,12 @@ export default function TrainerClientDetailScreen() {
     );
   }
 
-  const { client, recent_sessions: sessions, recent_workouts: workouts } = detail.data;
+  const {
+    client,
+    recent_sessions: sessions,
+    recent_workouts: workouts,
+    intake,
+  } = detail.data;
   const journey = client.journey;
   const pack = client.pt_package;
 
@@ -304,6 +310,8 @@ export default function TrainerClientDetailScreen() {
             </Card>
           </Section>
         ) : null}
+
+        <FitnessProfile intake={intake} />
 
         <Section title="Recent PT sessions">
           {sessions.length === 0 ? (
