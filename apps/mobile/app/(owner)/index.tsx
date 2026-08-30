@@ -154,7 +154,7 @@ export default function OwnerDashboardScreen() {
   if (dashboard.error || !dashboard.data) {
     const offline = dashboard.error?.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen background="owner">
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load your dashboard'}
@@ -205,7 +205,7 @@ export default function OwnerDashboardScreen() {
   const attentionLoaded = attention.data !== null && insights.data !== null;
 
   return (
-    <Screen>
+    <Screen background="owner">
       <Body
         refreshControl={
           <RefreshControl
@@ -356,6 +356,25 @@ export default function OwnerDashboardScreen() {
               ))}
             </Card>
           )}
+        </Section>
+
+        {/* --------------------------------------------------------- feedback */}
+        <Section title="Feedback">
+          <Pressable
+            onPress={() => router.push('/(owner)/trainer-reviews' as never)}
+            testID="owner-trainer-reviews-link"
+          >
+            <Card>
+              <Row gap="sm">
+                <Text variant="heading">Trainer reviews</Text>
+                <Spacer />
+                <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />
+              </Row>
+              <Text variant="label" tone={color.textTertiary}>
+                Member ratings waiting for your approval, and published testimonials.
+              </Text>
+            </Card>
+          </Pressable>
         </Section>
 
         {/* -------------------------------------------------------- business */}

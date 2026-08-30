@@ -15,6 +15,7 @@ from datetime import date, datetime, time
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -306,6 +307,33 @@ class CorrectionStatus(str, enum.Enum):
     WITHDRAWN = "withdrawn"
 
 
+class TrainerReviewStatus(str, enum.Enum):
+    """A member's rating of a trainer moves through owner moderation before it
+    is ever shown on a trainer profile. `removed` is a testimonial the owner
+    pulled *after* it was approved — kept as a row for the audit trail, hidden
+    everywhere it once appeared."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REMOVED = "removed"
+
+
+class ReviewModerationAction(str, enum.Enum):
+    APPROVE = "approve"
+    REJECT = "reject"
+    REMOVE = "remove"
+    REINSTATE = "reinstate"
+    NOTE = "note"
+    REPORT = "report"
+
+
+class ProgressPhotoAngle(str, enum.Enum):
+    FRONT = "front"
+    SIDE = "side"
+    BACK = "back"
+
+
 # ----------------------------------------------------------------- tables
 
 
@@ -347,6 +375,14 @@ alert_severity_enum = Enum(AlertSeverity, name="alert_severity")
 alert_status_enum = Enum(AlertStatus, name="alert_status")
 correction_type_enum = Enum(CorrectionType, name="correction_type")
 correction_status_enum = Enum(CorrectionStatus, name="correction_status")
+# New types: labels are the enum *values* (lowercase), like the member-intake
+# types above and unlike the older `.name` types, so the migration and any
+# raw-SQL predicate that names a label uses e.g. 'approved', not 'APPROVED'.
+trainer_review_status_enum = Enum(TrainerReviewStatus, name="trainer_review_status", **_by_value)
+review_moderation_action_enum = Enum(
+    ReviewModerationAction, name="review_moderation_action", **_by_value
+)
+progress_photo_angle_enum = Enum(ProgressPhotoAngle, name="progress_photo_angle", **_by_value)
 
 
 class Role(Base, TimestampMixin):
@@ -1860,6 +1896,187 @@ class Setting(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("branch_id", "key", name="uq_setting_scope_key"),)
 
 
+# ------------------------------------------------- feedback & progress media
+
+
+class TrainerReview(Base, TimestampMixin, DemoMixin):
+    """A member's star rating (and optional words) for a trainer.
+
+    Never shown anywhere until the owner approves it — the row is created
+    `pending` and a trainer profile reads only `approved` rows. Identity is
+    withheld by default: the testimonial reads "Verified GymFlow Member"
+    unless the member has ticked `display_name_consent`, and even then it is
+    only ever a first name plus a last initial — the full name is not stored
+    for display and there is no column that would surface it.
+
+    `branch_id` is copied from the member at creation so branch isolation is
+    one predicate here too, the same as everywhere else in the schema.
+    """
+
+    __tablename__ = "trainer_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trainer_id: Mapped[int] = mapped_column(
+        ForeignKey("trainers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    # The completion that prompted the review. Exactly one is normally set;
+    # both nullable so a review can outlive a hard-deleted session, and so a
+    # future "leave a review" entry point that is not tied to one session
+    # still fits.
+    workout_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workout_sessions.id", ondelete="SET NULL"), index=True
+    )
+    pt_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pt_sessions.id", ondelete="SET NULL"), index=True
+    )
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[TrainerReviewStatus] = mapped_column(
+        trainer_review_status_enum,
+        default=TrainerReviewStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+    # Member consent to attach a first-name + last-initial label to the
+    # published testimonial. Off by default; the member can turn it back off
+    # at any time (§5), which re-anonymises an already-approved testimonial
+    # without un-publishing it.
+    display_name_consent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # The terms/policy version the member acknowledged when submitting.
+    policy_ack_version: Mapped[str | None] = mapped_column(String(32))
+    # Objectionable-content report (§6). Any user who can see the review can
+    # raise one; it surfaces the row at the top of the owner's queue.
+    reported: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    reported_reason: Mapped[str | None] = mapped_column(Text)
+    reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    member: Mapped[Member] = relationship()
+    trainer: Mapped[Trainer] = relationship()
+    moderations: Mapped[list[TrainerReviewModeration]] = relationship(
+        back_populates="review", cascade="all, delete-orphan", order_by="TrainerReviewModeration.id"
+    )
+
+    __table_args__ = (
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_trainer_review_rating_range"),
+        # One review per member per workout session, and per PT session. NULLs
+        # are distinct in Postgres and SQLite, so a member may hold several
+        # reviews that are not tied to any session.
+        UniqueConstraint(
+            "member_id", "workout_session_id", name="uq_trainer_review_member_workout"
+        ),
+        UniqueConstraint("member_id", "pt_session_id", name="uq_trainer_review_member_pt"),
+        Index("ix_trainer_reviews_trainer_status", "trainer_id", "status"),
+    )
+
+
+class TrainerReviewModeration(Base, TimestampMixin):
+    """One owner action on a `TrainerReview`: approve / reject / remove /
+    reinstate, a private internal note, or a logged content report.
+
+    A dedicated table rather than only the global `AuditLog` because the
+    owner's moderation screen renders this history inline — but every row
+    here is mirrored into `AuditLog` as well, so the tamper-evident trail is
+    not this table alone.
+    """
+
+    __tablename__ = "trainer_review_moderations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(
+        ForeignKey("trainer_reviews.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_role: Mapped[str | None] = mapped_column(String(32))
+    action: Mapped[ReviewModerationAction] = mapped_column(
+        review_moderation_action_enum, nullable=False
+    )
+    from_status: Mapped[TrainerReviewStatus | None] = mapped_column(trainer_review_status_enum)
+    to_status: Mapped[TrainerReviewStatus | None] = mapped_column(trainer_review_status_enum)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    review: Mapped[TrainerReview] = relationship(back_populates="moderations")
+
+
+class ProgressPhoto(Base, TimestampMixin, DemoMixin):
+    """A member's private progress photo.
+
+    The bytes never live in this database and never behind a public URL: the
+    row holds only an opaque `storage_key` into `app.services.photo_storage`,
+    and the image is served exclusively through an authenticated,
+    authorisation-checked endpoint. Default visibility is the member alone —
+    `trainer_visible` / `owner_visible` are explicit per-photo consent the
+    member grants, and even then the viewer still has to pass the normal
+    assigned-trainer / same-branch-management check.
+
+    Soft-deleted (`deleted_at`) so a retract is instant for the member while
+    the object purge and the row removal run as a follow-up; a soft-deleted
+    row is invisible to every read path.
+    """
+
+    __tablename__ = "progress_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False, index=True)
+    angle: Mapped[ProgressPhotoAngle] = mapped_column(progress_photo_angle_enum, nullable=False)
+    taken_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    storage_key: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    trainer_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    owner_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    member: Mapped[Member] = relationship()
+
+    __table_args__ = (
+        CheckConstraint("byte_size >= 0", name="ck_progress_photo_byte_size"),
+        Index("ix_progress_photos_member_angle_date", "member_id", "angle", "taken_on"),
+    )
+
+
+class ProgressPhotoShare(Base, TimestampMixin):
+    """A record that the member chose to share a progress image.
+
+    GymFlow never composes or stores the shared picture and never posts it
+    anywhere — the branded card is rendered on the device and handed to the
+    OS share sheet. This row exists so the member can see what they shared
+    and when, and so "which fields did they agree to include" is auditable.
+    `included_fields` is exactly the member's selection: anything absent was
+    withheld, and phone / email / member id / trainer notes / health data are
+    never keys here.
+    """
+
+    __tablename__ = "progress_photo_shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    photo_id: Mapped[int] = mapped_column(
+        ForeignKey("progress_photos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    compare_photo_id: Mapped[int | None] = mapped_column(
+        ForeignKey("progress_photos.id", ondelete="SET NULL"), index=True
+    )
+    template: Mapped[str] = mapped_column(String(32), default="slam_default", nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    included_fields: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+
+    photo: Mapped[ProgressPhoto] = relationship(foreign_keys=[photo_id])
+
+
 __all__ = [
     "Alert",
     "AlertSeverity",
@@ -1910,8 +2127,12 @@ __all__ = [
     "PersonType",
     "PreferredTime",
     "PreferredTrainingStyle",
+    "ProgressPhoto",
+    "ProgressPhotoAngle",
+    "ProgressPhotoShare",
     "Referral",
     "RefreshToken",
+    "ReviewModerationAction",
     "Role",
     "RoleKey",
     "RsvpResponse",
@@ -1921,6 +2142,9 @@ __all__ = [
     "Task",
     "Trainer",
     "TrainerAttendance",
+    "TrainerReview",
+    "TrainerReviewModeration",
+    "TrainerReviewStatus",
     "User",
     "WorkoutPlan",
     "WorkoutPlanItem",

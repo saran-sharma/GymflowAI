@@ -154,7 +154,7 @@ export default function MemberOnboardingScreen() {
   }
 
   return (
-    <Screen edges={['top', 'bottom']}>
+    <Screen edges={['top', 'bottom']} background="member" backgroundIntensity="subtle">
       <Body>
         <Stack gap="sm">
           <Text variant="title" style={styles.title}>

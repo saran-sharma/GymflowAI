@@ -29,6 +29,7 @@ import type {
   TrainerClientDetail,
 } from '../../../src/api/types';
 import { FitnessProfile } from '../../../src/components/fitness-profile';
+import { MemberProgressPhotos } from '../../../src/components/member-progress-photos';
 import {
   CompactBodyComposition,
   JourneyBar,
@@ -285,6 +286,8 @@ export default function OwnerMemberScreen() {
 
         {/* -------------------------------------------------- attendance */}
         <FitnessProfile intake={intake} />
+
+        <MemberProgressPhotos memberId={memberId} />
 
         <Section title="Attendance">
           <StatRow>

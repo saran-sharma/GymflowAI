@@ -1248,3 +1248,161 @@ export interface UpdateProgramExerciseInput {
   rest_seconds?: number;
   notes?: string | null;
 }
+
+/* ------------------------------------------ trainer feedback & testimonials */
+
+export type TrainerReviewStatus = 'pending' | 'approved' | 'rejected' | 'removed';
+export type ReviewModerationAction =
+  | 'approve'
+  | 'reject'
+  | 'remove'
+  | 'reinstate'
+  | 'note'
+  | 'report';
+
+export interface ReviewTrainerBrief {
+  id: number;
+  name: string;
+  designation: string | null;
+  branch_id: number;
+}
+
+export interface ReviewPrompt {
+  eligible: boolean;
+  already_reviewed: boolean;
+  trainer: ReviewTrainerBrief | null;
+  policy_version: string;
+  support_contact: string;
+}
+
+export interface ReviewCreateInput {
+  workout_session_id?: number | null;
+  pt_session_id?: number | null;
+  rating: number;
+  comment?: string | null;
+  display_name_consent?: boolean;
+  policy_ack: boolean;
+}
+
+export interface MemberReview {
+  id: number;
+  trainer: ReviewTrainerBrief;
+  rating: number;
+  comment: string | null;
+  status: TrainerReviewStatus;
+  display_name_consent: boolean;
+  can_retract: boolean;
+  reported: boolean;
+  created_at: string;
+  published_at: string | null;
+}
+
+export interface ReviewModerationEntry {
+  id: number;
+  action: ReviewModerationAction;
+  from_status: TrainerReviewStatus | null;
+  to_status: TrainerReviewStatus | null;
+  note: string | null;
+  actor_role: string | null;
+  created_at: string;
+}
+
+export interface ModerationReview {
+  id: number;
+  trainer: ReviewTrainerBrief;
+  author_label: string;
+  member_id: number;
+  branch_id: number;
+  rating: number;
+  comment: string | null;
+  status: TrainerReviewStatus;
+  reported: boolean;
+  reported_reason: string | null;
+  created_at: string;
+  published_at: string | null;
+  moderations: ReviewModerationEntry[];
+}
+
+export interface Testimonial {
+  id: number;
+  rating: number;
+  comment: string | null;
+  author_label: string;
+  published_at: string | null;
+}
+
+export interface RatingSummary {
+  trainer_id: number;
+  average_rating: number | null;
+  review_count: number;
+  pending_count: number;
+  approved_testimonial_count: number;
+  recent_average: number | null;
+  trend: number | null;
+}
+
+export interface TrainerSummaryRow {
+  trainer: ReviewTrainerBrief;
+  summary: RatingSummary;
+}
+
+export interface TrainerTestimonials {
+  trainer: ReviewTrainerBrief;
+  summary: RatingSummary;
+  testimonials: Testimonial[];
+}
+
+/* ------------------------------------------------------------ progress photos */
+
+export type ProgressPhotoAngle = 'front' | 'side' | 'back';
+
+export interface ProgressPhoto {
+  id: number;
+  member_id: number;
+  angle: ProgressPhotoAngle;
+  taken_on: string;
+  note: string | null;
+  width: number | null;
+  height: number | null;
+  content_type: string;
+  byte_size: number;
+  trainer_visible: boolean;
+  owner_visible: boolean;
+  image_url: string;
+  created_at: string;
+}
+
+export interface ProgressPhotoUploadInput {
+  uri: string;
+  angle: ProgressPhotoAngle;
+  taken_on: string;
+  note?: string | null;
+  mime_type?: string | null;
+  file_name?: string | null;
+}
+
+export interface ProgressPhotoUpdateInput {
+  note?: string | null;
+  note_set?: boolean;
+  trainer_visible?: boolean | null;
+  owner_visible?: boolean | null;
+}
+
+export interface ProgressShareInput {
+  photo_id: number;
+  compare_photo_id?: number | null;
+  caption?: string | null;
+  include_date?: boolean;
+  include_period?: boolean;
+  message?: string | null;
+}
+
+export interface ProgressSharePayload {
+  share_id: number;
+  template: string;
+  brand: { studio: string; product: string };
+  caption: string;
+  photo_url: string;
+  compare_photo_url: string | null;
+  included: { date?: string; period?: string; message?: string };
+}

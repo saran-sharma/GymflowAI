@@ -42,6 +42,7 @@ import type {
 } from '../../src/api/types';
 import { KindTag, TodayCard } from '../../src/components/member';
 import { CategoryBadge, WorkoutArtwork } from '../../src/components/programme';
+import { TrainerReviewPrompt } from '../../src/components/trainer-review-prompt';
 import {
   Badge,
   Banner,
@@ -163,12 +164,19 @@ export default function MemberWorkoutScreen() {
     }, []),
   );
 
+  // After a *supervised* workout is marked complete, offer the trainer-review
+  // prompt. The prompt itself asks the server whether there is anything to
+  // review and closes silently if not, so passing every finished session's id
+  // here is safe.
+  const [reviewFor, setReviewFor] = useState<number | null>(null);
+
   const run = useCallback(
-    async (action: (token: string) => Promise<unknown>) => {
+    async (action: (token: string) => Promise<unknown>, after?: () => void) => {
       setBusy(true);
       setError(null);
       try {
         await withToken(action);
+        after?.();
         refreshAll();
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : 'That did not save. Try again.');
@@ -205,9 +213,18 @@ export default function MemberWorkoutScreen() {
   // journey. It gets its own render entirely rather than reusing the
   // assessment/rest/journey-inactive branches below, which are the journey's
   // own PPL concerns and do not apply to a trainer-named program day.
+  const reviewPrompt = (
+    <TrainerReviewPrompt
+      visible={reviewFor != null}
+      workoutSessionId={reviewFor ?? undefined}
+      onClose={() => setReviewFor(null)}
+    />
+  );
+
   if (hasProgram) {
     return (
-      <ProgramWorkout
+      <>
+        <ProgramWorkout
         programState={programState.data!}
         session={session}
         busy={busy}
@@ -219,7 +236,11 @@ export default function MemberWorkoutScreen() {
             { text: 'Not yet', style: 'cancel' },
             {
               text: 'Finish',
-              onPress: () => void run((token) => api.completeWorkout(sessionId, token)),
+              onPress: () =>
+                void run(
+                  (token) => api.completeWorkout(sessionId, token),
+                  () => setReviewFor(sessionId),
+                ),
             },
           ])
         }
@@ -231,7 +252,9 @@ export default function MemberWorkoutScreen() {
         }
         refreshing={workout.refreshing}
         onRefresh={refreshAll}
-      />
+        />
+        {reviewPrompt}
+      </>
     );
   }
 
@@ -259,6 +282,7 @@ export default function MemberWorkoutScreen() {
   const done = session?.status === 'completed';
 
   return (
+    <>
     <Screen>
       <Body
         refreshControl={
@@ -399,7 +423,11 @@ export default function MemberWorkoutScreen() {
                       { text: 'Not yet', style: 'cancel' },
                       {
                         text: 'Finish',
-                        onPress: () => void run((token) => api.completeWorkout(session.id, token)),
+                        onPress: () =>
+                          void run(
+                            (token) => api.completeWorkout(session.id, token),
+                            () => setReviewFor(session.id),
+                          ),
                       },
                     ])
                   }
@@ -424,6 +452,8 @@ export default function MemberWorkoutScreen() {
         </Section>
       </Body>
     </Screen>
+    {reviewPrompt}
+    </>
   );
 }
 

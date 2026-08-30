@@ -172,7 +172,7 @@ export default function MemberHomeScreen() {
   if (home.error || !home.data) {
     const offline = home.error?.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen background="member">
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load your day'}
@@ -212,7 +212,7 @@ export default function MemberHomeScreen() {
   const outstanding = owed.reduce((total, row) => total + row.amount, 0);
 
   return (
-    <Screen>
+    <Screen background="member">
       <Body
         refreshControl={
           <RefreshControl

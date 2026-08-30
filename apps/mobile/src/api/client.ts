@@ -164,3 +164,71 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (!response.ok) throw toApiError(response.status, payload);
   return payload as T;
 }
+
+/**
+ * A multipart POST — the one shape `request` cannot carry, used only for a
+ * progress-photo upload. The `Content-Type` (with its boundary) is left to
+ * the platform's `FormData`; setting it by hand breaks the upload. Every
+ * other guarantee — base URL, timeout, offline normalisation, `ApiError` —
+ * is the same as `request`.
+ */
+export async function requestForm<T>(
+  path: string,
+  form: FormData,
+  options: { token?: string | null; timeoutMs?: number } = {},
+): Promise<T> {
+  const { token, timeoutMs = 30000 } = options;
+  const baseUrl = resolveBaseUrl();
+  if (!baseUrl) {
+    throw new ApiError(
+      0,
+      UNCONFIGURED_CODE,
+      'This build has no GymFlow server configured. It was built without EXPO_PUBLIC_API_URL.',
+    );
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${API_PREFIX}${path}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const aborted = (error as Error)?.name === 'AbortError';
+    throw new ApiError(
+      0,
+      OFFLINE_CODE,
+      aborted
+        ? 'The upload took too long. Check your connection and try again.'
+        : 'No connection to GymFlow. Nothing was uploaded.',
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let payload: unknown = null;
+  const text = await response.text();
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
+  if (!response.ok) throw toApiError(response.status, payload);
+  return payload as T;
+}
+
+/** Absolute URL for a path the API returned (e.g. a signed image URL). */
+export function apiUrl(path: string): string {
+  const baseUrl = resolveBaseUrl();
+  if (!baseUrl) return path;
+  return path.startsWith('http') ? path : `${baseUrl}${path}`;
+}

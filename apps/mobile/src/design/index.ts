@@ -26,6 +26,7 @@
  */
 
 export * from './tokens';
+export * from './screen-background';
 export * from './primitives';
 export * from './controls';
 export * from './cards';

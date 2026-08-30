@@ -12,9 +12,10 @@
  * no interpolated points between two real measurements.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -155,7 +156,7 @@ export default function MemberProgressScreen() {
   if (timeline.error) {
     const offline = timeline.error.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen background="member" backgroundIntensity="subtle">
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load your progress'}
@@ -171,7 +172,7 @@ export default function MemberProgressScreen() {
   const plan = journey.data;
 
   return (
-    <Screen>
+    <Screen background="member" backgroundIntensity="subtle">
       <Body
         refreshControl={
           <RefreshControl
@@ -241,6 +242,25 @@ export default function MemberProgressScreen() {
             <BodyCompositionSection history={bodyComposition.data} />
           </Section>
         ) : null}
+
+        <Section title="Progress photos">
+          <Pressable
+            onPress={() => router.push('/(member)/progress-photos' as never)}
+            testID="progress-photos-link"
+          >
+            <Card>
+              <Row gap="sm">
+                <Ionicons name="camera-outline" size={20} color={color.textSecondary} />
+                <Text variant="heading">Progress photos</Text>
+                <Spacer />
+                <Ionicons name="chevron-forward" size={18} color={color.textTertiary} />
+              </Row>
+              <Text variant="label" tone={color.textTertiary}>
+                Private front / side / back photos, a timeline, and a before-and-after you can share.
+              </Text>
+            </Card>
+          </Pressable>
+        </Section>
 
         {weekly.length ? (
           <Card>

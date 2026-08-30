@@ -29,6 +29,7 @@ import {
   Txt,
 } from '../../../src/components/ui';
 import { BackLink } from '../../../src/design';
+import { TrainerTestimonialsSection } from '../../../src/components/testimonials';
 import { useApi } from '../../../src/hooks/useApi';
 import { colors, incentiveMeta, spacing, statusMeta } from '../../../src/theme';
 import { dayLabel, duration, percent, timeOfDay } from '../../../src/utils/format';
@@ -209,6 +210,8 @@ export default function TrainerDetailScreen() {
             );
           })
         )}
+
+        <TrainerTestimonialsSection trainerId={trainerId} />
       </Body>
     </Screen>
   );

@@ -100,6 +100,13 @@ const ROWS: Record<Role, AccountRow[]> = {
       route: '/(member)/pt',
     },
     {
+      key: 'feedback',
+      label: 'My feedback',
+      detail: 'Ratings you left your trainers, and their status',
+      icon: 'star-outline',
+      route: '/(member)/reviews',
+    },
+    {
       key: 'alerts',
       label: 'Notifications',
       detail: 'Updates from your branch',

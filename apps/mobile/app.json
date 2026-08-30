@@ -8,7 +8,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#08080A",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "ai.gymflow.slam",
@@ -26,7 +28,10 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "permissions": ["android.permission.CAMERA", "android.permission.INTERNET"],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.INTERNET"
+      ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -43,8 +48,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "GymFlow uses the camera to scan the check-in QR code displayed at your SLAM branch.",
+          "cameraPermission": "GymFlow uses the camera to scan the check-in QR code at your SLAM branch and, if you choose, to take a progress photo.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GymFlow accesses your photos only to attach a progress photo you pick. Progress photos stay private to your account."
         }
       ],
       [
@@ -55,7 +66,8 @@
           "resizeMode": "contain",
           "imageWidth": 180
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

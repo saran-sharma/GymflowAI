@@ -27,6 +27,7 @@ import type {
 import { AccountAvatar } from '../../src/components/account';
 import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
+import { TrainerTestimonialsSection } from '../../src/components/testimonials';
 import {
   Badge,
   Banner,
@@ -324,6 +325,8 @@ export default function TrainerDeskScreen() {
             Your client list did not load. Pull to refresh.
           </Banner>
         ) : null}
+
+        <TrainerTestimonialsSection self />
 
         <Section title="Not available">
           <Stack gap="sm">

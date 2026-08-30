@@ -20,6 +20,11 @@ import {
 } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
+import {
+  ScreenBackground,
+  type ScreenBackgroundIntensity,
+  type ScreenBackgroundVariant,
+} from './screen-background';
 import { color, elevation, hairline, radii, space, text, type TextRole } from './tokens';
 import { useThemedStyles } from './useThemedStyles';
 
@@ -209,13 +214,30 @@ export function Card({ gap = 'sm', style, children, ...rest }: CardProps) {
 
 export interface ScreenProps extends ViewProps {
   edges?: Edge[];
+  /**
+   * Opt in to a low-opacity editorial photo behind the content. Off by
+   * default; only a handful of screens use it. See `ScreenBackground`.
+   */
+  background?: ScreenBackgroundVariant;
+  /** How present that photo is. Defaults per variant when omitted. */
+  backgroundIntensity?: ScreenBackgroundIntensity;
 }
 
 /** The root of every screen. Owns the background and the safe area. */
-export function Screen({ children, edges = ['top'], style, ...rest }: ScreenProps) {
+export function Screen({
+  children,
+  edges = ['top'],
+  style,
+  background,
+  backgroundIntensity,
+  ...rest
+}: ScreenProps) {
   const themed = useThemedStyles(() => ({ screen: { flex: 1, backgroundColor: color.background } }));
   return (
     <SafeAreaView style={themed.screen} edges={edges}>
+      {background ? (
+        <ScreenBackground variant={background} intensity={backgroundIntensity} />
+      ) : null}
       <View style={[styles.screenInner, style]} {...rest}>
         {children}
       </View>

@@ -50,6 +50,43 @@ jest.mock('expo-camera', () => ({
 }));
 
 /**
+ * Progress-photo picker / share. The library and camera are mocked to a
+ * deterministic asset so the gallery, upload and share flows can be driven in
+ * a test; a suite overrides `launchImageLibraryAsync` etc. to simulate a
+ * cancel or a denied permission.
+ */
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: { Images: 'Images' },
+  PermissionStatus: { GRANTED: 'granted', DENIED: 'denied', UNDETERMINED: 'undetermined' },
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  getMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
+  launchImageLibraryAsync: jest.fn(async () => ({
+    canceled: false,
+    assets: [
+      { uri: 'file:///tmp/picked.jpg', width: 1080, height: 1440, mimeType: 'image/jpeg', fileName: 'picked.jpg' },
+    ],
+  })),
+  launchCameraAsync: jest.fn(async () => ({
+    canceled: false,
+    assets: [
+      { uri: 'file:///tmp/shot.jpg', width: 1080, height: 1440, mimeType: 'image/jpeg', fileName: 'shot.jpg' },
+    ],
+  })),
+}));
+
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+
+jest.mock('react-native-view-shot', () => ({
+  __esModule: true,
+  default: 'ViewShot',
+  captureRef: jest.fn(async () => 'file:///tmp/share-card.jpg'),
+}));
+
+/**
  * Safe-area insets.
  *
  * `useSafeAreaInsets` throws outside a `SafeAreaProvider`, which every test

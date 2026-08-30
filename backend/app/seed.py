@@ -55,6 +55,7 @@ from app.db.models import (
     PTSession,
     Referral,
     RefreshToken,
+    ReviewModerationAction,
     Role,
     RoleKey,
     RsvpResponse,
@@ -65,6 +66,9 @@ from app.db.models import (
     Trainer,
     TrainerAttendance,
     TrainerAvailability,
+    TrainerReview,
+    TrainerReviewModeration,
+    TrainerReviewStatus,
     User,
     WorkoutPlan,
     WorkoutPlanItem,
@@ -1145,6 +1149,61 @@ def seed_payments(db: Session, members: list[Member], _rng: random.Random) -> in
     return created
 
 
+_REVIEW_COMMENTS = [
+    "Great session. He corrected my form and kept me motivated.",
+    "Really knows how to push you without it feeling like too much.",
+    "Patient with the basics and always has a plan for the day.",
+    None,
+    "Best trainer I've had — every session has a point to it.",
+]
+
+
+def seed_trainer_reviews(db: Session, members: list[Member], _rng: random.Random) -> int:
+    """A handful of trainer ratings so the owner's moderation queue and a
+    trainer profile are not empty in the demo: mostly approved, one pending,
+    identity withheld unless the row says otherwise. Every row is `is_demo`.
+    """
+    created = 0
+    with_trainer = [m for m in members if m.assigned_trainer_id is not None][:8]
+    for index, member in enumerate(with_trainer):
+        rng = random.Random(f"reviews:{member.id}")
+        if db.scalar(
+            select(TrainerReview).where(
+                TrainerReview.member_id == member.id, TrainerReview.is_demo.is_(True)
+            )
+        ):
+            continue
+        pending = index == 0  # leave the first one waiting for the owner
+        rating = rng.choice([4, 5, 5, 5, 3])
+        review = TrainerReview(
+            member_id=member.id,
+            trainer_id=member.assigned_trainer_id,
+            branch_id=member.branch_id,
+            rating=rating,
+            comment=rng.choice(_REVIEW_COMMENTS),
+            status=TrainerReviewStatus.PENDING if pending else TrainerReviewStatus.APPROVED,
+            display_name_consent=index % 3 == 1,
+            policy_ack_version="2026-08-30",
+            published_at=None if pending else now_utc() - timedelta(days=rng.choice([2, 9, 20])),
+            is_demo=True,
+        )
+        db.add(review)
+        db.flush()
+        if not pending:
+            db.add(
+                TrainerReviewModeration(
+                    review_id=review.id,
+                    actor_role="owner",
+                    action=ReviewModerationAction.APPROVE,
+                    from_status=TrainerReviewStatus.PENDING,
+                    to_status=TrainerReviewStatus.APPROVED,
+                )
+            )
+        created += 1
+    db.commit()
+    return created
+
+
 def seed(db: Session, *, reset: bool = False) -> None:
     if reset:
         wipe_demo(db)
@@ -1379,6 +1438,7 @@ def seed(db: Session, *, reset: bool = False) -> None:
     all_members = list(db.scalars(select(Member).where(Member.is_demo.is_(True))).all())
     seed_availability(db, all_trainers, rng)
     seed_payments(db, all_members, rng)
+    seed_trainer_reviews(db, all_members, rng)
     seed_members_currently_inside(db, branches, rng)
     settle_expired_memberships(db)
     recompute_incentives(db, branches)

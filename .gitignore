@@ -37,3 +37,9 @@ htmlcov
 
 # agent-device tooling state
 .agent-device/
+
+# private progress-photo store (LocalDiskPhotoStorage default location) —
+# member personal data, never committed
+/backend/var/
+/var/progress_photos/
+var/progress_photos/

@@ -50,6 +50,7 @@ export default function OwnerLayout() {
       <Tabs.Screen name="classes" options={{ href: null }} />
       <Tabs.Screen name="corrections" options={{ href: null }} />
       <Tabs.Screen name="opportunities" options={{ href: null }} />
+      <Tabs.Screen name="trainer-reviews" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>

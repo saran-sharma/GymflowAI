@@ -30,7 +30,7 @@ export default function RoleSelectScreen() {
     router.push({ pathname: '/(auth)/login', params: { expected } });
 
   return (
-    <Screen edges={['top', 'bottom']}>
+    <Screen edges={['top', 'bottom']} background="auth">
       <View style={styles.container}>
         <Stack gap="xl" style={styles.hero}>
           <Row gap="md" align="center">

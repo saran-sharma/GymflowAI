@@ -10,6 +10,7 @@ from app.api.v1 import (
     auth,
     branches,
     classes,
+    feedback,
     hardware,
     inbody,
     incentives,
@@ -18,6 +19,7 @@ from app.api.v1 import (
     members,
     payments,
     performance,
+    progress_photos,
     pt,
     reports,
     sessions,
@@ -53,5 +55,8 @@ api_router.include_router(hardware.router)
 api_router.include_router(inbody.router)
 api_router.include_router(workout_templates.router)
 api_router.include_router(yoactiv.router)
+# Member feedback + owner moderation, and private progress photos.
+api_router.include_router(feedback.router)
+api_router.include_router(progress_photos.router)
 
 __all__ = ["api_router"]

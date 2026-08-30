@@ -12,9 +12,13 @@ read-only as a **Fitness profile** section on the trainer client-detail and
 owner member-detail screens, **role-selection security** (the check runs in
 `AuthContext.signIn` and refuses a mismatch before any session exists; backend
 authoritative; 12-case matrix), the **workout-scheduling timezone fix** (one
-calendar rule for the weekly strip and Today's Workout, Pixel-verified), and
+calendar rule for the weekly strip and Today's Workout, Pixel-verified),
 three physical-Pixel UI fixes (trend-chart scaling, PT-paused banner
-clipping, avatar touch target). 617 backend + 501 mobile tests green.
+clipping, avatar touch target), a low-opacity **editorial background-image
+system** (`ScreenBackground`, six screens, light/dark, Pixel-verified), and
+**trainer feedback + owner moderation + testimonials + rating analytics**
+and **private progress photos + before/after + branded OS-share** (§0b).
+660 backend + 544 mobile tests green.
 
 ---
 
@@ -79,6 +83,45 @@ tests, kept out of the RC to protect stability.
 - **Fitness-profile actions** — turn the read-only section into an action
   surface: "Create / assign a program" and "Schedule PT" inline, prefilled
   from the intake.
+
+### 0b. Trainer feedback + progress photos — follow-ups
+
+Shipped this pass (`test_trainer_reviews.py` 23, `test_progress_photos.py`
+20, plus the mobile suites): post-workout rating → owner moderation
+(approve / reject / remove / private note, audit-logged, no self-approval)
+→ approved-only testimonials with withheld identity by default; rating
+analytics (avg / count / recent trend / approved count); private progress
+photos with per-request authorisation, consent-gated trainer/owner view,
+signed short-lived image URLs, before/after, and a user-initiated OS-share
+card that carries only the fields the member picks. Deferred:
+
+- **Cloud object storage for progress photos.** The `PhotoStorage` Protocol
+  ships with `LocalDiskPhotoStorage` (a private dir, `0o600` files, streamed
+  only through the authorised endpoint). An **`S3PhotoStorage` / GCS adapter**
+  drops in with no schema change and no caller change — it needs a bucket +
+  credentials + a decision on server-side encryption and lifecycle rules.
+  Until then LIVE cloud storage is **BLOCKED**; the local store is
+  production-usable on a single private, encrypted volume.
+- **Hard-purge job** for `progress_photos` rows soft-deleted longer than the
+  retention window (bytes are already purged on delete; this removes the
+  tombstone row and any orphaned `progress_photo_shares`).
+- **EXIF / metadata strip** on upload — currently the bytes are stored as
+  received. Strip GPS and camera metadata server-side before `put()`.
+- **Rate-limit** the upload and the image endpoints per member (they use the
+  default bucket today).
+- **AI sentiment / theme extraction on testimonials** — explicitly *not*
+  built. When it is: rule-based and explainable first (keyword themes,
+  rating distribution), a model only with enough labelled history, and never
+  a score shown without its "why". Never used to rank or hide a review
+  automatically — moderation stays a human decision.
+- **`react-native-view-shot` polish** — the share card renders in the sheet
+  and is captured from there. A dedicated off-screen render at a fixed export
+  size (e.g. 1080×1350) would give a crisper, consistently-framed image.
+- **Push a "new review to moderate" alert** to the owner via the existing
+  `Notification` / alert pipeline once WhatsApp/SMS lands (§4).
+- **PT-session review entry point** — the backend already accepts
+  `pt_session_id`; add the prompt after a PT session is completed in the
+  trainer/member PT screens (today only own-workout completion triggers it).
 
 ### 1. Payments / billing
 

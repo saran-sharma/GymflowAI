@@ -809,3 +809,132 @@ export const removeProgramExercise = (
     method: 'DELETE',
     token,
   });
+
+/* ------------------------------------------- trainer feedback & testimonials */
+
+import { requestForm } from './client';
+import type {
+  MemberReview,
+  ModerationReview,
+  ProgressPhoto,
+  ProgressPhotoUpdateInput,
+  ProgressPhotoUploadInput,
+  ProgressShareInput,
+  ProgressSharePayload,
+  RatingSummary,
+  ReviewCreateInput,
+  ReviewPrompt,
+  TrainerReviewStatus,
+  TrainerSummaryRow,
+  TrainerTestimonials,
+} from './types';
+
+export const reviewPrompt = (
+  params: { workoutSessionId?: number; ptSessionId?: number },
+  token: string,
+) => {
+  const q = new URLSearchParams();
+  if (params.workoutSessionId != null) q.set('workout_session_id', String(params.workoutSessionId));
+  if (params.ptSessionId != null) q.set('pt_session_id', String(params.ptSessionId));
+  return request<ReviewPrompt>(`/feedback/reviews/prompt?${q.toString()}`, { token });
+};
+
+export const submitTrainerReview = (payload: ReviewCreateInput, token: string) =>
+  request<MemberReview>('/feedback/reviews', { method: 'POST', body: payload, token });
+
+export const myTrainerReviews = (token: string) =>
+  request<MemberReview[]>('/feedback/reviews/me', { token });
+
+export const setReviewConsent = (reviewId: number, consent: boolean, token: string) =>
+  request<MemberReview>(`/feedback/reviews/${reviewId}/consent`, {
+    method: 'PATCH',
+    body: { display_name_consent: consent },
+    token,
+  });
+
+export const retractReview = (reviewId: number, token: string) =>
+  request<{ message: string }>(`/feedback/reviews/${reviewId}`, { method: 'DELETE', token });
+
+export const reportReview = (reviewId: number, reason: string | null, token: string) =>
+  request<{ message: string }>(`/feedback/reviews/${reviewId}/report`, {
+    method: 'POST',
+    body: { reason },
+    token,
+  });
+
+export const moderationQueue = (
+  token: string,
+  filter?: { status?: TrainerReviewStatus; reported?: boolean },
+) => {
+  const q = new URLSearchParams();
+  if (filter?.status) q.set('status', filter.status);
+  if (filter?.reported) q.set('reported', 'true');
+  const query = q.toString();
+  return request<ModerationReview[]>(`/feedback/reviews${query ? `?${query}` : ''}`, { token });
+};
+
+export const moderateReview = (
+  reviewId: number,
+  action: 'approve' | 'reject' | 'remove' | 'reinstate' | 'note',
+  token: string,
+  note?: string,
+) =>
+  request<ModerationReview>(`/feedback/reviews/${reviewId}/moderate`, {
+    method: 'POST',
+    body: { action, note },
+    token,
+  });
+
+export const ownerTrainerSummaries = (token: string) =>
+  request<TrainerSummaryRow[]>('/feedback/trainer-summaries', { token });
+
+export const myRatingSummary = (token: string) =>
+  request<RatingSummary>('/feedback/me/rating-summary', { token });
+
+export const trainerTestimonials = (trainerId: number, token: string) =>
+  request<TrainerTestimonials>(`/feedback/trainers/${trainerId}/testimonials`, { token });
+
+/* ------------------------------------------------------------ progress photos */
+
+export const myProgressPhotos = (token: string, angle?: 'front' | 'side' | 'back') =>
+  request<ProgressPhoto[]>(`/members/me/progress-photos${angle ? `?angle=${angle}` : ''}`, {
+    token,
+  });
+
+export const memberProgressPhotos = (memberId: number, token: string) =>
+  request<ProgressPhoto[]>(`/members/${memberId}/progress-photos`, { token });
+
+export const uploadProgressPhoto = (input: ProgressPhotoUploadInput, token: string) => {
+  const form = new FormData();
+  form.append('file', {
+    // React Native's FormData file shape.
+    uri: input.uri,
+    name: input.file_name ?? `progress-${input.angle}.jpg`,
+    type: input.mime_type ?? 'image/jpeg',
+  } as unknown as Blob);
+  form.append('angle', input.angle);
+  form.append('taken_on', input.taken_on);
+  if (input.note != null && input.note !== '') form.append('note', input.note);
+  return requestForm<ProgressPhoto>('/members/me/progress-photos', form, { token });
+};
+
+export const updateProgressPhoto = (
+  photoId: number,
+  payload: ProgressPhotoUpdateInput,
+  token: string,
+) =>
+  request<ProgressPhoto>(`/progress-photos/${photoId}`, {
+    method: 'PATCH',
+    body: payload,
+    token,
+  });
+
+export const deleteProgressPhoto = (photoId: number, token: string) =>
+  request<{ message: string }>(`/progress-photos/${photoId}`, { method: 'DELETE', token });
+
+export const shareProgress = (payload: ProgressShareInput, token: string) =>
+  request<ProgressSharePayload>('/members/me/progress-photos/share', {
+    method: 'POST',
+    body: payload,
+    token,
+  });

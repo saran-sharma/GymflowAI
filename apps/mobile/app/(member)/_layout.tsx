@@ -29,6 +29,11 @@ export default function MemberLayout() {
       />
       {/* Reached from the account avatar/sheet on Home, not a tab of its own. */}
       <Tabs.Screen name="profile" options={{ href: null }} />
+      {/* "My feedback" — reached from the account sheet. */}
+      <Tabs.Screen name="reviews" options={{ href: null }} />
+      {/* Progress Photos — reached from the Progress tab. */}
+      <Tabs.Screen name="progress-photos" options={{ href: null }} />
+      <Tabs.Screen name="progress-compare" options={{ href: null }} />
       {/* Reached from home and from the account sheet, not tabs of their own. */}
       <Tabs.Screen name="classes" options={{ href: null }} />
       <Tabs.Screen name="alerts" options={{ href: null }} />

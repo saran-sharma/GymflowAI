@@ -9,6 +9,7 @@ production if they have not been replaced.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -161,6 +162,32 @@ class Settings(BaseSettings):
     fingerprint_adms_dev_ip_mode_allowed_ip: str | None = None
     fingerprint_adms_dev_ip_mode_allowed_serial: str | None = None
 
+    # ------------------------------------------ feedback & progress media
+    # The version string a member acknowledges when submitting a trainer
+    # review — recorded on the row so "which terms did they agree to" is
+    # answerable later. Bump when the review/testimonial policy text changes.
+    feedback_policy_version: str = "2026-08-30"
+    # Shown in-app wherever user-generated content (a testimonial) can be
+    # reported, so there is always a way to reach a human.
+    support_contact: str = "support@slam.fitness"
+
+    # Where private progress-photo bytes are written. Never a directory that
+    # is statically served, never inside the repo. Relative paths resolve
+    # against the process CWD in development; production must set an absolute
+    # path on a private, ideally encrypted volume (checked in
+    # `assert_production_safe`). The DB stores only an opaque key into this
+    # store — see `app.services.photo_storage`.
+    progress_photo_dir: str = "var/progress_photos"
+    progress_photo_max_bytes: int = 10 * 1024 * 1024
+    progress_photo_allowed_types: str = "image/jpeg,image/png,image/webp,image/heic"
+    # How long a signed image URL stays valid. Short: the app fetches a fresh
+    # one from the list/detail response each time it renders the gallery.
+    progress_photo_url_ttl_seconds: int = 600
+
+    @property
+    def progress_photo_allowed_type_list(self) -> list[str]:
+        return [t.strip() for t in self.progress_photo_allowed_types.split(",") if t.strip()]
+
     # ---------------------------------------------------------------- demo
     seed_demo_data: bool = True
 
@@ -209,6 +236,11 @@ class Settings(BaseSettings):
         if self.inbody_ingest_enabled and not self.inbody_ingest_shared_secret:
             problems.append(
                 "INBODY_INGEST_SHARED_SECRET must be set when INBODY_INGEST_ENABLED is true"
+            )
+        if not Path(self.progress_photo_dir).is_absolute():
+            problems.append(
+                "PROGRESS_PHOTO_DIR must be an absolute path outside the app directory "
+                "in production/staging — progress photos are private personal data"
             )
         if self.yoactiv_enabled:
             if not self.yoactiv_api_key:

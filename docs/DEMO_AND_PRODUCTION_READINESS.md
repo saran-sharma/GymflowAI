@@ -19,8 +19,10 @@ claimed LIVE.**
 
 | Area | State |
 | --- | --- |
-| Backend API + domain | ✅ production-ready — **617 pytest** green, ruff + format clean |
-| Mobile apps (owner / trainer / member) | ✅ pilot-ready — **501 jest** green (incl. `TZ=Asia/Kolkata`), tsc clean |
+| Backend API + domain | ✅ production-ready — **660 pytest** green, ruff + format clean |
+| Mobile apps (owner / trainer / member) | ✅ pilot-ready — **544 jest** green (incl. `TZ=Asia/Kolkata`), tsc clean |
+| Trainer feedback + owner moderation + testimonials | ✅ member rates a supervised session → owner approves/rejects/removes (audit-logged, trainer can't self-approve) → approved-only on the profile; identity withheld unless the member consents; rating analytics (avg / count / recent trend); **Pixel-pending** |
+| Progress photos (private) + before/after + branded share | ✅ authenticated multipart upload → private on-disk store (never a public URL, never in git/logs) → per-request authorised, branch-isolated, signed-URL reads; consent-gated trainer/owner view; user-initiated share to the OS share sheet with only the fields the member picks; **Pixel-pending** |
 | Role selection + authorization | ✅ backend authoritative; the role check lives in `AuthContext.signIn` and throws `RoleMismatchError` **before** a session is created, so a wrong pick never lands anywhere; 12-case matrix tested |
 | First-time member onboarding | ✅ concise **3-step Fitness Journey** flow (`app/(onboarding)/fitness-journey.tsx`, its own route group so "Save and finish" lands on Home) + incomplete-intake gate; reuses `MemberIntake` unchanged; **Pixel-verified**; onboarding answers surface read-only as a **Fitness profile** section on the trainer client-detail and owner member-detail screens |
 | Member lifecycle (register → active → expired → reactivate, history retained) | ✅ implemented + tested; no hard-delete on expiry |
@@ -140,6 +142,10 @@ one member's intake row) — Aditya's is deliberately complete.
 | Program Days (trainer-defined, reorder, templates) | **LIVE** on **DEMO DATA** | mobile `programme`/`trainer-templates` tests; Pixel-verified |
 | Workout execution + set logging + PR detection + rest timer | **LIVE** on **DEMO DATA** | mobile `workout-logging` tests; **Pixel-verified** (real set logged, PR fired) |
 | Progress / exercise trend chart / session history | **LIVE** on **DEMO DATA** | `progress-exercise.test.tsx`, `bar-chart.test.tsx`; Pixel-verified (trend-chart scaling fix) |
+| Post-workout trainer feedback → owner moderation → approved-only testimonials | **LIVE (logic)** on **DEMO DATA** | `test_trainer_reviews.py` (23), `trainer-review-prompt`/`owner-trainer-reviews`/`testimonials`/`my-feedback` mobile tests; **Pixel-pending** |
+| Rating analytics (avg / count / recent trend / approved count) | **LIVE** on **DEMO DATA** | `test_trainer_reviews.py` summary cases; trainer sees own, owner sees all in scope |
+| Progress photos — private upload, per-request authorised reads, consent-gated trainer/owner view | **LIVE** | `test_progress_photos.py` (20), `progress-photos` mobile test; local-disk store, **cloud object store = NEXT_STEPS §0** |
+| Progress-photo before/after + branded OS-share-sheet | **LIVE** | `share-progress.test.tsx`, `progress-photos.test.tsx`; server records the share + strips non-selected fields, card composed on-device, no auto-post |
 | Yoactiv `/checkins` → `attendance_events` | **BUILT + UNIT-TESTED; not LIVE** | `test_yoactiv_connector.py`; live probe = `401 WWW-Authenticate: Basic` (§6) |
 | Yoactiv `/invoices` → membership lifecycle | **BUILT + UNIT-TESTED; not LIVE** | `test_yoactiv_connector.py` — create / expire+deactivate / renew+reactivate / idempotent |
 | Yoactiv enquiries / followups / PT trial | **CONTRACT VALIDATED end-to-end; mirror tables P1** | `sync.py::_apply_readonly_mirror` |
@@ -333,9 +339,15 @@ Android and backend are **not** blocked by this.
 | InBody ingest secret / X2008 secrets | server-only; `hmac.compare_digest`; comm key + ADMS secret env-only |
 | `ACCESS_CONTROL_ENABLED` default | ✅ `false` |
 | `FINGERPRINT_ADMS_DEBUG_CAPTURE` / `FINGERPRINT_ADMS_DEV_IP_MODE` | ✅ default `false`; refused at boot in production/staging by `assert_production_safe` |
-| Branch isolation / rate limiting / audit logging | ✅ enforced; 617 tests |
+| Branch isolation / rate limiting / audit logging | ✅ enforced; 660 tests |
 | HTTPS in production | ✅ `assert_production_safe` rejects a non-`https://` `YOACTIV_BASE_URL` when enabled |
 | Raw biometric templates stored | ✅ **never** — the receiver stores only an enrolled-id + an allow/deny decision. **GymFlow does not receive or store biometric templates.** |
+| Progress-photo bytes | ✅ never in the DB, never a public URL, never git/logs (`/backend/var/` gitignored); private dir `0o700`, files `0o600`; `assert_production_safe` refuses a relative `PROGRESS_PHOTO_DIR` in prod/staging |
+| Progress-photo reads | ✅ authorised per request — member always, assigned trainer only with `trainer_visible`, same-branch management only with `owner_visible`; missing vs forbidden are indistinguishable (404 both); every view audited (`progress_photo.viewed`) |
+| Progress-photo image URL | ✅ short-lived HMAC token (`PROGRESS_PHOTO_URL_TTL_SECONDS`, default 600s) minted per list/detail response; the image route still re-checks full authorisation |
+| Testimonial identity | ✅ withheld by default ("Verified GymFlow Member"); only ever first name + last initial with explicit member consent; full name never stored for display; consent revocable, which re-anonymises without un-publishing |
+| Trainer self-moderation | ✅ impossible — moderation routes are management-only, and the service refuses an action on a review of the acting user; every action double-logged (`trainer_review_moderations` + `AuditLog`) |
+| Share payload leakage | ✅ only member-selected keys survive (`date` / `period` / `message`); phone / email / member id / trainer notes / health data are never keys — `test_progress_photos.py::test_share_returns_only_the_selected_fields_and_nothing_identifying` |
 | `git diff --check` | ✅ clean |
 
 ---
@@ -344,11 +356,11 @@ Android and backend are **not** blocked by this.
 
 | Suite | Result |
 | --- | --- |
-| Backend `pytest` | **617 passed** |
+| Backend `pytest` | **660 passed** |
 | Backend `ruff check` | clean |
-| Backend `ruff format --check` | clean (136 files) |
+| Backend `ruff format --check` | clean (143 files) |
 | Backend `mypy app` | 10 pre-existing errors in 7 files (baseline, unchanged; not in the pre-commit gate). New code is mypy-clean. |
-| Mobile `jest` | **501 passed**, 41 suites — under the default TZ **and** `TZ=Asia/Kolkata` |
+| Mobile `jest` | **544 passed**, 48 suites — under the default TZ **and** `TZ=Asia/Kolkata` |
 | Mobile `tsc --noEmit` | clean (exit 0) |
 | `git diff --check` | clean |
 | Secret scan | clean |
@@ -369,7 +381,28 @@ limitation surfaced as a trainer note but "None" hidden, empty + all-skipped
 states, `wants_pt` yes/no); **scheduling** (Sun /
 Mon / Tue / week boundary / timezone boundary / rest phase / completed
 workout / custom-program calendar rotation / stable same-day; zone-safe
-`calendar.ts` in 4 timezones).
+`calendar.ts` in 4 timezones); **trainer feedback** (submit / rating 1–5
+validation / policy-ack required / comment optional / one-per-session /
+retract-only-while-pending / consent withheld-then-shown-then-revoked /
+pending invisible on profile / approve→published / reject→remove approved /
+every moderation action double-logged / trainer-can't-self-moderate even as
+a manager / reported sorts first / branch isolation on the queue / summaries
+management-only / trainer sees only own summary); **progress photos**
+(member-only upload / type + size + future-date rejected / bytes never in the
+DB / owning-member streams / needs auth / stranger 404 / assigned trainer
+needs consent / out-of-branch trainer never / owner consent-gated / signed
+token streams without a bearer, a bad one 401s, an expired one 401s /
+soft-delete purges bytes / not-my-photo can't delete / share returns only
+selected fields and nothing identifying / withholds unpicked fields /
+not-my-photo can't share / upload+view+delete audited); **mobile**
+(post-workout prompt eligibility + skip + rating-required + optional comment
++ thanks-copy + submit error; owner queue list + filters + approve/reject/
+remove + private note + reported flag + inline history; testimonials summary
++ quotes + self-resolves-id + empty; my-feedback status + consent toggle +
+withdraw-only-pending; gallery load + add→pick→upload + denied-permission
+message + visibility toggle + delete + compare-gate; share card + toggles +
+records-then-captures-then-OS-sheet + only-selected-fields + period label +
+single-photo has no period toggle).
 
 ---
 
@@ -509,6 +542,32 @@ YOACTIV_RATE_LIMIT_PER_MIN=60  YOACTIV_REQUEST_TIMEOUT_SECONDS=30
 `assert_production_safe` refuses to boot with `YOACTIV_ENABLED=true` unless
 `YOACTIV_API_KEY`, an `https://` `YOACTIV_BASE_URL`, and
 `YOACTIV_DEFAULT_BRANCH_ID` are set.
+
+```
+# Trainer feedback
+FEEDBACK_POLICY_VERSION=2026-08-30   # recorded on each review at submission
+SUPPORT_CONTACT=support@slam.fitness # shown wherever a testimonial can be reported
+
+# Progress photos (private personal data)
+PROGRESS_PHOTO_DIR=var/progress_photos    # dev default; prod/staging MUST be an
+                                         # absolute path on a private volume —
+                                         # assert_production_safe refuses a
+                                         # relative path there. Never a static dir.
+PROGRESS_PHOTO_MAX_BYTES=10485760
+PROGRESS_PHOTO_ALLOWED_TYPES=image/jpeg,image/png,image/webp,image/heic
+PROGRESS_PHOTO_URL_TTL_SECONDS=600        # signed image-URL lifetime
+```
+
+**Retention / deletion.** A member delete on a progress photo is a *soft*
+delete: `deleted_at` is stamped (so the retract is instant and the row
+survives for the audit trail) and the stored bytes are purged immediately.
+A soft-deleted photo is invisible to every read path. Owner "remove" on a
+testimonial keeps the row (`status=removed`) but hides it everywhere it once
+appeared. A member "withdraw" on a *pending* review hard-deletes the row
+(nothing was ever published). Turning name-consent off re-anonymises an
+approved testimonial without un-publishing. A hard-purge job for
+long-soft-deleted photo rows and the S3/GCS storage adapter are in
+`NEXT_STEPS.md` §0.
 
 ---
 

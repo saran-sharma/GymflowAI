@@ -19,6 +19,7 @@ import * as api from '../../../src/api/endpoints';
 import type { BodyCompositionHistory, StrengthTrend, TrainerClientDetail } from '../../../src/api/types';
 import { ConvertToPt, conversionState } from '../../../src/components/conversion';
 import { FitnessProfile } from '../../../src/components/fitness-profile';
+import { MemberProgressPhotos } from '../../../src/components/member-progress-photos';
 import {
   CompactBodyComposition,
   JourneyBar,
@@ -144,7 +145,7 @@ export default function TrainerClientDetailScreen() {
     const offline = detail.error?.code === OFFLINE_CODE;
     const forbidden = detail.error?.status === 403;
     return (
-      <Screen>
+      <Screen background="trainer">
         <ErrorState
           offline={offline}
           title={
@@ -183,7 +184,7 @@ export default function TrainerClientDetailScreen() {
     router.canGoBack() ? router.back() : router.replace('/(trainer)/clients' as never);
 
   return (
-    <Screen>
+    <Screen background="trainer">
       <Body
         refreshControl={
           <RefreshControl
@@ -312,6 +313,8 @@ export default function TrainerClientDetailScreen() {
         ) : null}
 
         <FitnessProfile intake={intake} />
+
+        <MemberProgressPhotos memberId={memberId} />
 
         <Section title="Recent PT sessions">
           {sessions.length === 0 ? (

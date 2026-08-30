@@ -174,8 +174,24 @@ def test_a_properly_configured_production_boots():
         cors_origins="https://api.gymflow.example",
         seed_demo_data=False,
         database_url="postgresql+psycopg://u:p@db.internal:5432/gymflow",
+        progress_photo_dir="/srv/gymflow/progress-photos",
     )
     safe.assert_production_safe()
+
+
+def test_production_refuses_a_relative_progress_photo_dir():
+    unsafe = Settings(
+        environment="production",
+        secret_key="x" * 48,
+        debug=False,
+        cors_origins="https://api.gymflow.example",
+        seed_demo_data=False,
+        database_url="postgresql+psycopg://u:p@db.internal:5432/gymflow",
+        progress_photo_dir="var/progress_photos",
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        unsafe.assert_production_safe()
+    assert "PROGRESS_PHOTO_DIR" in str(excinfo.value)
 
 
 def test_production_refuses_to_boot_with_fingerprint_debug_capture_on():
