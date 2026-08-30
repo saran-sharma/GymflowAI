@@ -22,11 +22,90 @@ and **private progress photos + before/after + branded OS-share** (§0b).
 
 ---
 
+## Real gym integration session — 2026-08-30
+
+On-site session with the physical hardware (X2008 fingerprint terminal, InBody
+120 + LookinBody120 on the gym Windows PC, gym LAN). Architecture unchanged:
+Yoactiv stays the operational source of truth (X2008 → Yoactiv ADMS →
+checkins → GymFlow); InBody flows InBody 120 → LookinBody120 auto-CSV →
+GymFlow InBody agent, never through Yoactiv.
+
+### InBody — LIVE (commit `637ea9c`, on the release branch)
+
+Proven end-to-end with a **real InBody 120 scan**, no simulated data:
+
+LookinBody120 auto-export (`C:\LookinBody120\EMR\CSV\...csv`) → InBody watch
+agent on the gym Windows PC (outbound HTTPS, TLS pinned to a dev cert,
+dedicated machine secret — not an Owner login) → `POST /api/v1/inbody/ingest`
+→ matched to the member by phone → `body_compositions` row (weight / PBF /
+SMM / BMI / VFL / BMR / TBW, `external_ref` = LookinBody Local ID) → surfaced
+as latest in Progress. Re-sending the same file → `duplicate`, no second row.
+
+Two real-world gaps the synthetic fixtures never hit, both fixed in `637ea9c`:
+
+1. **Compact timestamp.** The per-scan CSV writes `Test Date / Time` as a
+   run-together `YYYYMMDDHHMMSS` stamp (`20260830202104`), which no format in
+   `_DATETIME_FORMATS` accepted → every row was `INVALID`. Added
+   `%Y%m%d%H%M%S` + a date-only sibling.
+2. **Timezone.** That stamp is the machine's local wall-clock with no zone,
+   but was written straight into a `timestamptz` column → landed 5.5 h off
+   (IST read as UTC). `classify_rows` now anchors `measured_at` to the
+   matched member's **branch timezone** and converts to UTC before dedup and
+   write (`_measured_at_utc`). Verified: a 20:21:04 IST scan now stores as
+   `14:51:04Z` and reads back as 20:21:04 in branch time.
+
+Watch agent (`backend/app/scripts/inbody_watch_agent.py`) rewritten for a
+supervised rollout: `--only-new` default (first run baselines the ~1,400
+existing exports, uploads nothing), never moves/renames files in the EMR
+folder, state file kept next to the script, `--cacert`/`--insecure` for the
+LAN TLS story, `--once` for a single pass, `--resend PATH` to prove
+server-side dedup, `--process-existing` for a deliberate later back-fill.
+
+**Still to do for InBody:** real HTTPS story for production (the session used
+a self-signed cert on the LAN — a real cert or a tunnel is needed off-LAN);
+reviewed `--dry-run` of the historical bulk export; run the agent as a
+Task Scheduler service and watch an unattended multi-hour cycle.
+
+### Yoactiv — BLOCKED (external, vendor)
+
+`https://backstage.yoactiv.com/api/backdata.asmx` sits behind **IIS HTTP
+Basic auth** (`WWW-Authenticate: Basic`, `Microsoft-IIS/10.0`) that rejects
+every request *before* the `API_Key` header is evaluated — confirmed by
+direct `curl` on all paths including `?WSDL`. `YOACTIV_ENABLED=false`. This
+blocks the connector dry-runs (checkins, invoices), the real X2008 check-in
+test, the real invoice → membership test, and the Yoactiv half of the
+end-to-end.
+
+To unblock, Yoactiv must provide:
+
+- the **HTTP Basic username + password** for that host (distinct from the
+  portal login and from the `API_Key`);
+- confirmation the `API_Key` currently held is valid for the **SLAM
+  Nagalkeni** tenant;
+- confirmation `backstage.yoactiv.com/api/backdata.asmx` is the authoritative
+  Data API host (vs. the older `biometric.yoactiv.com` ADMS host);
+- whether the tenant **IP-allowlists** callers (our egress IP may need
+  adding).
+
+**Action:** the `API_Key` was exposed in a chat transcript during the
+session — rotate it with Yoactiv before go-live regardless of the above.
+
+### X2008 fingerprint — BUILT / UNVERIFIED
+
+ADMS receiver + Yoactiv checkins sync are built and unit-tested but were not
+exercised with a real fingerprint this session — the check needs the Yoactiv
+Data API (above). The X2008 was left pointed at `biometric.yoactiv.com` and
+not reconfigured.
+
+---
+
 ## Immediate post-demo priorities (week 1–2)
 
-1. **Unblock Yoactiv live access** — get the IIS Basic auth user/password,
-   the authoritative base URL, and confirmation the `API_Key` is current
-   (see readiness doc §6). This gates the whole operational sync.
+1. **Unblock Yoactiv live access** — the 2026-08-30 on-site session confirmed
+   `backstage.yoactiv.com` is behind an IIS HTTP Basic auth wall ahead of the
+   `API_Key` check (see the session section above for the exact asks). Nothing
+   Yoactiv-side can proceed until the vendor supplies the Basic credentials.
+   Rotate the exposed `API_Key` in the same conversation.
 2. **Wire the sync scheduler.** `run_endpoint_sync` and `run_reconciliation`
    exist but are invoked only by the admin API today. Add an APScheduler (or
    the platform's cron) job: each endpoint every ~15 min, reconciliation
@@ -36,9 +115,12 @@ and **private progress photos + before/after + branded OS-share** (§0b).
    `dry_run:false` for `checkins` then `invoices`.
 4. **X2008 real-device check** at the branch (readiness doc §7). Confirm a
    real scan reaches `/checkins` with correct member/timestamp/branch.
-5. **InBody CSV shape** — one real per-scan auto-export CSV from the gym PC to
-   finish `parse_csv_export`; then a `--dry-run` of the 1,345-row historical
-   export against the loaded member set.
+5. **InBody historical back-fill** — the per-scan CSV shape is confirmed and
+   `parse_csv_export` is live end-to-end (2026-08-30 session, commit
+   `637ea9c`). Remaining: a reviewed `--dry-run` of the ~1,345-row historical
+   bulk export against the loaded member set, then a supervised `--process-
+   existing` run; and a production TLS story for the ingest endpoint (the
+   session used a self-signed cert on the LAN).
 6. **Android build → Play Internal Testing.** Set `EXPO_PUBLIC_API_URL` on the
    `production` EAS profile, run `eas build --platform android --profile
    production`, distribute to internal testers.
