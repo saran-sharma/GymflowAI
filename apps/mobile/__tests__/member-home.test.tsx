@@ -724,7 +724,7 @@ describe('first-time fitness onboarding gate', () => {
   it('redirects to the questionnaire when the member has no saved intake', async () => {
     mockIntake.mockResolvedValue(null);
     await openHome();
-    expect(lastRedirect).toBe('/(member)/onboarding');
+    expect(lastRedirect).toBe('/(onboarding)/fitness-journey');
     // Home content is not rendered behind the redirect.
     expect(screen.queryByText('SLAM Nagalkeni')).toBeNull();
   });

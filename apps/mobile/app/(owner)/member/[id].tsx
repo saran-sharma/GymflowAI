@@ -28,6 +28,7 @@ import type {
   StrengthTrend,
   TrainerClientDetail,
 } from '../../../src/api/types';
+import { FitnessProfile } from '../../../src/components/fitness-profile';
 import {
   CompactBodyComposition,
   JourneyBar,
@@ -122,7 +123,7 @@ export default function OwnerMemberScreen() {
     );
   }
 
-  const { client, recent_workouts: workouts, activity } = detail.data;
+  const { client, recent_workouts: workouts, activity, intake } = detail.data;
   const journey = client.journey;
   const pack = client.pt_package;
   const isPt = Boolean(journey?.pt_converted && pack);
@@ -283,6 +284,8 @@ export default function OwnerMemberScreen() {
         </Section>
 
         {/* -------------------------------------------------- attendance */}
+        <FitnessProfile intake={intake} />
+
         <Section title="Attendance">
           <StatRow>
             <StatCard

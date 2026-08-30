@@ -28,6 +28,7 @@ from app.db.models import (
     WorkoutSplit,
 )
 from app.domain.records import RecordKind
+from app.schemas.common import MemberIntakeOut
 
 
 class ORMModel(BaseModel):
@@ -621,6 +622,10 @@ class TrainerClientDetailOut(BaseModel):
     recent_sessions: list[PTSessionOut] = []
     recent_workouts: list[WorkoutSessionOut] = []
     activity: list[ActivityEntryOut] = []
+    # What the member said about themselves at onboarding — goal, experience,
+    # training days/style, availability, PT interest, anything to know. Read
+    # only here; the trainer's own hands-on `Assessment` is a separate record.
+    intake: MemberIntakeOut | None = None
 
 
 class AvailabilitySlotOut(ORMModel):

@@ -316,10 +316,20 @@ capture_method_enum = Enum(CaptureMethod, name="capture_method")
 attendance_status_enum = Enum(AttendanceStatus, name="attendance_status")
 incentive_status_enum = Enum(IncentiveStatus, name="incentive_status")
 membership_status_enum = Enum(MembershipStatus, name="membership_status")
-experience_level_enum = Enum(ExperienceLevel, name="experience_level")
-preferred_training_style_enum = Enum(PreferredTrainingStyle, name="preferred_training_style")
-preferred_time_enum = Enum(PreferredTime, name="preferred_time")
-contact_preference_enum = Enum(ContactPreference, name="contact_preference")
+
+# The member-intake enum types were created (migration c3a7f0e4a591) with the
+# enum *values* as Postgres labels ("beginner"), not the member *names*
+# ("BEGINNER") that SQLAlchemy persists by default. `values_callable` makes
+# the ORM read and write those value labels, so
+# `MemberIntake(experience_level=ExperienceLevel.BEGINNER)` stores "beginner"
+# and round-trips — without it, every write to member_intakes is a DataError.
+_by_value = {"values_callable": lambda enum_cls: [member.value for member in enum_cls]}
+experience_level_enum = Enum(ExperienceLevel, name="experience_level", **_by_value)
+preferred_training_style_enum = Enum(
+    PreferredTrainingStyle, name="preferred_training_style", **_by_value
+)
+preferred_time_enum = Enum(PreferredTime, name="preferred_time", **_by_value)
+contact_preference_enum = Enum(ContactPreference, name="contact_preference", **_by_value)
 notification_status_enum = Enum(NotificationStatus, name="notification_status")
 journey_type_enum = Enum(JourneyType, name="journey_type")
 journey_status_enum = Enum(JourneyStatus, name="journey_status")

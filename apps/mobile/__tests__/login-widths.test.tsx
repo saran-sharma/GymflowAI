@@ -6,6 +6,8 @@ import LoginScreen from '../app/(auth)/login';
 jest.mock('../src/store/AuthContext', () => ({
   useAuth: () => ({ signIn: jest.fn(), signOut: jest.fn() }),
   homeRouteForRole: () => '/(member)',
+  RoleMismatchError: class RoleMismatchError extends Error {},
+  roleFamily: (r: string) => (r === 'trainer' ? 'trainer' : r === 'member' ? 'member' : 'owner'),
 }));
 jest.mock('../src/store/NetworkContext', () => ({
   useNetwork: () => ({ isOnline: true }),

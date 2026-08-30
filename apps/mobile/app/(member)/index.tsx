@@ -166,7 +166,7 @@ export default function MemberHomeScreen() {
   if (home.loading || intake.loading) return <SkeletonScreen cards={3} />;
 
   if (!intake.error && intake.data === null) {
-    return <Redirect href="/(member)/onboarding" />;
+    return <Redirect href="/(onboarding)/fitness-journey" />;
   }
 
   if (home.error || !home.data) {

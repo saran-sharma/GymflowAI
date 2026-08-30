@@ -22,6 +22,7 @@ from app.db.models import (
     EventType,
     Journey,
     Member,
+    MemberIntake,
     Membership,
     PersonType,
     PTPackage,
@@ -38,6 +39,7 @@ from app.db.session import get_db
 from app.domain import pt_eligibility
 from app.schemas.common import (
     AttendanceDayOut,
+    MemberIntakeOut,
     MessageOut,
     ShiftOut,
     ShiftUpsert,
@@ -467,6 +469,8 @@ def client_detail_out(
         .limit(10)
     ).all()
 
+    intake = db.scalar(select(MemberIntake).where(MemberIntake.member_id == member.id))
+
     return TrainerClientDetailOut(
         client=client_out(db, member, trainer),
         recent_sessions=[session_out(db, s) for s in sessions],
@@ -475,6 +479,7 @@ def client_detail_out(
             ActivityEntryOut(**entry.__dict__)
             for entry in activity_service.timeline(db, member, limit=30)
         ],
+        intake=MemberIntakeOut.model_validate(intake) if intake else None,
     )
 
 

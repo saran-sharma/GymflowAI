@@ -5,12 +5,16 @@ This is the ordered plan for what comes *after* the pilot release candidate.
 
 **Shipped in the pilot RC** (`release/gymflow-pilot-20260830`): the Yoactiv
 connector (built, off by default), InBody agent + ingest endpoint, member
-lifecycle + self-service intake, **first-time fitness onboarding** screen +
-gate, **role-selection security** (client refuses a role mismatch; backend
+lifecycle + self-service intake, the **3-step "Your Fitness Journey"
+onboarding** flow (its own `app/(onboarding)/` route group + incomplete-intake
+gate; "Save and finish" lands on Home; Pixel-verified) with the answers shown
+read-only as a **Fitness profile** section on the trainer client-detail and
+owner member-detail screens, **role-selection security** (the check runs in
+`AuthContext.signIn` and refuses a mismatch before any session exists; backend
 authoritative; 12-case matrix), the **workout-scheduling timezone fix** (one
 calendar rule for the weekly strip and Today's Workout, Pixel-verified), and
 three physical-Pixel UI fixes (trend-chart scaling, PT-paused banner
-clipping, avatar touch target). 616 backend + 494 mobile tests green.
+clipping, avatar touch target). 617 backend + 501 mobile tests green.
 
 ---
 
@@ -43,6 +47,38 @@ clipping, avatar touch target). 616 backend + 494 mobile tests green.
 ---
 
 ## Feature roadmap (priority order)
+
+### 0. Fitness onboarding depth + health readiness
+
+The RC onboarding is deliberately three steps and writes only the existing
+`MemberIntake` columns. The next iteration adds the questions that need a
+schema change, plus a separate readiness flow — each is migration + API + UI +
+tests, kept out of the RC to protect stability.
+
+- **Schema-expanding intake fields** (one Alembic migration, additive):
+  `secondary_goal` (text), `target_outcome_12w` (text — "a measurable thing
+  in 12 weeks"), `session_duration_minutes` (int), `adherence_barrier`
+  (enum: time / motivation / knowledge / injury / travel / other),
+  `trainer_note` (text — a dedicated member-authored note, distinct from the
+  `limitations` field the RC overloads). Surface them in the onboarding flow
+  as an optional "Tell your trainer more" step and in the Fitness profile
+  section.
+- **Separate health / readiness assessment** — a distinct, trainer-run flow
+  (not first-run onboarding, not member self-serve as medical advice): a
+  PAR-Q-style checklist, injury history, clearance state, a
+  `readiness_status` on the member. The RC onboarding already says in copy
+  "this is not a medical form"; this is where the real screening lives. Gate
+  "start a program" on a recorded readiness where the branch requires it.
+- **Owner aggregate insights** — once the fields above exist: goal mix,
+  barrier mix, PT-interest rate, average target session length per branch.
+  Read-only dashboard cards over `member_intakes`; no new write path.
+- **Intake → program recommendation** — map (goal, experience, days,
+  duration, style) to a suggested template + starting volume. Strictly a
+  *recommendation* surfaced to the trainer; the trainer still creates and
+  approves the program. Never auto-prescribes.
+- **Fitness-profile actions** — turn the read-only section into an action
+  surface: "Create / assign a program" and "Schedule PT" inline, prefilled
+  from the intake.
 
 ### 1. Payments / billing
 

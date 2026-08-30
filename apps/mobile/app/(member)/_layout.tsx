@@ -27,9 +27,6 @@ export default function MemberLayout() {
         name="progress"
         options={{ title: 'Progress', tabBarIcon: tabIcon('stats-chart') }}
       />
-      {/* First-run only: shown by a redirect from Home when the member has no
-          saved intake yet. Never a tab. */}
-      <Tabs.Screen name="onboarding" options={{ href: null }} />
       {/* Reached from the account avatar/sheet on Home, not a tab of its own. */}
       <Tabs.Screen name="profile" options={{ href: null }} />
       {/* Reached from home and from the account sheet, not tabs of their own. */}

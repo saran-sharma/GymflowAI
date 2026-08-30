@@ -21,10 +21,41 @@ import { ApiError } from '../api/client';
 import type { Role, User } from '../api/types';
 import { clearSession, loadSession, saveSession, saveTokens } from './session';
 
+/** The three role-select "families" — owner covers owner/manager/admin. */
+export type RoleFamily = 'member' | 'trainer' | 'owner';
+
+export function roleFamily(role: Role): RoleFamily {
+  if (role === 'trainer') return 'trainer';
+  if (role === 'member') return 'member';
+  return 'owner';
+}
+
+/**
+ * Thrown by `signIn` when the caller passed an `expected` role and the
+ * server's authoritative role does not match. The credentials were correct;
+ * the session is deliberately NOT created, so the login screen can show a
+ * plain "this is a member account" message without the auth gate whisking
+ * the user away.
+ */
+export class RoleMismatchError extends Error {
+  constructor(
+    readonly actual: RoleFamily,
+    readonly expected: RoleFamily,
+  ) {
+    super(`account role ${actual} does not match chosen role ${expected}`);
+    this.name = 'RoleMismatchError';
+  }
+}
+
 interface AuthState {
   user: User | null;
   status: 'loading' | 'authenticated' | 'anonymous';
-  signIn: (email: string, password: string) => Promise<User>;
+  /**
+   * `expected` is context from the role-select screen. It is NEVER sent to
+   * the server; if it is set and the authenticated role's family differs,
+   * this throws `RoleMismatchError` and no session is created.
+   */
+  signIn: (email: string, password: string, expected?: RoleFamily) => Promise<User>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   /** Run an API call with a valid access token, refreshing once if needed. */
@@ -114,15 +145,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [forgetSession, renew],
   );
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const result = await api.login(email, password, 'GymFlow Mobile');
-    accessToken.current = result.tokens.access_token;
-    refreshToken.current = result.tokens.refresh_token;
-    await saveSession(result.tokens, result.user);
-    setUser(result.user);
-    setStatus('authenticated');
-    return result.user;
-  }, []);
+  const signIn = useCallback(
+    async (email: string, password: string, expected?: RoleFamily) => {
+      const result = await api.login(email, password, 'GymFlow Mobile');
+      // Check the chosen role BEFORE any token or session state is written,
+      // so a mismatch leaves the app exactly as it was — anonymous, on the
+      // login screen — rather than half-signed-in.
+      if (expected && roleFamily(result.user.role) !== expected) {
+        throw new RoleMismatchError(roleFamily(result.user.role), expected);
+      }
+      accessToken.current = result.tokens.access_token;
+      refreshToken.current = result.tokens.refresh_token;
+      await saveSession(result.tokens, result.user);
+      setUser(result.user);
+      setStatus('authenticated');
+      return result.user;
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     const token = accessToken.current;

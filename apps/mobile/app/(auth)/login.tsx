@@ -33,8 +33,12 @@ import {
   space,
   useThemedStyles,
 } from '../../src/design';
-import type { Role } from '../../src/api/types';
-import { homeRouteForRole, useAuth } from '../../src/store/AuthContext';
+import {
+  homeRouteForRole,
+  RoleMismatchError,
+  useAuth,
+  type RoleFamily,
+} from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
 
 const GOLD = roleAccent.auth;
@@ -42,7 +46,6 @@ const RESET_UNAVAILABLE =
   'Password resets are arranged by your SLAM branch until self-service reset is available.';
 
 type Step = 'identify' | 'password' | 'reset' | 'success';
-type RoleFamily = 'member' | 'trainer' | 'owner';
 
 /** How the role-select screen labelled each option. */
 const CHOSEN_LABEL: Record<RoleFamily, string> = {
@@ -56,13 +59,6 @@ const ACTUAL_LABEL: Record<RoleFamily, string> = {
   trainer: 'a trainer',
   owner: 'an owner or manager',
 };
-
-/** The three role-select "families" — owner covers owner/manager/admin. */
-function roleFamily(role: Role): RoleFamily {
-  if (role === 'trainer') return 'trainer';
-  if (role === 'member') return 'member';
-  return 'owner';
-}
 
 function messageFor(error: ApiError | null, online: boolean): string | null {
   if (!error) return null;
@@ -94,7 +90,7 @@ function greeting(name: string): string {
 
 export default function LoginScreen() {
   const styles = useThemedStyles(buildStyles);
-  const { signIn, signOut } = useAuth();
+  const { signIn } = useAuth();
   const { isOnline } = useNetwork();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -153,31 +149,25 @@ export default function LoginScreen() {
     setError(null);
     setRoleMismatch(null);
     try {
-      // This existing endpoint authenticates both email and mobile identifiers,
-      // then returns the authoritative role used for navigation. `expected`
-      // is NOT part of this request — the server decides the role, full stop.
-      const user = await signIn(identifier, password);
-
-      // Additive guard, not an authorization decision: the backend already
-      // said what this account is. If the person told us on the previous
-      // screen that they were an owner and this is a member account, refuse
-      // to continue and say so plainly rather than silently dropping them
-      // into the member app.
-      const actual = roleFamily(user.role);
-      if (expectedFamily && expectedFamily !== actual) {
-        await signOut();
-        setRoleMismatch(
-          `You chose "${CHOSEN_LABEL[expectedFamily]}", but you signed in with ${ACTUAL_LABEL[actual]} ` +
-            `account. Choose the right option, or contact your SLAM branch if this looks wrong.`,
-        );
-        setStep('password');
-        return;
-      }
+      // Authenticates the identifier + password only. `expectedFamily` is
+      // passed so the check happens BEFORE a session is created — the server
+      // never sees it — and a mismatch throws `RoleMismatchError`, leaving
+      // the screen exactly where it is.
+      const user = await signIn(identifier, password, expectedFamily ?? undefined);
 
       setSuccessName(user.full_name.split(' ')[0] || 'there');
       setStep('success');
       setTimeout(() => router.replace(homeRouteForRole(user.role) as never), 500);
     } catch (caught) {
+      if (caught instanceof RoleMismatchError && expectedFamily) {
+        setRoleMismatch(
+          `You chose "${CHOSEN_LABEL[expectedFamily]}", but you signed in with ` +
+            `${ACTUAL_LABEL[caught.actual]} account. Choose the right option, or contact your ` +
+            `SLAM branch if this looks wrong.`,
+        );
+        setStep('password');
+        return;
+      }
       setError(
         caught instanceof ApiError
           ? caught

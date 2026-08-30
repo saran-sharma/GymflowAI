@@ -19,10 +19,10 @@ claimed LIVE.**
 
 | Area | State |
 | --- | --- |
-| Backend API + domain | ✅ production-ready — **616 pytest** green, ruff + format clean |
-| Mobile apps (owner / trainer / member) | ✅ pilot-ready — **494 jest** green (incl. `TZ=Asia/Kolkata`), tsc clean |
-| Role selection + authorization | ✅ backend authoritative; client refuses an obvious role mismatch; 12-case matrix tested |
-| First-time member onboarding | ✅ questionnaire screen + incomplete-intake gate; reuses `MemberIntake` unchanged; 15 tests |
+| Backend API + domain | ✅ production-ready — **617 pytest** green, ruff + format clean |
+| Mobile apps (owner / trainer / member) | ✅ pilot-ready — **501 jest** green (incl. `TZ=Asia/Kolkata`), tsc clean |
+| Role selection + authorization | ✅ backend authoritative; the role check lives in `AuthContext.signIn` and throws `RoleMismatchError` **before** a session is created, so a wrong pick never lands anywhere; 12-case matrix tested |
+| First-time member onboarding | ✅ concise **3-step Fitness Journey** flow (`app/(onboarding)/fitness-journey.tsx`, its own route group so "Save and finish" lands on Home) + incomplete-intake gate; reuses `MemberIntake` unchanged; **Pixel-verified**; onboarding answers surface read-only as a **Fitness profile** section on the trainer client-detail and owner member-detail screens |
 | Member lifecycle (register → active → expired → reactivate, history retained) | ✅ implemented + tested; no hard-delete on expiry |
 | Workout scheduling consistency | ✅ one calendar rule for weekly strip + Today's Workout; timezone bug fixed + **Pixel-verified**; 33 regression tests |
 | Progress / PR / trend | ✅ compact rows + real trend chart; 3 physical-Pixel UI defects fixed + verified |
@@ -132,8 +132,9 @@ one member's intake row) — Aditya's is deliberately complete.
 | --- | --- | --- |
 | Role selection → routing (context only, never authorization) | **LIVE** | `role-select-screen.test.tsx`, `login-screen.test.tsx` role matrix |
 | Role mismatch refused (picked Owner, signed in as Member → error, no owner app) | **LIVE** | `login-screen.test.tsx` — 12 role-family cases + "never sends the chosen role to the server" |
-| Auth / RBAC / branch isolation | **LIVE** | backend suite — server-authoritative, 616 pass |
-| First-time fitness onboarding (incomplete intake → questionnaire → Home; survives logout) | **LIVE** | `member-onboarding.test.tsx` (6), `member-home.test.tsx` gate (3), backend `test_member_lifecycle.py` intake (2) |
+| Auth / RBAC / branch isolation | **LIVE** | backend suite — server-authoritative, 617 pass |
+| First-time fitness onboarding (incomplete intake → 3-step Fitness Journey → **Home**; survives logout) | **LIVE** | `member-onboarding.test.tsx` (8), `member-home.test.tsx` gate (3), backend `test_member_lifecycle.py` intake (2); **physical Pixel 6a verified** — walked all 3 steps, "Save and finish" persisted the intake and navigated to Home |
+| Onboarding answers visible to trainer + owner (read-only "Fitness profile" section) | **LIVE** | `fitness-profile.test.tsx` (6), `test_trainer_desk.py` intake cases (2); **Pixel-verified** on both the trainer client-detail and owner member-detail screens |
 | Member register → active → expired → **history retained** → reactivate | **LIVE (logic)** on **DEMO DATA (trigger)** | `test_member_lifecycle.py`, `yoactiv/lifecycle.py`, `test_yoactiv_connector.py` |
 | Workout scheduling — weekly strip == Today's Workout, one calendar rule, branch tz | **LIVE** | `test_todays_workout_schedule.py` (10), `calendar-week.test.ts` (23); **physical Pixel 6a verified** (prior turn) |
 | Program Days (trainer-defined, reorder, templates) | **LIVE** on **DEMO DATA** | mobile `programme`/`trainer-templates` tests; Pixel-verified |
@@ -332,7 +333,7 @@ Android and backend are **not** blocked by this.
 | InBody ingest secret / X2008 secrets | server-only; `hmac.compare_digest`; comm key + ADMS secret env-only |
 | `ACCESS_CONTROL_ENABLED` default | ✅ `false` |
 | `FINGERPRINT_ADMS_DEBUG_CAPTURE` / `FINGERPRINT_ADMS_DEV_IP_MODE` | ✅ default `false`; refused at boot in production/staging by `assert_production_safe` |
-| Branch isolation / rate limiting / audit logging | ✅ enforced; 616 tests |
+| Branch isolation / rate limiting / audit logging | ✅ enforced; 617 tests |
 | HTTPS in production | ✅ `assert_production_safe` rejects a non-`https://` `YOACTIV_BASE_URL` when enabled |
 | Raw biometric templates stored | ✅ **never** — the receiver stores only an enrolled-id + an allow/deny decision. **GymFlow does not receive or store biometric templates.** |
 | `git diff --check` | ✅ clean |
@@ -343,11 +344,11 @@ Android and backend are **not** blocked by this.
 
 | Suite | Result |
 | --- | --- |
-| Backend `pytest` | **616 passed** |
+| Backend `pytest` | **617 passed** |
 | Backend `ruff check` | clean |
 | Backend `ruff format --check` | clean (136 files) |
 | Backend `mypy app` | 10 pre-existing errors in 7 files (baseline, unchanged; not in the pre-commit gate). New code is mypy-clean. |
-| Mobile `jest` | **494 passed**, 40 suites — under the default TZ **and** `TZ=Asia/Kolkata` |
+| Mobile `jest` | **501 passed**, 41 suites — under the default TZ **and** `TZ=Asia/Kolkata` |
 | Mobile `tsc --noEmit` | clean (exit 0) |
 | `git diff --check` | clean |
 | Secret scan | clean |
@@ -360,8 +361,12 @@ letter, dry-run, cursor advance, `stuck` after 3, invoice→membership
 lifecycle); InBody (real 87-column header, duplicate, invalid, header
 validation); **role security** (12 role-family cases, "never sends the role",
 "a member who picked Owner still cannot reach the owner app"); **onboarding**
-(gate on null intake, redirect, fail-open on fetch error, payload mapping,
-skip still saves, free-text goal, limitations note); **scheduling** (Sun /
+(3-step walk-through, back keeps answers, gate on null intake, redirect to the
+`(onboarding)` group, fail-open on fetch error, `MemberIntakeIn` payload
+mapping, skip still saves a row, free-text goal, limitations note, save-failed
+stays on step 3); **fitness profile** (each answered field labelled, real
+limitation surfaced as a trainer note but "None" hidden, empty + all-skipped
+states, `wants_pt` yes/no); **scheduling** (Sun /
 Mon / Tue / week boundary / timezone boundary / rest phase / completed
 workout / custom-program calendar rotation / stable same-day; zone-safe
 `calendar.ts` in 4 timezones).
@@ -389,7 +394,7 @@ API URL; iOS is blocked on Apple credentials). Config is release-ready — §10
 1. **Review the PR diff** and merge when satisfied (not auto-merged).
 2. **Deploy the RC backend** to staging: `alembic upgrade head` (adds
    `yoactiv_sync_cursors`, `yoactiv_dead_letters` — additive, reversible),
-   integration flags **off**, verify 616 tests + `assert_production_safe`.
+   integration flags **off**, verify 617 tests + `assert_production_safe`.
 3. **Yoactiv:** obtain the 5 unblock items (§6) → set env → `dry_run:true`
    sync for `checkins` and `invoices` → resolve the identity map →
    `dry_run:false`.
@@ -428,8 +433,22 @@ API URL; iOS is blocked on Apple credentials). Config is release-ready — §10
 - Rate-limit counters are in-process (fine for one API instance; a
   multi-instance deploy needs a shared store).
 - No mobile deactivate/reactivate affordance — owner-only API + backend.
-- Member onboarding folds "Hypertrophy" and "Mixed" into the closest
-  existing `PreferredTrainingStyle` value rather than growing the enum.
+- Member onboarding maps its style / experience / frequency / time answers
+  onto the existing `MemberIntake` columns and enums — no schema change. A
+  richer assessment (secondary goal, 12-week outcome, session duration,
+  adherence barrier, a dedicated trainer-note field, a separate health /
+  readiness flow) is specced in `NEXT_STEPS.md`, deferred to keep the RC
+  small.
+- The member-intake Postgres enums (`experience_level`,
+  `preferred_training_style`, `preferred_time`, `contact_preference`) were
+  created with the enum *values* as labels, not the member *names*
+  SQLAlchemy persists by default — `models.py` now sets `values_callable` on
+  those four so writes round-trip. No migration; `member_intakes` had zero
+  rows on any real DB.
+- The trainer/owner "Fitness profile" section is **read-only**. Creating or
+  assigning a program is still the existing "Edit programming" action on the
+  same screen; scheduling PT is unchanged. Wiring those as buttons inside the
+  section is a follow-up.
 - `mypy` has 10 pre-existing errors, not covered by the pre-commit gate.
 
 ---
@@ -451,7 +470,7 @@ API URL; iOS is blocked on Apple credentials). Config is release-ready — §10
 
 1. Merge the reviewed branch.
 2. `alembic upgrade head` on staging (adds two tables; reversible).
-3. Backend deploy with integration flags **off** — verify 616 tests + the
+3. Backend deploy with integration flags **off** — verify 617 tests + the
    app boots (`assert_production_safe` passes).
 4. Turn Yoactiv on only after §6 is unblocked.
 5. Wire a scheduler to call `run_endpoint_sync` per endpoint (~15 min) and
