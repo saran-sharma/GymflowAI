@@ -29,7 +29,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time
 from enum import Enum
 from pathlib import Path
@@ -39,7 +39,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import normalise_phone
-from app.db.models import BodyComposition, Member, User
+from app.core.clock import UTC, branch_tz
+from app.db.models import BodyComposition, Branch, Member, User
 
 # --------------------------------------------------------------- validation
 
@@ -259,6 +260,12 @@ _DATETIME_FORMATS = (
     "%Y.%m.%d %H:%M:%S",
     "%Y.%m.%d.",
     "%Y.%m.%d",
+    # SLAM's real per-scan CSV auto-export writes the combined "Test Date /
+    # Time" as a run-together stamp with no separators ("20260830202104"),
+    # matching the timestamp in the export's own filename. Date-only variant
+    # kept as a defensive sibling.
+    "%Y%m%d%H%M%S",
+    "%Y%m%d",
 )
 _TIME_FORMATS = ("%H:%M:%S", "%H:%M")
 
@@ -367,6 +374,22 @@ def _combine_date_and_time(date_value: Any, time_value: Any) -> datetime | None:
         return None
     t = _parse_time_component(time_value)
     return datetime.combine(d, t or time.min)
+
+
+def _measured_at_utc(measured_at: datetime, tz_name: str | None) -> datetime:
+    """Anchor an InBody "Test Date / Time" to an absolute instant.
+
+    LookinBody120 writes that column as the machine's own local wall-clock
+    time with no zone ("20260830202104" == 2026-08-30 20:21:04 *at the gym*).
+    The machine sits at a branch, so the naive value is read in the branch's
+    timezone and converted to UTC before it is stored or compared — otherwise
+    a 20:21 IST scan lands in ``body_compositions`` as 20:21 UTC and shows
+    5.5h wrong everywhere downstream. An already-aware value (a future export
+    that carries an offset) is just normalised to UTC.
+    """
+    if measured_at.tzinfo is not None:
+        return measured_at.astimezone(UTC)
+    return measured_at.replace(tzinfo=branch_tz(tz_name)).astimezone(UTC)
 
 
 def _clean_external_ref(value: Any) -> str | None:
@@ -631,6 +654,13 @@ def classify_rows(db: Session, rows: list[ParsedRow]) -> list[ClassifiedRow]:
             continue
 
         member = matches[0]
+        branch = db.get(Branch, member.branch_id)
+        reading = replace(
+            reading,
+            measured_at=_measured_at_utc(
+                reading.measured_at, branch.timezone if branch else None
+            ),
+        )
         if _is_duplicate(accepted[member.id], reading.external_ref, reading.measured_at):
             key = (
                 f"external_ref={reading.external_ref}"
