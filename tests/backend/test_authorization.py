@@ -192,6 +192,24 @@ def test_member_sees_only_their_own_branchs_trainers(client, world, auth):
     assert {t["branch_name"] for t in response.json()} == {"SLAM Nagalkeni"}
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/trainers/{tid}",
+        "/api/v1/trainers/{tid}/shifts",
+        "/api/v1/trainers/{tid}/attendance",
+    ],
+)
+def test_member_cannot_read_trainer_discipline_data(client, world, auth, path):
+    """A same-branch member must not reach a trainer's punctuality / absence /
+    incentive figures or roster — the parallel performance.py and sessions.py
+    endpoints already refuse members, and these carry the same class of data.
+    """
+    tid = world["trainer_ngk"].id
+    response = client.get(path.format(tid=tid), headers=auth(world["member_ngk_user"]))
+    assert response.status_code == 403
+
+
 # ------------------------------------------------------------ super admin
 
 

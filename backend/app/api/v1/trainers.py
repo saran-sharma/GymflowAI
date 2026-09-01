@@ -142,6 +142,12 @@ def trainer_detail(
     user: User = Depends(get_current_user),
 ) -> TrainerDetailOut:
     trainer = load_trainer(db, trainer_id)
+    # A member must never see a trainer's discipline/incentive figures — the
+    # parallel views in performance.py and sessions.py already refuse them, and
+    # this endpoint carries the same class of data (punctuality %, late/absent
+    # counts, incentive standing).
+    if user.role.key == "member":
+        raise HTTPException(status_code=403, detail="Not permitted")
     if user.role.key == "trainer" and trainer.user_id != user.id:
         raise HTTPException(status_code=403, detail="You can only view your own record")
     assert_branch_access(user, trainer.branch_id)
@@ -194,6 +200,8 @@ def list_shifts(
     user: User = Depends(get_current_user),
 ) -> list[Shift]:
     trainer = load_trainer(db, trainer_id)
+    if user.role.key == "member":
+        raise HTTPException(status_code=403, detail="Not permitted")
     if user.role.key == "trainer" and trainer.user_id != user.id:
         raise HTTPException(status_code=403, detail="You can only view your own shifts")
     assert_branch_access(user, trainer.branch_id)
@@ -268,6 +276,8 @@ def trainer_attendance_history(
     user: User = Depends(get_current_user),
 ) -> list[TrainerAttendance]:
     trainer = load_trainer(db, trainer_id)
+    if user.role.key == "member":
+        raise HTTPException(status_code=403, detail="Not permitted")
     if user.role.key == "trainer" and trainer.user_id != user.id:
         raise HTTPException(status_code=403, detail="You can only view your own attendance")
     assert_branch_access(user, trainer.branch_id)
