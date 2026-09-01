@@ -209,6 +209,63 @@ def test_production_refuses_to_boot_with_fingerprint_debug_capture_on():
     assert "FINGERPRINT_ADMS_DEBUG_CAPTURE" in str(excinfo.value)
 
 
+def _prod_base(**over):
+    base = {
+        "environment": "production",
+        "secret_key": "k" * 48,
+        "debug": False,
+        "cors_origins": "https://api.gymflow.example",
+        "seed_demo_data": False,
+        "database_url": "postgresql+psycopg://u:p@db.internal:5432/gymflow",
+        "progress_photo_dir": "/srv/gymflow/photos",
+    }
+    base.update(over)
+    return Settings(**base)
+
+
+def test_production_refuses_a_short_inbody_ingest_secret():
+    unsafe = _prod_base(inbody_ingest_enabled=True, inbody_ingest_shared_secret="tooshort")
+    with pytest.raises(RuntimeError) as excinfo:
+        unsafe.assert_production_safe()
+    assert "INBODY_INGEST_SHARED_SECRET" in str(excinfo.value)
+
+
+def test_production_refuses_a_short_fingerprint_adms_secret():
+    unsafe = _prod_base(access_control_enabled=True, fingerprint_adms_shared_secret="short")
+    with pytest.raises(RuntimeError) as excinfo:
+        unsafe.assert_production_safe()
+    assert "FINGERPRINT_ADMS_SHARED_SECRET" in str(excinfo.value)
+
+
+def test_production_refuses_an_integration_secret_that_reuses_secret_key():
+    unsafe = _prod_base(inbody_ingest_enabled=True, inbody_ingest_shared_secret="k" * 48)
+    with pytest.raises(RuntimeError) as excinfo:
+        unsafe.assert_production_safe()
+    assert "must not reuse SECRET_KEY" in str(excinfo.value)
+
+
+def test_production_refuses_two_identical_integration_secrets():
+    shared = "z" * 40
+    unsafe = _prod_base(
+        inbody_ingest_enabled=True,
+        inbody_ingest_shared_secret=shared,
+        access_control_enabled=True,
+        fingerprint_adms_shared_secret=shared,
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        unsafe.assert_production_safe()
+    assert "must differ" in str(excinfo.value)
+
+
+def test_production_accepts_strong_distinct_integration_secrets():
+    _prod_base(
+        inbody_ingest_enabled=True,
+        inbody_ingest_shared_secret="i" * 40,
+        access_control_enabled=True,
+        fingerprint_adms_shared_secret="f" * 40,
+    ).assert_production_safe()
+
+
 def test_business_rules_are_configurable_not_hardcoded(client, world, auth, db):
     from app.services import settings_service
 

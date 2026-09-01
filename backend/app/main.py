@@ -53,6 +53,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("Database schema out of date — %s", state.detail)
     except Exception:  # pragma: no cover - never block startup on a report
         logger.debug("Could not determine the database schema state", exc_info=True)
+
+    try:
+        from app.core.rate_limit import using_in_process_store
+
+        if settings.is_production and settings.rate_limit_enabled and using_in_process_store():
+            logger.warning(
+                "Rate limiting is using the in-process store. Correct for a single "
+                "API instance; a multi-instance deployment needs a shared store or "
+                "the effective limits are multiplied by the instance count "
+                "(see docs/DEPLOYMENT.md)."
+            )
+    except Exception:  # pragma: no cover
+        logger.debug("Could not report the rate-limit store state", exc_info=True)
     yield
 
 

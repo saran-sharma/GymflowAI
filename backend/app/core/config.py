@@ -55,6 +55,12 @@ class Settings(BaseSettings):
 
     # ---------------------------------------------------------- rate limits
     rate_limit_enabled: bool = True
+    # Comma-separated IPs of load balancers / reverse proxies whose
+    # ``X-Forwarded-For`` header may be trusted for client identity. Empty (the
+    # default, and the Codespaces case) means the header is ignored and the
+    # real socket peer is used — a client cannot then spoof its rate-limit
+    # bucket. Set this to your edge's egress IP(s) in production.
+    rate_limit_trusted_proxies: str = ""
     rate_limit_login: str = "10/minute"
     rate_limit_checkin: str = "20/minute"
     rate_limit_default: str = "240/minute"
@@ -222,9 +228,39 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS must list explicit origins")
         if self.seed_demo_data:
             problems.append("SEED_DEMO_DATA must be false")
-        if self.access_control_enabled and not self.fingerprint_adms_shared_secret:
+
+        # Integration shared secrets authenticate an unauthenticated push (the
+        # gym PC agent, the X2008 terminal) purely by their value in a URL, so
+        # they get the same >= 32-char floor as SECRET_KEY and must be a
+        # *distinct* value from it and from each other.
+        def _weak(name: str, value: str | None, needed: bool) -> None:
+            if not needed:
+                return
+            if not value:
+                problems.append(f"{name} must be set when its integration is enabled")
+            elif len(value) < 32:
+                problems.append(f"{name} must be a random value of >= 32 chars")
+            elif value == self.secret_key:
+                problems.append(f"{name} must not reuse SECRET_KEY")
+
+        _weak(
+            "FINGERPRINT_ADMS_SHARED_SECRET",
+            self.fingerprint_adms_shared_secret,
+            self.access_control_enabled,
+        )
+        _weak(
+            "INBODY_INGEST_SHARED_SECRET",
+            self.inbody_ingest_shared_secret,
+            self.inbody_ingest_enabled,
+        )
+        if (
+            self.access_control_enabled
+            and self.inbody_ingest_enabled
+            and self.fingerprint_adms_shared_secret
+            and self.fingerprint_adms_shared_secret == self.inbody_ingest_shared_secret
+        ):
             problems.append(
-                "FINGERPRINT_ADMS_SHARED_SECRET must be set when ACCESS_CONTROL_ENABLED is true"
+                "FINGERPRINT_ADMS_SHARED_SECRET and INBODY_INGEST_SHARED_SECRET must differ"
             )
         if self.fingerprint_adms_debug_capture:
             problems.append(
@@ -235,10 +271,6 @@ class Settings(BaseSettings):
             problems.append(
                 "FINGERPRINT_ADMS_DEV_IP_MODE must be false in production/staging — it is a "
                 "development-only fallback receiver for the real-device test"
-            )
-        if self.inbody_ingest_enabled and not self.inbody_ingest_shared_secret:
-            problems.append(
-                "INBODY_INGEST_SHARED_SECRET must be set when INBODY_INGEST_ENABLED is true"
             )
         if not Path(self.progress_photo_dir).is_absolute():
             problems.append(
