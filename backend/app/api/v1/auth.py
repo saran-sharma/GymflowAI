@@ -63,8 +63,14 @@ def find_user_by_identifier(db: Session, identifier: str) -> User | None:
     phone = normalise_phone(identifier)
     if len(phone) < 10:
         return None
-    # Phone numbers are stored as typed, so the normalisation happens in
-    # Python over the candidates rather than as a LIKE the index cannot use.
+    # Fast, unambiguous path: an account whose Login ID *is* this mobile number
+    # carries it in normalised form under a unique index.
+    exact = db.scalar(select(User).options(*options).where(User.login_phone == phone))
+    if exact is not None:
+        return exact
+    # Legacy accounts predate `login_phone`. Phone numbers are stored as typed,
+    # so the normalisation happens in Python over the candidates rather than as
+    # a LIKE the index cannot use.
     for candidate in db.scalars(
         select(User).options(*options).where(User.phone.isnot(None), User.is_active.is_(True))
     ).all():

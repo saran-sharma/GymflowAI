@@ -172,6 +172,94 @@ read live rather than a manual export.
   currently discarded after validation. If SLAM wants them retained, that's a
   schema decision for a human, not something this pipeline should invent.
 
+### `--create-missing-members` — DEFERRED (not in the RC), no membership
+
+The default import path never creates an account. `--create-missing-members`
+is an **opt-in, not-for-the-RC** helper (see `docs/NEXT_STEPS.md`): for every
+**UNMATCHED** row (a real 10-digit mobile number that no active member has) it
+creates a GymFlow member *record* only —
+
+- a `User` whose **Login ID is that mobile number** (`users.login_phone`, the
+  normalised 10 digits under a unique index — `find_user_by_identifier` resolves
+  a phone login without a scan; `users.email` is a deterministic non-deliverable
+  placeholder `<phone>@no-email.gymflow.app` only because the column is
+  `NOT NULL UNIQUE`), `is_demo` false;
+- a `Member` (`is_active` true, so the scan attaches on re-classify);
+- **no `Membership`.** Yoactiv is the system of record for commercial
+  membership; a phone number in an InBody export is not evidence of one.
+  Membership-gated features stay closed for the account until Yoactiv sync or a
+  human sets one.
+
+Guards, all enforced:
+
+- `--branch-id` is required (the export has no branch).
+- `INBODY_BOOTSTRAP_PASSWORD` must be set in the environment — the temporary
+  password the records start on. **No default.** `--import` refuses without it.
+  Every created account has `users.must_change_password = true` (a soft flag —
+  login still works — surfaced on `UserOut`; a hard gate needs the
+  password-reset flow that does not exist yet).
+- A mobile number under two different names (`shared_phone`), or one an
+  existing GymFlow account already uses (`phone_in_use`), is never
+  auto-created — it is listed for a human, like AMBIGUOUS/UNMATCHED. MATCHED /
+  DUPLICATE / INVALID rows are untouched.
+
+Migration `c8f2a1d0b7e3` adds `users.login_phone` and
+`users.must_change_password` (both additive; every existing account gets
+`NULL` / `false`). `tests/backend/test_inbody_bootstrap.py` pins the behaviour,
+including that the default path creates nothing.
+
+### Production deployment — hands-off, no terminal
+
+`app/scripts/inbody_watch_agent.py` is the **validation** tool (`--dry-run`,
+`--resend`, `--once` against ad-hoc arguments). Production does not ask gym
+staff to run a terminal command per scan: `app/scripts/inbody_agent.py` is the
+unattended runner, installed on the gym Windows PC by
+`deploy/windows/inbody-agent/Install-InBodyAgent.ps1` as a Scheduled Task
+(**At startup**, principal **SYSTEM** / `RunLevel Highest` /
+`LogonType ServiceAccount` → runs with no window whether or not anyone is
+logged in, `RestartCount 999` / `RestartInterval 1m` → auto-restart on crash).
+A true Windows Service was rejected: running Python as one needs NSSM/pywin32
+packaging on the gym PC, which the Task Scheduler settings above make
+unnecessary.
+
+Runtime behaviour (all pinned by `tests/backend/test_inbody_agent.py`):
+
+- **Config is an INI file**, never the command line — `folder`, `api_url`
+  (https), `branch_id`, and the secret via `secret_file` (ACL-locked) or the
+  `INBODY_INGEST_SHARED_SECRET` env var. There is no default secret.
+- **Baseline on first run** (explicit `baselined` flag in the state file, not
+  "state is empty") → existing exports are recorded as seen, never uploaded.
+- **Stability gate**: three consecutive equal, non-zero size reads before a
+  file is touched — a half-written CSV is never sent.
+- **Exactly once**: a per-file ledger (`state.json`, kept in the agent's work
+  dir, *never* the watched folder) keyed on `name:size:mtime`. Changed bytes
+  are reprocessed; unchanged are not.
+- **Transient vs permanent**: network / timeout / 5xx / 429 → retried every
+  cycle indefinitely, never quarantined. A `400` (unparseable file) → the file
+  is left in place (the LookinBody EMR store is never modified), recorded
+  `quarantined` so it is never retried, and a redacted note is written to
+  `work_dir/quarantine/`. `401/403/404` → surfaced as `last_error`, not
+  quarantined, retried once the config is fixed.
+- **Outbound HTTPS only**, no listening port, dedicated machine credential in
+  the URL path (never a user login).
+- **Logs** rotate in `work_dir/logs/`; filenames appear only as `file-<hash>`
+  (LookinBody names exports after the member's phone), and the secret is
+  scrubbed from every record by a logging filter.
+- **Heartbeat**: every `heartbeat_seconds` the agent POSTs counts + timestamps
+  (no filename, no phone, no secret) to
+  `POST /api/v1/inbody/agent/heartbeat/{secret}`. It lands in one `settings`
+  row per branch (`inbody_agent_heartbeat`) — **no schema change**.
+  `GET /api/v1/inbody/agent/status` (owner / branch manager; a manager sees
+  only their branch) returns per branch: `connected` (heartbeat within
+  `INBODY_AGENT_OFFLINE_AFTER_SECONDS`, default 900), `last_successful_scan_at`,
+  `pending_files`, `quarantined_files`, `failed_files`, `processed_total`,
+  `last_error`, `agent_version`.
+
+The A–J on-site acceptance runbook is in
+`deploy/windows/inbody-agent/README.md`. Still open: the same real TLS story
+as every other off-LAN path, and running that runbook once against the gym's
+own X2008/LookinBody hardware.
+
 **What's still manual, and still ACTION REQUIRED:**
 
 1. **Header shape now verified** (2026-08-30): the real bulk export

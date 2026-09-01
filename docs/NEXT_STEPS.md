@@ -117,10 +117,57 @@ not reconfigured.
    real scan reaches `/checkins` with correct member/timestamp/branch.
 5. **InBody historical back-fill** — the per-scan CSV shape is confirmed and
    `parse_csv_export` is live end-to-end (2026-08-30 session, commit
-   `637ea9c`). Remaining: a reviewed `--dry-run` of the ~1,345-row historical
-   bulk export against the loaded member set, then a supervised `--process-
-   existing` run; and a production TLS story for the ingest endpoint (the
-   session used a self-signed cert on the LAN).
+   `637ea9c`). Remaining: a reviewed `--dry-run` of the historical export
+   against the loaded member set, then a supervised `--process-existing` run;
+   and a production TLS story for the ingest endpoint (the session used a
+   self-signed cert on the LAN).
+
+   - **Production agent is built (`app/scripts/inbody_agent.py` +
+     `deploy/windows/inbody-agent/`).** Unattended Scheduled Task on the gym
+     PC — At startup, SYSTEM / no window / auto-restart on crash — INI config,
+     baseline-then-only-new, stability gate, exactly-once state ledger,
+     transient-retry vs `400`-quarantine (file left in place), outbound HTTPS
+     only, PII-free rotating logs, and a per-branch heartbeat →
+     `GET /api/v1/inbody/agent/status` (stored in `settings`, no schema
+     change). `inbody_watch_agent.py` stays as the validation tool.
+     `tests/backend/test_inbody_agent.py` (36) + `test_inbody_agent_endpoint.py`
+     (11) cover the A–I logic; **still to do at the gym:** run the A–J on-site
+     acceptance in `deploy/windows/inbody-agent/README.md` against real
+     LookinBody hardware, and the real off-LAN TLS cert.
+
+   - **Real unmasked LookinBody120 export required for any member matching or
+     bootstrap; de-identified exports cannot be used.** The
+     `InBodyExcelData_2026-08-20_*.xlsx` currently on hand is de-identified —
+     names are masked (`Nit**sh`), `ID` is 8 digits + `**`, `Mobile Number` is
+     `-` for ~half the rows and masked for the rest. 1,345 scan rows but only
+     ~812 distinct identities, **zero** usable 10-digit phone numbers. The
+     pipeline correctly classifies **all 1,345 rows INVALID** ("no usable
+     10-digit phone number") — 0 MATCHED, 0 written, 0 bootstrap plans — and
+     `tests/backend/test_inbody_bootstrap.py::test_deidentified_export_is_all_
+     invalid_never_guessed` locks that in. Nothing (`--dry-run` included) runs
+     against real member data until an **unmasked per-scan CSV straight from
+     LookinBody120 on the gym PC** is available. First step with that file:
+     inspect headers → confirm the stable member identifier → validate
+     Test Date/Time and Weight/PBF/SMM/BMI/VFL/BMR/TBW → `--dry-run` only →
+     report MATCHED/AMBIGUOUS/UNMATCHED/INVALID counts for review. **Do not
+     import until that dry-run is reviewed.**
+
+   - **`--create-missing-members` is DEFERRED, not in the RC**, and stays
+     deferred until (a) a real unmasked export exists and (b) the identity
+     strategy and credential model are explicitly approved. The helper exists
+     (`import_inbody.py --create-missing-members`, off by default, refuses to
+     run without `INBODY_BOOTSTRAP_PASSWORD`) and creates only a `User` +
+     `Member` — **never a `Membership`**, since Yoactiv owns commercial
+     membership status. It must never be run against masked IDs or partial
+     phone numbers. Open questions before it is used: the temporary-credential
+     story (per-account random + a password-reset / OTP flow, not one shared
+     password), whether `must_change_password` becomes a hard gate, and
+     sign-off that turning InBody-export phone numbers into GymFlow member
+     records is wanted at all. The `users.login_phone` /
+     `users.must_change_password` columns (migration `c8f2a1d0b7e3`) are
+     additive and inert until the helper is run; hold the migration with the
+     helper unless the unambiguous phone-login path is wanted sooner on its
+     own.
 6. **Android build → Play Internal Testing.** Set `EXPO_PUBLIC_API_URL` on the
    `production` EAS profile, run `eas build --platform android --profile
    production`, distribute to internal testers.

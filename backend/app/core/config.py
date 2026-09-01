@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # token.
     inbody_ingest_enabled: bool = False
     inbody_ingest_shared_secret: str | None = None
+    # How long since the gym PC agent's last heartbeat before
+    # GET /api/v1/inbody/agent/status reports that branch's agent offline.
+    inbody_agent_offline_after_seconds: int = 900
     access_control_enabled: bool = False
     whatsapp_enabled: bool = False
     intelligence_enabled: bool = False

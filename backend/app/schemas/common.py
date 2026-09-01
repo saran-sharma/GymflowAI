@@ -79,6 +79,10 @@ class UserOut(ORMModel):
     branch_id: int | None = None
     branch: BranchBrief | None = None
     has_pin: bool = False
+    # True on an account still on the temporary password it was provisioned with
+    # (InBody bootstrap helper). The app should route the member to set a real
+    # password; login still works while it is true.
+    must_change_password: bool = False
 
     @classmethod
     def from_user(cls, user: Any) -> UserOut:
@@ -91,6 +95,7 @@ class UserOut(ORMModel):
             branch_id=user.branch_id,
             branch=BranchBrief.model_validate(user.branch) if user.branch else None,
             has_pin=bool(user.pin_hash),
+            must_change_password=bool(getattr(user, "must_change_password", False)),
         )
 
 

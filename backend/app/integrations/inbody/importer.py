@@ -825,8 +825,187 @@ def import_matched(db: Session, rows: list[ClassifiedRow]) -> ImportResult:
     return ImportResult(written=written, skipped=len(rows) - written)
 
 
+# -------------------------------------------- bootstrap accounts for UNMATCHED
+#
+# NOT part of the release candidate — a deferred, opt-in helper (see
+# docs/NEXT_STEPS.md). The default import path never calls any of this:
+# `app/scripts/import_inbody.py` reaches it only under `--create-missing-
+# members`, which additionally refuses to run unless `INBODY_BOOTSTRAP_PASSWORD`
+# is set in the environment.
+#
+# What it does when explicitly asked: turn an UNMATCHED row (a real 10-digit
+# mobile number that no active member has) into a GymFlow **member record** —
+# a `User` (Login ID = the mobile number) plus a `Member` — so the scan can
+# attach. It creates **no Membership**: Yoactiv is the system of record for
+# commercial membership, and a phone number appearing in an InBody export is
+# not evidence of one. MATCHED / AMBIGUOUS / DUPLICATE / INVALID rows are
+# never touched.
+
+
+@dataclass(frozen=True)
+class BootstrapPlan:
+    """One member account that would be created, and the rows that asked for it."""
+
+    phone_normalized: str
+    full_name: str
+    row_numbers: list[int]
+
+
+@dataclass(frozen=True)
+class BootstrapConflict:
+    """An UNMATCHED phone number that must NOT be auto-created — a human decides."""
+
+    phone_normalized: str
+    reason: str  # "shared_phone" | "phone_in_use"
+    detail: str
+    row_numbers: list[int]
+
+
+@dataclass(frozen=True)
+class BootstrapResult:
+    created_member_ids: list[int]
+
+    @property
+    def created_count(self) -> int:
+        return len(self.created_member_ids)
+
+
+def _user_with_phone(db: Session, phone: str) -> User | None:
+    """Any existing user (member or not, active or not) on this mobile number."""
+    hit = db.scalar(select(User).where(User.login_phone == phone))
+    if hit is not None:
+        return hit
+    for candidate in db.scalars(select(User).where(User.phone.isnot(None))).all():
+        if normalise_phone(candidate.phone or "") == phone:
+            return candidate
+    return None
+
+
+def plan_bootstrap(
+    db: Session, classified: list[ClassifiedRow]
+) -> tuple[list[BootstrapPlan], list[BootstrapConflict]]:
+    """Decide which UNMATCHED mobile numbers can become a new member account.
+
+    Read-only. Eligible: an UNMATCHED phone with a single person's name behind
+    it and no existing GymFlow account. Not eligible, and returned as a
+    conflict for a human to resolve:
+
+    * ``shared_phone`` — the same mobile number appears under two or more
+      different names in the export. Phone is the Login ID, so these cannot
+      each get an account; the front desk must split them first.
+    * ``phone_in_use`` — a GymFlow account already carries this number (a
+      member who is inactive, or a staff account), so creating another would
+      make phone login ambiguous.
+    """
+    by_phone: dict[str, list[ClassifiedRow]] = defaultdict(list)
+    for row in classified:
+        if row.classification is Classification.UNMATCHED:
+            by_phone[normalise_phone(row.phone_raw)].append(row)
+
+    plans: list[BootstrapPlan] = []
+    conflicts: list[BootstrapConflict] = []
+    for phone, rows in sorted(by_phone.items()):
+        row_numbers = sorted(r.row_number for r in rows)
+        names = [(_clean_str(r.name) or "") for r in rows]
+        distinct = {n.strip().casefold() for n in names if n.strip()}
+
+        if len(phone) != 10:
+            # normalize_row already guarantees this for UNMATCHED, but never
+            # create an account off a number we cannot stand behind.
+            conflicts.append(
+                BootstrapConflict(phone, "phone_in_use", "no usable 10-digit number", row_numbers)
+            )
+            continue
+        if len(distinct) > 1:
+            conflicts.append(
+                BootstrapConflict(
+                    phone,
+                    "shared_phone",
+                    "different names on one mobile number: "
+                    + ", ".join(sorted({n.strip() for n in names if n.strip()})),
+                    row_numbers,
+                )
+            )
+            continue
+        if _user_with_phone(db, phone) is not None:
+            conflicts.append(
+                BootstrapConflict(
+                    phone,
+                    "phone_in_use",
+                    "an existing GymFlow account already uses this mobile number",
+                    row_numbers,
+                )
+            )
+            continue
+
+        full_name = next((n.strip() for n in names if n.strip()), "") or f"Member {phone[-4:]}"
+        plans.append(BootstrapPlan(phone, full_name, row_numbers))
+
+    return plans, conflicts
+
+
+def create_bootstrapped_members(
+    db: Session,
+    plans: list[BootstrapPlan],
+    *,
+    branch: Branch,
+    role_id: int,
+    password_hash: str,
+    joined_on: date,
+    email_domain: str = "no-email.gymflow.app",
+) -> BootstrapResult:
+    """Create a ``User`` + ``Member`` for each plan. **No ``Membership``.**
+
+    The mobile number is the Login ID: stored on ``login_phone`` (normalised)
+    and also as the plain ``phone``. ``email`` is a deterministic,
+    non-deliverable placeholder — the schema needs one, but the account is
+    reached by mobile number. ``must_change_password`` is always set: the
+    caller passes a hash of an operator-supplied temporary password and the
+    member must replace it. ``is_demo`` is left ``False`` — these are real
+    records.
+
+    No ``Membership`` row is written. Commercial membership status is
+    Yoactiv's to state; this pipeline only records that the person exists and
+    owns some InBody history. Membership-gated features stay closed for the
+    account until Yoactiv sync or a human sets a membership. Does not commit.
+    """
+    created: list[int] = []
+    for plan in plans:
+        user = User(
+            email=f"{plan.phone_normalized}@{email_domain}",
+            full_name=plan.full_name[:120],
+            phone=plan.phone_normalized,
+            login_phone=plan.phone_normalized,
+            password_hash=password_hash,
+            must_change_password=True,
+            role_id=role_id,
+            branch_id=branch.id,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+
+        member = Member(
+            user_id=user.id,
+            branch_id=branch.id,
+            member_code=f"{branch.code}-M{user.id:04d}",
+            joined_on=joined_on,
+            registered_on=joined_on,
+            is_active=True,
+        )
+        db.add(member)
+        db.flush()
+        created.append(member.id)
+
+    db.flush()
+    return BootstrapResult(created_member_ids=created)
+
+
 __all__ = [
     "REQUIRED_COLUMNS",
+    "BootstrapConflict",
+    "BootstrapPlan",
+    "BootstrapResult",
     "Classification",
     "ClassifiedRow",
     "DryRunRow",
@@ -836,11 +1015,13 @@ __all__ = [
     "ParsedRow",
     "build_dry_run_rows",
     "classify_rows",
+    "create_bootstrapped_members",
     "format_report",
     "header_signature",
     "import_matched",
     "normalize_row",
     "parse_csv_export",
     "parse_workbook",
+    "plan_bootstrap",
     "summarize",
 ]

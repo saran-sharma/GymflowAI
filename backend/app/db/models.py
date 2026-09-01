@@ -433,6 +433,18 @@ class User(Base, TimestampMixin, DemoMixin):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     push_token: Mapped[str | None] = mapped_column(String(255))
+    # An account created by the InBody bootstrap helper
+    # (``app/scripts/import_inbody.py --create-missing-members``) is provisioned
+    # with a temporary password; this flag says the member has not yet replaced
+    # it. A *soft* flag — login still succeeds — surfaced on ``UserOut`` so the
+    # app can require a real password.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # The member's mobile number in normalised 10-digit form, when that number
+    # is their login identifier ("Login ID"). Unique, with NULLs distinct, so
+    # phone login resolves to exactly one account without a scan — see
+    # ``app.api.v1.auth.find_user_by_identifier``. Legacy accounts leave this
+    # NULL and are still found by the slower normalised comparison.
+    login_phone: Mapped[str | None] = mapped_column(String(10), unique=True, index=True)
 
     role: Mapped[Role] = relationship(back_populates="users")
     branch: Mapped[Branch | None] = relationship()
