@@ -276,43 +276,73 @@ def _email(name: str, suffix: str) -> str:
 
 
 def wipe_demo(db: Session) -> None:
-    """Remove seeded rows only. Real records are never touched."""
+    """Remove seeded rows only. Real records are never touched.
+
+    Every delete below is scoped — by ``is_demo`` where the table carries it, or
+    by a demo parent's id where it does not. An unqualified ``delete(Model)``
+    here would take *real* members' journeys, workouts, PT packages, body
+    compositions, corrections, incentive results, classes, alerts and tasks
+    with it during the documented "stop seeding, run cleanup" cutover, when the
+    database holds both demo and real rows. Do not add an unscoped delete.
+    """
     demo_user_ids = list(db.scalars(select(User.id).where(User.is_demo.is_(True))).all())
+    demo_branch_ids = list(db.scalars(select(Branch.id).where(Branch.is_demo.is_(True))).all())
+    demo_trainer_ids = list(db.scalars(select(Trainer.id).where(Trainer.is_demo.is_(True))).all())
+    demo_member_ids = list(db.scalars(select(Member.id).where(Member.is_demo.is_(True))).all())
+    demo_journey_ids = list(db.scalars(select(Journey.id).where(Journey.is_demo.is_(True))).all())
+    demo_plan_ids = list(
+        db.scalars(select(WorkoutPlan.id).where(WorkoutPlan.is_demo.is_(True))).all()
+    )
+    demo_wsession_ids = list(
+        db.scalars(select(WorkoutSession.id).where(WorkoutSession.is_demo.is_(True))).all()
+    )
+    demo_class_ids = list(
+        db.scalars(select(GroupClass.id).where(GroupClass.is_demo.is_(True))).all()
+    )
+
     db.execute(delete(AuditLog).where(AuditLog.actor_user_id.in_(demo_user_ids)))
     db.execute(delete(Notification).where(Notification.user_id.in_(demo_user_ids)))
     db.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(demo_user_ids)))
     db.execute(delete(AttendanceEvent).where(AttendanceEvent.user_id.in_(demo_user_ids)))
-    db.execute(delete(IncentiveResult))
-    db.execute(delete(AttendanceCorrection))
-    db.execute(delete(TrainerAttendance))
+    db.execute(delete(IncentiveResult).where(IncentiveResult.trainer_id.in_(demo_trainer_ids)))
+    db.execute(
+        delete(AttendanceCorrection).where(AttendanceCorrection.trainer_id.in_(demo_trainer_ids))
+    )
+    db.execute(delete(TrainerAttendance).where(TrainerAttendance.trainer_id.in_(demo_trainer_ids)))
     db.execute(delete(TrainerAvailability).where(TrainerAvailability.is_demo.is_(True)))
     db.execute(delete(Payment).where(Payment.is_demo.is_(True)))
     db.execute(delete(Shift).where(Shift.is_demo.is_(True)))
     # Programme rows, deleted child-first so no foreign key is left dangling.
-    db.execute(delete(WorkoutSessionItem))
-    db.execute(delete(WorkoutSession))
-    db.execute(delete(WorkoutPlanItem))
-    db.execute(delete(WorkoutPlan))
-    db.execute(delete(CardioSession))
-    db.execute(delete(Assessment))
-    db.execute(delete(PTSession))
-    db.execute(delete(PTPackage))
-    db.execute(delete(JourneyDay))
-    db.execute(delete(Journey))
-    db.execute(delete(GroupClassAttendance))
-    db.execute(delete(GroupClassRsvp))
-    db.execute(delete(GroupClass))
-    db.execute(delete(BodyComposition))
-    db.execute(delete(Referral))
-    db.execute(delete(Alert))
-    db.execute(delete(Task))
+    db.execute(
+        delete(WorkoutSessionItem).where(WorkoutSessionItem.session_id.in_(demo_wsession_ids))
+    )
+    db.execute(delete(WorkoutSession).where(WorkoutSession.is_demo.is_(True)))
+    db.execute(delete(WorkoutPlanItem).where(WorkoutPlanItem.plan_id.in_(demo_plan_ids)))
+    db.execute(delete(WorkoutPlan).where(WorkoutPlan.is_demo.is_(True)))
+    db.execute(delete(CardioSession).where(CardioSession.is_demo.is_(True)))
+    db.execute(delete(Assessment).where(Assessment.is_demo.is_(True)))
+    db.execute(delete(PTSession).where(PTSession.is_demo.is_(True)))
+    db.execute(delete(PTPackage).where(PTPackage.is_demo.is_(True)))
+    db.execute(delete(JourneyDay).where(JourneyDay.journey_id.in_(demo_journey_ids)))
+    db.execute(delete(Journey).where(Journey.is_demo.is_(True)))
+    db.execute(
+        delete(GroupClassAttendance).where(GroupClassAttendance.class_id.in_(demo_class_ids))
+    )
+    db.execute(delete(GroupClassRsvp).where(GroupClassRsvp.class_id.in_(demo_class_ids)))
+    db.execute(delete(GroupClass).where(GroupClass.is_demo.is_(True)))
+    db.execute(delete(BodyComposition).where(BodyComposition.member_id.in_(demo_member_ids)))
+    db.execute(delete(Referral).where(Referral.is_demo.is_(True)))
+    db.execute(delete(Alert).where(Alert.branch_id.in_(demo_branch_ids)))
+    db.execute(delete(Task).where(Task.branch_id.in_(demo_branch_ids)))
     db.execute(delete(Membership).where(Membership.is_demo.is_(True)))
     db.execute(delete(Member).where(Member.is_demo.is_(True)))
     db.execute(delete(Trainer).where(Trainer.is_demo.is_(True)))
     db.execute(delete(IncentiveRule).where(IncentiveRule.is_demo.is_(True)))
     db.execute(delete(Campaign).where(Campaign.is_demo.is_(True)))
-    db.execute(delete(MarketingSource))
-    db.execute(delete(Setting))
+    db.execute(delete(MarketingSource).where(MarketingSource.is_demo.is_(True)))
+    # Settings on a demo branch only; chain-wide defaults (branch_id IS NULL)
+    # and any real branch's tuned rules are left alone.
+    db.execute(delete(Setting).where(Setting.branch_id.in_(demo_branch_ids)))
     db.execute(delete(User).where(User.is_demo.is_(True)))
     db.execute(delete(Branch).where(Branch.is_demo.is_(True)))
     db.commit()
