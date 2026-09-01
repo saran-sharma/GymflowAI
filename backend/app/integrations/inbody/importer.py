@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import normalise_phone
@@ -659,9 +660,7 @@ def classify_rows(db: Session, rows: list[ParsedRow]) -> list[ClassifiedRow]:
         branch = db.get(Branch, member.branch_id)
         reading = replace(
             reading,
-            measured_at=_measured_at_utc(
-                reading.measured_at, branch.timezone if branch else None
-            ),
+            measured_at=_measured_at_utc(reading.measured_at, branch.timezone if branch else None),
         )
         if _is_duplicate(accepted[member.id], reading.external_ref, reading.measured_at):
             key = (
@@ -746,9 +745,7 @@ def build_dry_run_rows(db: Session, classified: list[ClassifiedRow]) -> list[Dry
     codes: dict[int, str] = {}
     if member_ids:
         codes = dict(
-            db.execute(
-                select(Member.id, Member.member_code).where(Member.id.in_(member_ids))
-            ).all()
+            db.execute(select(Member.id, Member.member_code).where(Member.id.in_(member_ids))).all()
         )
     out: list[DryRunRow] = []
     for r in classified:
@@ -804,22 +801,34 @@ def import_matched(db: Session, rows: list[ClassifiedRow]) -> ImportResult:
             continue
         reading = row.reading
         assert reading is not None and row.member_id is not None and row.branch_id is not None
-        db.add(
-            BodyComposition(
-                member_id=row.member_id,
-                branch_id=row.branch_id,
-                measured_at=reading.measured_at,
-                source="inbody",
-                external_ref=reading.external_ref,
-                weight_kg=reading.weight_kg,
-                body_fat_pct=reading.body_fat_pct,
-                muscle_mass_kg=reading.muscle_mass_kg,
-                bmi=reading.bmi,
-                visceral_fat=reading.visceral_fat,
-                bmr_kcal=reading.bmr_kcal,
-                body_water_pct=reading.body_water_pct,
-            )
-        )
+        # ``classify_rows`` already filtered rows that duplicate a reading
+        # *visible to this transaction*. A second upload of the same scan racing
+        # this one (agent retry, double-send, a parallel bulk run) is not
+        # visible until it commits, so the unique index
+        # ``(member_id, external_ref)`` / ``(member_id, measured_at)`` is the
+        # real guard. Insert each row in its own SAVEPOINT and treat a
+        # constraint hit as the benign duplicate it is, rather than letting the
+        # IntegrityError abort the whole batch with a 500.
+        try:
+            with db.begin_nested():
+                db.add(
+                    BodyComposition(
+                        member_id=row.member_id,
+                        branch_id=row.branch_id,
+                        measured_at=reading.measured_at,
+                        source="inbody",
+                        external_ref=reading.external_ref,
+                        weight_kg=reading.weight_kg,
+                        body_fat_pct=reading.body_fat_pct,
+                        muscle_mass_kg=reading.muscle_mass_kg,
+                        bmi=reading.bmi,
+                        visceral_fat=reading.visceral_fat,
+                        bmr_kcal=reading.bmr_kcal,
+                        body_water_pct=reading.body_water_pct,
+                    )
+                )
+        except IntegrityError:
+            continue
         written += 1
     db.flush()
     return ImportResult(written=written, skipped=len(rows) - written)

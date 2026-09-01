@@ -204,8 +204,26 @@ def get_or_create_day(
         ),
         status=AttendanceStatus.SCHEDULED,
     )
-    db.add(record)
-    db.flush()
+    # Two check-in requests racing for the same trainer/day both miss the SELECT
+    # above and both try to INSERT; ``uq_trainer_attendance_day`` guarantees only
+    # one row is ever created, but the loser would surface the IntegrityError as
+    # a 500. Insert inside a SAVEPOINT so a conflict rolls back only this insert,
+    # then return the row the winner created — the check-in that follows is
+    # idempotent either way.
+    try:
+        with db.begin_nested():
+            db.add(record)
+            db.flush()
+    except IntegrityError:
+        existing = db.scalar(
+            select(TrainerAttendance).where(
+                TrainerAttendance.trainer_id == trainer.id,
+                TrainerAttendance.work_date == work_date,
+            )
+        )
+        if existing is None:  # pragma: no cover - the constraint just fired
+            raise
+        return existing
     return record
 
 

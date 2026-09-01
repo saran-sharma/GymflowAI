@@ -148,7 +148,12 @@ def settle_payment(
     user: User = Depends(require_management),
 ) -> PaymentOut:
     """Mark a pending charge as collected, recording who took it."""
-    payment = db.get(Payment, payment_id)
+    # Row-lock the payment for the life of this transaction so two staff
+    # settling the same charge at once serialise here: the second reader waits,
+    # then sees PAID and gets the 409 below rather than both committing a
+    # settlement (last-writer-wins on collected_by / method, duplicate audit
+    # rows).
+    payment = db.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found")
     assert_branch_access(user, payment.branch_id)
