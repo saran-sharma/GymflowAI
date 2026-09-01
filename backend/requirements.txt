@@ -6,10 +6,13 @@ alembic==1.14.0
 psycopg[binary]==3.2.3
 pydantic==2.10.4
 pydantic-settings==2.7.0
-python-jose[cryptography]==3.3.0
+# JWT: PyJWT (actively maintained). Replaced python-jose 2026-09-01 — that also
+# drops the ecdsa / rsa / pyasn1 / cryptography sub-tree jose pulled in, along
+# with their advisories (PYSEC-2026-1325 ecdsa Minerva, the pyasn1 set).
+PyJWT==2.13.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.20
+python-multipart==0.0.31
 email-validator==2.2.0
 # InBody export reading (backend/app/scripts/import_inbody.py). Pure-Python,
 # reads .xlsx directly — no pandas/numpy chain needed for this one job.

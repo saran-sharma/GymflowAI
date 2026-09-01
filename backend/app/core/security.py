@@ -8,7 +8,8 @@ import uuid
 from datetime import timedelta
 from typing import Any, Literal
 
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from passlib.context import CryptContext
 
 from app.core.clock import now_utc
@@ -92,8 +93,12 @@ def create_refresh_token(user_id: int) -> tuple[str, str]:
 
 def decode_token(token: str, expect: TokenType) -> dict[str, Any] | None:
     try:
+        # `algorithms` is pinned to a single symmetric algorithm, so a token
+        # presenting `alg: none` or an asymmetric algorithm is rejected here
+        # (PyJWT raises InvalidAlgorithmError) — the classic key-confusion path
+        # is closed. `exp` is verified automatically when present.
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    except PyJWTError:
         return None
     if payload.get("typ") != expect:
         return None
