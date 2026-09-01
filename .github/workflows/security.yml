@@ -1,0 +1,90 @@
+name: Security
+
+# Secret scanning and dependency auditing. Runs on every PR and push to main,
+# and weekly so a newly-disclosed advisory against an unchanged dependency is
+# still noticed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # full history so a secret added in any commit is seen
+
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          # The repo config (.gitleaks.toml) allowlists the intentional
+          # development placeholders (DEV_SECRET, .env.example, the CI throwaway
+          # key, test fixtures). A real credential anywhere else fails the job.
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  pip-audit:
+    name: Backend dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.1
+
+      # Baseline/delta: the advisories below are known and require a
+      # coordinated FastAPI/Starlette major upgrade (tracked in
+      # docs/SECURITY.md §12). They are ignored so a *new* advisory against any
+      # backend dependency still fails this job. Remove an ID here the moment
+      # the coordinated upgrade lands.
+      - name: Audit backend runtime dependencies
+        run: >-
+          pip-audit -r backend/requirements.txt --strict
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln PYSEC-2026-248
+          --ignore-vuln PYSEC-2026-249
+          --ignore-vuln PYSEC-2026-1941
+          --ignore-vuln PYSEC-2026-1942
+          --ignore-vuln PYSEC-2026-2280
+          --ignore-vuln PYSEC-2026-2281
+
+  npm-audit:
+    name: Mobile dependency audit (report only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: apps/mobile
+
+      # The known mobile findings are transitive through Expo build tooling
+      # (@expo/config-plugins et al.) and clear only on an SDK bump — see
+      # docs/SECURITY.md §12. This step reports them without blocking the
+      # merge; a `high`-severity finding in a *direct* dependency should be
+      # acted on promptly.
+      - name: npm audit (non-blocking report)
+        run: npm audit --omit=dev || true
+        working-directory: apps/mobile

@@ -1,0 +1,33 @@
+# gitleaks configuration for GymFlow AI.
+#
+# Extends the upstream default ruleset and allowlists the credentials that are
+# *intentionally* in the tree: development placeholders, the checked-in example
+# env file, the CI throwaway signing key, and the fictional demo/test fixtures.
+# A real credential anywhere else still fails the scan.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional development / demo / test placeholders"
+
+paths = [
+  '''backend/\.env\.example''',
+  '''\.gitleaks\.toml''',
+  '''docs/SECURITY\.md''',
+  '''docs/DEPLOYMENT\.md''',
+  '''tests/backend/.*''',
+  '''\.github/workflows/ci\.yml''',
+]
+
+regexes = [
+  # Development-only secret key: config.py refuses to boot production with it.
+  '''dev-only-insecure-secret-change-me''',
+  # CI throwaway signing key — used only to let the test app import.
+  '''ci-only-secret-not-used-for-anything-real-0123456789''',
+  # Fictional demo credentials, published in the README on purpose.
+  '''SlamDemo2026!''',
+  # Test-fixture password / PINs.
+  '''TestPassw0rd!''',
+  '''\b(135790|246813)\b''',
+]
