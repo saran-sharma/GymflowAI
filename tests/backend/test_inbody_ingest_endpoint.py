@@ -253,9 +253,7 @@ def test_dry_run_reports_duplicate_without_writing(client, db, world, enable_inb
     resp = _dry_run(client, branch.id, payload)
     assert resp.status_code == 200
     assert resp.json()["counts"]["duplicate"] == 1
-    rows = db.scalars(
-        select(BodyComposition).where(BodyComposition.member_id == member.id)
-    ).all()
+    rows = db.scalars(select(BodyComposition).where(BodyComposition.member_id == member.id)).all()
     assert len(rows) == 1
 
 

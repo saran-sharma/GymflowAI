@@ -105,9 +105,7 @@ def _save_state(state_file: Path, state: dict) -> None:
 
 def _export_files(folder: Path) -> list[Path]:
     return sorted(
-        p
-        for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
+        p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
     )
 
 
@@ -150,9 +148,7 @@ def _process_one(
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            result = _upload(
-                url=url, secret=secret, branch_id=branch_id, path=path, verify=verify
-            )
+            result = _upload(url=url, secret=secret, branch_id=branch_id, path=path, verify=verify)
             logger.info("uploaded %s -> %s", path.name, json.dumps(result, sort_keys=True))
             state[path.name] = {"key": _file_key_safe(path), "result": "uploaded"}
             _save_state(state_file, state)
@@ -492,7 +488,9 @@ def main() -> None:
     parser.add_argument(
         "--url", required=True, help="GymFlow API base URL (https), e.g. https://gymflow.example"
     )
-    parser.add_argument("--secret", required=True, help="INBODY_INGEST_SHARED_SECRET (machine credential)")
+    parser.add_argument(
+        "--secret", required=True, help="INBODY_INGEST_SHARED_SECRET (machine credential)"
+    )
     parser.add_argument("--branch-id", required=True, type=int)
     parser.add_argument("--poll-interval", type=int, default=30)
     parser.add_argument(
@@ -595,4 +593,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

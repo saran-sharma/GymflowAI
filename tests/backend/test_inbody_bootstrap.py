@@ -11,6 +11,10 @@ from __future__ import annotations
 
 from datetime import date
 
+from conftest import make_member, make_trainer
+from sqlalchemy import select
+from test_inbody_import import FULL_HEADER, _row, _write_workbook
+
 from app.core.security import hash_password
 from app.db.models import BodyComposition, Member, Membership, RoleKey, User
 from app.integrations.inbody.importer import (
@@ -22,9 +26,6 @@ from app.integrations.inbody.importer import (
     plan_bootstrap,
     summarize,
 )
-from conftest import make_member, make_trainer
-from sqlalchemy import select
-from test_inbody_import import FULL_HEADER, _row, _write_workbook
 
 TEMP_PW = "temp-Provisioned-9137"  # what an operator would put in INBODY_BOOTSTRAP_PASSWORD
 

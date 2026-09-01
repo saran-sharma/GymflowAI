@@ -11,10 +11,11 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
+
 from app.core.clock import now_utc
 from app.core.config import settings
 from app.db.models import Setting
-from sqlalchemy import select
 
 HB = "/api/v1/inbody/agent/heartbeat"
 STATUS = "/api/v1/inbody/agent/status"

@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 
 import pytest
+
 from app.scripts.inbody_agent import (
     AgentConfig,
     ConfigError,
