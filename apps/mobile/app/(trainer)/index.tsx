@@ -20,11 +20,13 @@ import * as api from '../../src/api/endpoints';
 import type {
   IncentiveResult,
   ScheduleItem,
+  TrainerAttentionQueue,
   TrainerClient,
   TrainerToday,
   WhoIsInside,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
+import { NeedsAttentionSection } from '../../src/components/intelligence';
 import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
 import { TrainerTestimonialsSection } from '../../src/components/testimonials';
@@ -89,6 +91,7 @@ export default function TrainerDeskScreen() {
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
   const incentive = useApi<IncentiveResult>((token) => api.myIncentive(token), []);
   const inside = useApi<WhoIsInside>((token) => api.whoIsInside(token), []);
+  const attention = useApi<TrainerAttentionQueue>((token) => api.trainerAttention(token), []);
 
   const refreshAll = useCallback(() => {
     void today.refresh();
@@ -96,7 +99,8 @@ export default function TrainerDeskScreen() {
     void clients.refresh();
     void incentive.refresh();
     void inside.refresh();
-  }, [today, schedule, clients, incentive, inside]);
+    void attention.refresh();
+  }, [today, schedule, clients, incentive, inside, attention]);
 
   if (today.loading && schedule.loading) return <SkeletonScreen cards={3} />;
 
@@ -189,6 +193,16 @@ export default function TrainerDeskScreen() {
             />
           ) : null}
         </Section>
+
+        {/* Which of this trainer's own clients to look at, and why — ranked,
+            each row a deep link into that member's detail. */}
+        <NeedsAttentionSection
+          data={attention.data}
+          loading={attention.loading}
+          error={attention.error}
+          onRetry={() => void attention.reload()}
+          onNavigate={(route) => router.push(route as never)}
+        />
 
         {/* What the desk can actually count. */}
         <Button

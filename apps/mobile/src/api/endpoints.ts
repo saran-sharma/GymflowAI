@@ -225,6 +225,8 @@ import type {
   RsvpAnswer,
   ScheduleItem,
   StrengthTrend,
+  TrainerAttentionQueue,
+  TrainerBrief,
   TrainerClient,
   TrainerClientDetail,
   TrainerPerformance,
@@ -283,6 +285,12 @@ export const myIntelligence = (token: string) =>
 
 export const memberIntelligence = (memberId: number, token: string) =>
   request<MemberIntelligence>(`/intelligence/members/${memberId}`, { token });
+
+export const memberTrainerBrief = (memberId: number, token: string) =>
+  request<TrainerBrief>(`/intelligence/members/${memberId}/brief`, { token });
+
+export const trainerAttention = (token: string) =>
+  request<TrainerAttentionQueue>('/intelligence/trainer/attention', { token });
 
 export const myJourney = (token: string) => request<Journey | null>('/journeys/me', { token });
 

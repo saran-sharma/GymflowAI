@@ -16,8 +16,14 @@ import { RefreshControl, StyleSheet } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
-import type { BodyCompositionHistory, StrengthTrend, TrainerClientDetail } from '../../../src/api/types';
+import type {
+  BodyCompositionHistory,
+  StrengthTrend,
+  TrainerBrief,
+  TrainerClientDetail,
+} from '../../../src/api/types';
 import { ConvertToPt, conversionState } from '../../../src/components/conversion';
+import { TrainerBriefSection } from '../../../src/components/intelligence';
 import { FitnessProfile } from '../../../src/components/fitness-profile';
 import { MemberProgressPhotos } from '../../../src/components/member-progress-photos';
 import {
@@ -101,6 +107,10 @@ export default function TrainerClientDetailScreen() {
   );
   const bodyComposition = useApi<BodyCompositionHistory>(
     (token) => api.memberBodyComposition(memberId, token),
+    [memberId],
+  );
+  const brief = useApi<TrainerBrief>(
+    (token) => api.memberTrainerBrief(memberId, token),
     [memberId],
   );
 
@@ -193,6 +203,7 @@ export default function TrainerClientDetailScreen() {
               void detail.refresh();
               void strength.refresh();
               void bodyComposition.refresh();
+              void brief.refresh();
             }}
             tintColor={color.brand}
           />
@@ -246,6 +257,14 @@ export default function TrainerClientDetailScreen() {
             completionPct={journey.completion_pct}
           />
         ) : null}
+
+        <TrainerBriefSection
+          data={brief.data}
+          loading={brief.loading}
+          error={brief.error}
+          onRetry={() => void brief.reload()}
+          onNavigate={(route) => router.push(route as never)}
+        />
 
         <ConvertToPt
           state={conversionState(journey, pack)}

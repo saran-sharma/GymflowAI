@@ -21,14 +21,18 @@ import { StyleSheet, View } from 'react-native';
 import type { ApiError } from '../api/client';
 import { OFFLINE_CODE } from '../api/client';
 import type {
+  AttentionItem,
   IntelligenceInsight,
   InsightSeverity,
   MemberIntelligence,
+  TrainerAttentionQueue,
+  TrainerBrief,
 } from '../api/types';
 import {
   Banner,
   Button,
   Card,
+  Divider,
   EmptyState,
   Eyebrow,
   LinkButton,
@@ -37,6 +41,7 @@ import {
   Skeleton,
   Spacer,
   Stack,
+  TappableCard,
   Text,
   alpha,
   color,
@@ -235,6 +240,222 @@ export function MemberIntelligenceSection({
   );
 }
 
+/* -------------------------------------------------------------- trainer brief */
+
+interface BriefProps {
+  data: TrainerBrief | null;
+  loading: boolean;
+  error: ApiError | null;
+  onRetry: () => void;
+  onNavigate: (route: string) => void;
+}
+
+/**
+ * The coach's read of one member: where they are today, what is going well,
+ * what to watch, and a short list of concrete things to work on. Same
+ * `InsightCard` as everywhere else; the framing is the only difference.
+ */
+export function TrainerBriefSection({ data, loading, error, onRetry, onNavigate }: BriefProps) {
+  const styles = useThemedStyles(buildStyles);
+
+  if (loading && !data) {
+    return (
+      <Section title="Trainer brief">
+        <Card gap="sm">
+          <Skeleton width="60%" height={14} />
+          <Skeleton width="90%" height={12} />
+        </Card>
+      </Section>
+    );
+  }
+
+  if (error && !data) {
+    const offline = error.code === OFFLINE_CODE;
+    return (
+      <Section title="Trainer brief">
+        <Banner tone="info" icon="cloud-offline-outline">
+          {offline
+            ? 'The brief will load when you are back online.'
+            : 'The brief is unavailable right now.'}
+        </Banner>
+        {!offline ? <LinkButton title="Try again" onPress={onRetry} /> : null}
+      </Section>
+    );
+  }
+
+  if (!data) return null;
+
+  return (
+    <Section title="Trainer brief">
+      {data.today.length > 0 ? (
+        <Card gap="xs">
+          <Eyebrow>Today</Eyebrow>
+          {data.today.map((fact) => (
+            <Row key={`${fact.label}-${fact.value}`} gap="sm">
+              <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+                {fact.label}
+              </Text>
+              <Text variant="mono" tone={color.textSecondary}>
+                {fact.value}
+              </Text>
+            </Row>
+          ))}
+        </Card>
+      ) : null}
+
+      {data.watch.length > 0 ? (
+        <Stack gap="sm">
+          <Eyebrow tone={color.status.warning}>Watch</Eyebrow>
+          {data.watch.map((insight) => (
+            <InsightCard key={insight.id} insight={insight} onNavigate={onNavigate} />
+          ))}
+        </Stack>
+      ) : null}
+
+      {data.progress.length > 0 ? (
+        <Stack gap="sm">
+          <Eyebrow tone={color.status.positive}>Progress</Eyebrow>
+          {data.progress.map((insight) => (
+            <InsightCard key={insight.id} insight={insight} onNavigate={onNavigate} />
+          ))}
+        </Stack>
+      ) : null}
+
+      {data.suggested_focus.length > 0 ? (
+        <Card gap="xs">
+          <Eyebrow>Suggested focus</Eyebrow>
+          {data.suggested_focus.map((line, index) => (
+            <Row key={index} gap="sm" align="flex-start">
+              <Text variant="body" tone={color.textTertiary}>
+                •
+              </Text>
+              <Text variant="body" tone={color.textSecondary} style={styles.grow}>
+                {line}
+              </Text>
+            </Row>
+          ))}
+        </Card>
+      ) : null}
+    </Section>
+  );
+}
+
+/* ----------------------------------------------------------- needs attention */
+
+interface AttentionProps {
+  data: TrainerAttentionQueue | null;
+  loading: boolean;
+  error: ApiError | null;
+  onRetry: () => void;
+  onNavigate: (route: string) => void;
+  limit?: number;
+}
+
+function AttentionRow({
+  item,
+  onNavigate,
+}: {
+  item: AttentionItem;
+  onNavigate: (route: string) => void;
+}) {
+  const styles = useThemedStyles(buildStyles);
+  const meta = severityMeta(item.severity);
+  return (
+    <TappableCard
+      onPress={() => onNavigate(item.route)}
+      accessibilityLabel={`${item.member_name}: ${item.reason}`}
+    >
+      <Row gap="sm" align="flex-start">
+        <View style={[styles.dot, { backgroundColor: meta.hue }]} />
+        <Stack gap="xxs" style={styles.grow}>
+          <Text variant="heading">{item.member_name}</Text>
+          <Text variant="label" tone={color.textSecondary}>
+            {item.reason}
+          </Text>
+          {item.metrics.length > 0 ? (
+            <Text variant="mono" tone={color.textTertiary}>
+              {item.metrics.map((m) => `${m.label} ${m.value}`).join('  ·  ')}
+            </Text>
+          ) : null}
+        </Stack>
+        <Ionicons name="chevron-forward" size={16} color={color.textTertiary} />
+      </Row>
+    </TappableCard>
+  );
+}
+
+/**
+ * The Trainer Desk triage list: which of a trainer's own clients to look at,
+ * why, ranked. Every row is a deep link into that member's detail — never a
+ * dead end, and never a bare "AI score".
+ */
+export function NeedsAttentionSection({
+  data,
+  loading,
+  error,
+  onRetry,
+  onNavigate,
+  limit = 5,
+}: AttentionProps) {
+  if (loading && !data) {
+    return (
+      <Section title="Needs attention">
+        <Card gap="sm">
+          <Skeleton width="50%" height={14} />
+          <Skeleton width="80%" height={12} />
+        </Card>
+      </Section>
+    );
+  }
+
+  if (error && !data) {
+    const offline = error.code === OFFLINE_CODE;
+    return (
+      <Section title="Needs attention">
+        <Banner tone="info" icon="cloud-offline-outline">
+          {offline
+            ? 'This list will load when you are back online.'
+            : 'This list is unavailable right now.'}
+        </Banner>
+        {!offline ? <LinkButton title="Try again" onPress={onRetry} /> : null}
+      </Section>
+    );
+  }
+
+  if (!data) return null;
+
+  if (data.items.length === 0) {
+    return (
+      <Section title="Needs attention">
+        <Card>
+          <Text variant="body" tone={color.textSecondary}>
+            {data.considered === 0
+              ? 'No members are assigned to you yet.'
+              : 'Everyone you coach is on track.'}
+          </Text>
+        </Card>
+      </Section>
+    );
+  }
+
+  const shown = data.items.slice(0, limit);
+  return (
+    <Section title="Needs attention">
+      {shown.map((item) => (
+        <AttentionRow key={item.member_id} item={item} onNavigate={onNavigate} />
+      ))}
+      {data.items.length > shown.length ? (
+        <>
+          <Divider />
+          <Text variant="label" tone={color.textTertiary} align="center">
+            {data.items.length - shown.length} more need a look
+          </Text>
+        </>
+      ) : null}
+    </Section>
+  );
+}
+
 function buildStyles() {
   return StyleSheet.create({
     grow: { flex: 1 },
@@ -251,6 +472,12 @@ function buildStyles() {
       borderTopWidth: 1,
       borderTopColor: color.border,
       paddingTop: space.xs,
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginTop: 6,
     },
   });
 }

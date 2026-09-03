@@ -35,12 +35,14 @@ const mockOptions = jest.fn();
 const mockConvert = jest.fn();
 const mockStrength = jest.fn();
 const mockBodyComposition = jest.fn();
+const mockBrief = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   myClientDetail: (...a: unknown[]) => mockDetail(...a),
   ptOptions: (...a: unknown[]) => mockOptions(...a),
   convertMemberToPt: (...a: unknown[]) => mockConvert(...a),
   memberStrengthTrend: (...a: unknown[]) => mockStrength(...a),
   memberBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
+  memberTrainerBrief: (...a: unknown[]) => mockBrief(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -135,6 +137,17 @@ beforeEach(() => {
   mockDetail.mockResolvedValue(aDetail());
   mockStrength.mockResolvedValue({ exercises: [] });
   mockBodyComposition.mockResolvedValue({ latest: null, measurements: [] });
+  mockBrief.mockResolvedValue({
+    member_id: 42,
+    member_name: 'Test Member',
+    generated_at: '2026-06-01T00:00:00Z',
+    state: 'insufficient_data',
+    today: [],
+    progress: [],
+    watch: [],
+    suggested_focus: ['Not enough history yet — log a few sessions to build a picture.'],
+    coverage: { completed_sessions: 0, weeks_of_history: 0, analysed_through: '2026-06-01T00:00:00Z' },
+  });
 });
 
 /* ------------------------------------------------------------ eligibility */

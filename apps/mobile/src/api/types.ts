@@ -1462,3 +1462,37 @@ export interface MemberIntelligence {
   narration_source: 'deterministic' | 'llm';
   coverage: IntelligenceCoverage;
 }
+
+/**
+ * The coach's structured read of one member. Same deterministic signals as
+ * `MemberIntelligence`, framed for someone about to train them, and carrying
+ * no owner-only figure (no incentive, revenue or payment).
+ */
+export interface TrainerBrief {
+  member_id: number;
+  member_name: string;
+  generated_at: string;
+  state: 'ok' | 'insufficient_data';
+  today: InsightEvidence[];
+  progress: IntelligenceInsight[];
+  watch: IntelligenceInsight[];
+  suggested_focus: string[];
+  coverage: IntelligenceCoverage;
+}
+
+export interface AttentionItem {
+  member_id: number;
+  member_name: string;
+  priority: number;
+  severity: InsightSeverity;
+  reason: string;
+  detail?: string | null;
+  route: string;
+  metrics: InsightEvidence[];
+}
+
+export interface TrainerAttentionQueue {
+  generated_at: string;
+  considered: number;
+  items: AttentionItem[];
+}
