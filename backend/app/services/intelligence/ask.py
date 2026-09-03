@@ -1,0 +1,385 @@
+"""Ask GymFlow — a constrained question answerer over the intelligence layer.
+
+Not a chatbot and not a database console. A question is matched against a small
+fixed set of intents for the asker's role; the matched intent calls the same
+deterministic builders the screens use, with the same authorization, and
+formats a short answer plus the figures behind it. An unrecognised question is
+answered honestly with what *can* be asked.
+
+No model is involved — ``source`` is always ``deterministic`` in V1. When a
+provider is wired in it would only ever rephrase the ``answer`` string; the
+``data`` rows and the ``action`` are computed here and are not its to touch.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import date
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.clock import branch_today
+from app.db.models import Branch, Member, RoleKey, Trainer, User
+from app.services import journey_service
+from app.services.intelligence import signals as sig
+from app.services.intelligence.member import build_member_intelligence
+from app.services.intelligence.owner import build_owner_daily_brief
+from app.services.intelligence.progression import recommendation_for
+from app.services.intelligence.schemas import AskAnswer, InsightAction, InsightEvidence
+from app.services.intelligence.trainer import build_attention_queue, build_trainer_brief
+from app.services.intelligence.weekly import member_weekly_summary, owner_weekly_summary
+
+
+@dataclass
+class AskContext:
+    db: Session
+    user: User
+    today: date
+    #: The member the question is about — the asker themselves, or a client a
+    #: trainer/owner passed in context. ``None`` for owner-wide questions.
+    member: Member | None = None
+    branch_ids: list[int] | None = None
+    match: re.Match | None = None
+    ev: list[InsightEvidence] = field(default_factory=list)
+
+
+Handler = Callable[[AskContext], tuple[str, InsightAction | None]]
+
+
+def _ev(ctx: AskContext, label: str, value: str) -> None:
+    ctx.ev.append(InsightEvidence(label=label, value=value))
+
+
+# --------------------------------------------------------------- member intents
+
+
+def _member_overview(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    intel = build_member_intelligence(ctx.db, ctx.member, today=ctx.today)
+    if intel.state == "insufficient_data":
+        return intel.headline, intel.next_action
+    lines = [intel.headline]
+    for insight in intel.insights[:3]:
+        lines.append(f"• {insight.title}: {insight.summary}")
+        for e in insight.evidence[:1]:
+            _ev(ctx, e.label, e.value)
+    return "\n".join(lines), intel.next_action
+
+
+def _member_consistency(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    c = sig.consistency(ctx.db, ctx.member.id, today=ctx.today)
+    if c.level == "insufficient_data":
+        return (
+            "Not enough sessions yet to judge your consistency — keep logging workouts.",
+            None,
+        )
+    _ev(ctx, f"Last {c.window_weeks} weeks", f"{c.sessions_in_window} sessions")
+    _ev(ctx, "Weekly average", f"{c.per_week:g}")
+    _ev(ctx, "Target", f"{c.target_per_week:g} / week")
+    verdict = {
+        "strong": "You are training consistently.",
+        "steady": "Your training is fairly steady, a little under target.",
+        "low": "Your training has dropped below the cadence the programme assumes.",
+    }[c.level]
+    return (
+        f"{verdict} {c.sessions_in_window} sessions over the last {c.window_weeks} weeks, "
+        f"about {c.per_week:g} a week against a {c.target_per_week:g}-a-week target."
+    ), None
+
+
+def _member_last_trained(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    i = sig.inactivity(ctx.db, ctx.member, today=ctx.today)
+    if i.last_training_on is None:
+        return "You have no completed training sessions on record yet.", None
+    _ev(ctx, "Last session", i.last_training_on.isoformat())
+    _ev(ctx, "Days since", str(i.days_since_training))
+    if i.days_since_training == 0:
+        return "You trained today.", None
+    tail = {
+        "active": "You are training regularly.",
+        "slipping": "It has been a while — a session this week keeps the habit going.",
+        "inactive": "That is a long gap. A short session back is the way in.",
+        "no_history": "",
+    }[i.level]
+    return (
+        f"Your last recorded session was {i.days_since_training} days ago, on "
+        f"{i.last_training_on.isoformat()}. {tail}".strip()
+    ), None
+
+
+def _member_records(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    r = sig.recent_records(ctx.db, ctx.member.id, today=ctx.today)
+    if r.count == 0:
+        return (
+            f"No personal records in the last {r.window_days} days — hold your loads and "
+            f"the reps will come.",
+            None,
+        )
+    for rec in r.records[:3]:
+        _ev(ctx, rec.exercise, f"{rec.weight_kg:g} kg × {rec.reps} · {rec.achieved_on.isoformat()}")
+    top = r.records[0]
+    return (
+        f"{r.count} personal record{'s' if r.count != 1 else ''} in the last {r.window_days} "
+        f"days. The heaviest: {top.exercise} at {top.weight_kg:g} kg for {top.reps}."
+    ), InsightAction(label="See progress", route="/(member)/progress")
+
+
+def _member_last_week(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    s = member_weekly_summary(ctx.db, ctx.member)
+    for m in s.metrics:
+        _ev(ctx, m.label, m.value + (f" (was {m.previous})" if m.previous else ""))
+    return s.headline, None
+
+
+def _member_next_weight(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    trained = journey_service.trained_exercises(ctx.db, member_id=ctx.member.id, limit=25)
+    text = ctx.match.group(0).lower() if ctx.match else ""
+    hit = next((e for e in trained if e.lower() in text), None)
+    if hit is None:
+        listed = ", ".join(trained[:6]) or "your logged lifts"
+        return (
+            f"Tell me which lift — for example: {listed}. I can suggest a next weight from "
+            f"your last session of it.",
+            None,
+        )
+    rec = recommendation_for(ctx.db, member_id=ctx.member.id, exercise=hit)
+    if rec.recommended_weight_kg is not None and rec.last_weight_kg is not None:
+        _ev(ctx, "Last set", f"{rec.last_weight_kg:g} kg × {rec.last_reps}")
+        _ev(ctx, "Suggested next", f"{rec.recommended_weight_kg:g} kg")
+    return f"{rec.rationale} This is a suggestion, not a change to your programme.", InsightAction(
+        label=f"Open {hit}", route="/(member)/progress-exercise"
+    )
+
+
+# --------------------------------------------------------------- trainer intents
+
+
+def _trainer_member(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    if ctx.member is None:
+        return "Open a client first, then ask about them.", None
+    brief = build_trainer_brief(ctx.db, ctx.member, today=ctx.today)
+    lines = [f"{brief.member_name}: " + (brief.today[0].value if brief.today else "no journey")]
+    for i in brief.watch[:2]:
+        lines.append(f"• Watch — {i.title}: {i.summary}")
+    for i in brief.progress[:1]:
+        lines.append(f"• Going well — {i.title}")
+    for e in brief.today[:4]:
+        _ev(ctx, e.label, e.value)
+    return "\n".join(lines), InsightAction(
+        label="Open client", route=f"/(trainer)/client/{ctx.member.id}"
+    )
+
+
+def _trainer_focus(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    if ctx.member is None:
+        return "Open a client first, then ask what to focus on.", None
+    brief = build_trainer_brief(ctx.db, ctx.member, today=ctx.today)
+    for idx, line in enumerate(brief.suggested_focus, start=1):
+        _ev(ctx, f"Focus {idx}", line)
+    return (f"With {brief.member_name}: " + " ".join(brief.suggested_focus)), InsightAction(
+        label="Open client", route=f"/(trainer)/client/{ctx.member.id}"
+    )
+
+
+def _trainer_attention(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    trainer = ctx.db.scalar(select(Trainer).where(Trainer.user_id == ctx.user.id))
+    if trainer is None:
+        return "This account is not a trainer.", None
+    q = build_attention_queue(ctx.db, trainer, today=ctx.today, limit=5)
+    if not q.items:
+        return f"All {q.considered} of your clients are on track right now.", None
+    for item in q.items[:5]:
+        _ev(ctx, item.member_name, item.reason)
+    top = q.items[0]
+    return (
+        f"{len(q.items)} of your {q.considered} clients need a look. Start with "
+        f"{top.member_name}: {top.reason.lower()}."
+    ), InsightAction(label="Open Desk", route="/(trainer)")
+
+
+# --------------------------------------------------------------- owner intents
+
+
+def _owner_attention(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    brief = build_owner_daily_brief(ctx.db, branch_ids=ctx.branch_ids, today=ctx.today)
+    if not brief.issues:
+        return "Nothing needs your attention this morning.", None
+    for issue in brief.issues[:4]:
+        _ev(ctx, issue.title, issue.summary)
+    return brief.headline, brief.issues[0].action
+
+
+def _owner_punctuality(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    s = owner_weekly_summary(ctx.db, branch_ids=ctx.branch_ids)
+    row = next((m for m in s.metrics if m.label == "Trainer punctuality"), None)
+    if row is None or row.value == "—":
+        return "No shifts recorded for last week yet.", None
+    _ev(ctx, "Last week", row.value)
+    if row.previous:
+        _ev(ctx, "Week before", row.previous)
+    return s.headline, InsightAction(label="Open trainers", route="/(owner)/trainers")
+
+
+def _owner_last_week(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    s = owner_weekly_summary(ctx.db, branch_ids=ctx.branch_ids)
+    for m in s.metrics:
+        _ev(ctx, m.label, m.value + (f" (was {m.previous})" if m.previous else ""))
+    return s.headline, None
+
+
+# --------------------------------------------------------------- registry
+
+_INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
+    "member": [
+        (
+            "consistency",
+            re.compile(r"\bconsist|\bregular|\bcadence|often enough\b", re.I),
+            _member_consistency,
+        ),
+        (
+            "last_trained",
+            re.compile(r"last (train|session|workout)|when did i|how long since", re.I),
+            _member_last_trained,
+        ),
+        (
+            "records",
+            re.compile(r"\bprs?\b|personal record|\brecords?\b|new best|heaviest", re.I),
+            _member_records,
+        ),
+        ("last_week", re.compile(r"last week|this week|past week|weekly", re.I), _member_last_week),
+        (
+            "next_weight",
+            re.compile(
+                r"heavier|more weight|next (weight|set)|go up|add (weight|load)|"
+                r"progress(ion)? on|what.*(lift|weight)",
+                re.I,
+            ),
+            _member_next_weight,
+        ),
+        (
+            "overview",
+            re.compile(r"how('?s| am| is| are)|how.*doing|progress|what should i", re.I),
+            _member_overview,
+        ),
+    ],
+    "trainer": [
+        ("focus", re.compile(r"focus|work on|priorit|what should i", re.I), _trainer_focus),
+        (
+            "attention",
+            re.compile(r"who|attention|needs? a look|triage|check in on", re.I),
+            _trainer_attention,
+        ),
+        ("member", re.compile(r"how('?s| is)|doing|state|status|update on", re.I), _trainer_member),
+    ],
+    "owner": [
+        ("punctuality", re.compile(r"punctual|on time|late|attendance", re.I), _owner_punctuality),
+        ("last_week", re.compile(r"last week|this week|weekly|past week", re.I), _owner_last_week),
+        (
+            "attention",
+            re.compile(r"attention|needs?|issue|problem|what should i|priorit", re.I),
+            _owner_attention,
+        ),
+    ],
+}
+
+_SUGGESTIONS = {
+    "member": [
+        "How am I doing?",
+        "What should I work on next?",
+        "Am I training consistently?",
+        "How was last week?",
+        "Any recent personal records?",
+    ],
+    "trainer_member": [
+        "How is {name}?",
+        "What should I focus on with {name}?",
+        "Who needs attention?",
+    ],
+    "trainer": ["Who needs attention?"],
+    "owner": [
+        "What needs my attention today?",
+        "How is trainer punctuality?",
+        "How was last week?",
+    ],
+}
+
+_FALLBACK = {
+    "member": "I can answer about how you are doing, your training consistency, recent personal "
+    "records, what weight to try next on a lift, and how last week went.",
+    "trainer": "Open a client and ask how they are or what to focus on, or ask who needs "
+    "attention across your clients.",
+    "owner": "I can answer about what needs your attention today, trainer punctuality, and how "
+    "last week went.",
+}
+
+
+def _audience(user: User) -> str:
+    key = user.role.key
+    if key == RoleKey.MEMBER.value:
+        return "member"
+    if key == RoleKey.TRAINER.value:
+        return "trainer"
+    return "owner"
+
+
+def suggestions_for(user: User, member: Member | None) -> list[str]:
+    audience = _audience(user)
+    if audience == "trainer" and member is not None:
+        name = member.user.full_name.split(" ")[0] if member.user else "them"
+        return [s.format(name=name) for s in _SUGGESTIONS["trainer_member"]]
+    return list(_SUGGESTIONS.get(audience, []))
+
+
+def answer(
+    db: Session,
+    user: User,
+    question: str,
+    *,
+    member: Member | None = None,
+    branch_ids: list[int] | None = None,
+) -> AskAnswer:
+    audience = _audience(user)
+    q = (question or "").strip()
+    branch = db.get(Branch, member.branch_id) if member else None
+    today = branch_today(branch.timezone if branch else None)
+
+    ctx = AskContext(db=db, user=user, today=today, member=member, branch_ids=branch_ids)
+    # A member asking about themselves needs their own record loaded.
+    if audience == "member" and member is None:
+        ctx.member = db.scalar(select(Member).where(Member.user_id == user.id))
+
+    for intent_name, pattern, handler in _INTENTS[audience]:
+        m = pattern.search(q)
+        if m:
+            ctx.match = pattern.search(q) or m
+            # next_weight wants the whole question to hunt for an exercise name.
+            if intent_name == "next_weight":
+                ctx.match = re.match(r".*", q)
+            try:
+                text, action = handler(ctx)
+            except Exception:  # noqa: BLE001 — never 500 on a question
+                break
+            return AskAnswer(
+                question=q,
+                intent=intent_name,
+                answer=text,
+                source="deterministic",
+                data=ctx.ev,
+                action=action,
+                suggestions=suggestions_for(user, member),
+            )
+
+    return AskAnswer(
+        question=q,
+        intent="unrecognised",
+        answer=_FALLBACK[audience],
+        source="deterministic",
+        data=[],
+        action=None,
+        suggestions=suggestions_for(user, member),
+    )
+
+
+__all__ = ["answer", "suggestions_for"]

@@ -26,9 +26,14 @@ from app.core.deps import get_current_user, require_management, scoped_branch_fi
 from app.db.models import Branch, Member, RoleKey, Trainer, User
 from app.db.session import get_db
 from app.services.intelligence import build_member_intelligence, build_narrator
+from app.services.intelligence.ask import answer as ask_answer
+from app.services.intelligence.ask import suggestions_for
 from app.services.intelligence.owner import build_owner_daily_brief
 from app.services.intelligence.progression import recommendation_for
 from app.services.intelligence.schemas import (
+    AskAnswer,
+    AskRequest,
+    AskSuggestions,
     MemberIntelligence,
     OwnerDailyBrief,
     ProgressionRecommendation,
@@ -171,6 +176,57 @@ def owner_weekly(
         week_ending=week_ending,
         narrator=build_narrator(),
     )
+
+
+def _ask_member_context(db: Session, user: User, member_id: int | None) -> Member | None:
+    """Resolve and authorize the member a question is about.
+
+    A member's questions are always about themselves — a passed ``member_id``
+    that is not them is ignored. Staff must pass one they are allowed to read.
+    """
+    if user.role.key == RoleKey.MEMBER.value:
+        return db.scalar(select(Member).where(Member.user_id == user.id))
+    if member_id is None:
+        return None
+    member = _load_member(db, member_id)
+    assert_can_read_member(db, user, member)
+    return member
+
+
+@router.post("/ask", response_model=AskAnswer)
+def ask(
+    payload: AskRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AskAnswer:
+    """Answer one question from the intelligence layer only.
+
+    The question is matched to a fixed set of intents for the asker's role;
+    each calls the same builders the screens use, under the same authorization.
+    An unrecognised question is answered with what can be asked. No model is
+    involved.
+    """
+    member = _ask_member_context(db, user, payload.member_id)
+    branch_ids = (
+        scoped_branch_filter(user, None)
+        if user.role.key
+        not in (
+            RoleKey.MEMBER.value,
+            RoleKey.TRAINER.value,
+        )
+        else None
+    )
+    return ask_answer(db, user, payload.question, member=member, branch_ids=branch_ids)
+
+
+@router.get("/ask/suggestions", response_model=AskSuggestions)
+def ask_suggestions(
+    member_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AskSuggestions:
+    member = _ask_member_context(db, user, member_id)
+    return AskSuggestions(suggestions=suggestions_for(user, member))
 
 
 @router.get("/members/{member_id}/brief", response_model=TrainerBrief)

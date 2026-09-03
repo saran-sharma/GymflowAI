@@ -220,6 +220,37 @@ class WeeklyMetric(BaseModel):
 WeeklyMovement = Literal["ahead", "steady", "behind"]
 
 
+class AskAnswer(BaseModel):
+    """The response to one Ask GymFlow question.
+
+    ``answer`` is a short paragraph assembled from figures GymFlow computed;
+    ``data`` is those figures, labelled, for the app to render as rows;
+    ``suggestions`` are the follow-up chips. ``source`` is ``deterministic``
+    whenever the question was answered from the intelligence layer without a
+    model — which, in V1, is always.
+    """
+
+    question: str
+    intent: str
+    answer: str
+    source: NarrationSource
+    data: list[InsightEvidence] = Field(default_factory=list)
+    action: InsightAction | None = None
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class AskSuggestions(BaseModel):
+    """The starter chips for the calling role (and member context, if any)."""
+
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    #: Optional client context — a trainer or owner asking about one member.
+    member_id: int | None = None
+
+
 class WeeklySummary(BaseModel):
     """One week, for a member or an owner. The reusable shape behind
     `/intelligence/{me,members/{id},owner}/weekly` — same model, different
@@ -238,6 +269,9 @@ class WeeklySummary(BaseModel):
 
 
 __all__ = [
+    "AskAnswer",
+    "AskRequest",
+    "AskSuggestions",
     "AttentionItem",
     "InsightAction",
     "InsightEvidence",
