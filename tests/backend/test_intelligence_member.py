@@ -79,3 +79,20 @@ def test_narration_source_is_reported(db, world):
     intel = _intel(db, member)
     assert intel.narration_source == "deterministic"
     assert intel.coverage.completed_sessions == 12
+
+
+def test_a_broken_narrator_does_not_take_the_read_down(db, world):
+    """§21: the deterministic content must still render if narration fails."""
+    member = world["member_ngk"]
+    add_weekly_workouts(db, member, ending=TODAY, weeks=4, per_week=3)
+    db.commit()
+
+    class Broken:
+        def narrate(self, request):
+            raise RuntimeError("boom")
+
+    intel = build_member_intelligence(db, member, today=TODAY, narrator=Broken())
+    assert intel.state == "ok"
+    assert intel.insights  # signals survived
+    assert intel.headline  # fell back to the template sentence
+    assert intel.narration_source == "deterministic"

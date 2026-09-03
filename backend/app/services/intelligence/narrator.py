@@ -144,6 +144,21 @@ class LLMNarrator:
         return NarrationResult(headline=headline, source="llm")
 
 
+def safe_narrate(narrator, request: NarrationRequest) -> NarrationResult:
+    """Call ``narrator.narrate`` and never propagate.
+
+    The built-in narrators already handle their own failures, but the
+    orchestrators (:mod:`.member`, :mod:`.owner`) route through here so that a
+    misbehaving custom narrator degrades the headline to the deterministic
+    fallback instead of taking the whole intelligence read down (§21).
+    """
+    try:
+        return narrator.narrate(request)
+    except Exception:  # noqa: BLE001 — narration is never load-bearing
+        logger.warning("intelligence narrator raised; using fallback headline", exc_info=True)
+        return NarrationResult(headline=request.fallback_headline, source="deterministic")
+
+
 def build_narrator():
     """The narrator this deployment uses.
 
@@ -169,5 +184,6 @@ __all__ = [
     "NarrationResult",
     "TemplateNarrator",
     "build_narrator",
+    "safe_narrate",
     "validate_headline",
 ]

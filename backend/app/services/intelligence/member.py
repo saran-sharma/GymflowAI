@@ -22,6 +22,7 @@ from app.services.intelligence import signals as sig
 from app.services.intelligence.narrator import (
     NarrationRequest,
     TemplateNarrator,
+    safe_narrate,
 )
 from app.services.intelligence.schemas import (
     InsightAction,
@@ -321,7 +322,8 @@ def build_member_intelligence(
     next_action = next((i.action for i in ordered if i.action is not None), None)
 
     fallback = _fallback_headline(ordered, s)
-    narration = narrator.narrate(
+    narration = safe_narrate(
+        narrator,
         NarrationRequest(
             audience="member",
             fallback_headline=fallback,
@@ -333,7 +335,7 @@ def build_member_intelligence(
                 "plateau": s.plateau.detected,
                 "top_insight": ordered[0].title if ordered else None,
             },
-        )
+        ),
     )
 
     return MemberIntelligence(

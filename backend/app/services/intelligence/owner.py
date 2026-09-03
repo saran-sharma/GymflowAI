@@ -38,7 +38,11 @@ from app.db.models import (
 from app.domain.shift_engine import ON_TIME_STATUSES, PRESENT_STATUSES
 from app.services import automation_service
 from app.services.incentive_service import month_bounds
-from app.services.intelligence.narrator import NarrationRequest, TemplateNarrator
+from app.services.intelligence.narrator import (
+    NarrationRequest,
+    TemplateNarrator,
+    safe_narrate,
+)
 from app.services.intelligence.schemas import (
     InsightAction,
     InsightEvidence,
@@ -342,7 +346,8 @@ def build_owner_daily_brief(
         f"{len(issues)} thing{'s' if len(issues) != 1 else ''} to look at — "
         f"{top.title[0].lower()}{top.title[1:]}."
     )
-    narration = narrator.narrate(
+    narration = safe_narrate(
+        narrator,
         NarrationRequest(
             audience="owner",
             fallback_headline=fallback,
@@ -351,7 +356,7 @@ def build_owner_daily_brief(
                 "top_issue": top.id,
                 "severities": [i.severity for i in issues],
             },
-        )
+        ),
     )
     return OwnerDailyBrief(
         generated_at=now_utc(),

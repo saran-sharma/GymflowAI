@@ -12,7 +12,9 @@ import pytest
 from app.services.intelligence.narrator import (
     LLMNarrator,
     NarrationRequest,
+    NarrationResult,
     TemplateNarrator,
+    safe_narrate,
     validate_headline,
 )
 
@@ -102,3 +104,28 @@ def test_build_narrator_is_template_without_a_provider(monkeypatch):
 
     monkeypatch.setattr(mod.settings, "intelligence_narrator", "llm", raising=False)
     assert isinstance(mod.build_narrator(), TemplateNarrator)
+
+
+# --------------------------------------------------------------- safe_narrate
+
+
+class _RaisingNarrator:
+    def narrate(self, request):
+        raise RuntimeError("a custom narrator misbehaved")
+
+
+class _GoodNarrator:
+    def narrate(self, request):
+        return NarrationResult(headline="rephrased", source="llm")
+
+
+def test_safe_narrate_swallows_a_raising_narrator():
+    result = safe_narrate(_RaisingNarrator(), REQ)
+    assert result.source == "deterministic"
+    assert result.headline == REQ.fallback_headline
+
+
+def test_safe_narrate_passes_a_good_result_through():
+    result = safe_narrate(_GoodNarrator(), REQ)
+    assert result.source == "llm"
+    assert result.headline == "rephrased"
