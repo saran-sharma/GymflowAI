@@ -43,3 +43,6 @@ htmlcov
 /backend/var/
 /var/progress_photos/
 var/progress_photos/
+
+# Claude Code local state (settings, skills, agent worktrees)
+.claude/
