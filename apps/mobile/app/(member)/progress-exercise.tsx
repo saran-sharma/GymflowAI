@@ -14,8 +14,13 @@ import { StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import type { StrengthTrend, WorkoutSetHistory } from '../../src/api/types';
+import type {
+  ProgressionRecommendation,
+  StrengthTrend,
+  WorkoutSetHistory,
+} from '../../src/api/types';
 import { BarChart } from '../../src/components/programme';
+import { RecommendationCard } from '../../src/components/intelligence';
 import {
   Body,
   Card,
@@ -50,6 +55,10 @@ export default function ProgressExerciseScreen() {
   const trend = useApi<StrengthTrend>((token) => api.myStrengthTrend(token), []);
   const history = useApi<WorkoutSetHistory>(
     (token) => api.myExerciseHistory(exercise, token),
+    [exercise],
+  );
+  const recommendation = useApi<ProgressionRecommendation>(
+    (token) => api.myExerciseRecommendation(exercise, token),
     [exercise],
   );
 
@@ -103,6 +112,12 @@ export default function ProgressExerciseScreen() {
             </Text>
           )}
         </Card>
+
+        <RecommendationCard
+          data={recommendation.data}
+          loading={recommendation.loading}
+          error={recommendation.error}
+        />
 
         <Section title="Recent sessions">
           {sessions.length === 0 ? (

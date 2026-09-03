@@ -18,9 +18,11 @@ jest.mock('expo-router', () => ({
 
 const mockStrength = jest.fn();
 const mockHistory = jest.fn();
+const mockRecommendation = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   myStrengthTrend: (...a: unknown[]) => mockStrength(...a),
   myExerciseHistory: (...a: unknown[]) => mockHistory(...a),
+  myExerciseRecommendation: (...a: unknown[]) => mockRecommendation(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -85,6 +87,17 @@ beforeEach(() => {
     ],
   } satisfies StrengthTrend);
   mockHistory.mockResolvedValue(aHistory());
+  mockRecommendation.mockResolvedValue({
+    exercise: 'Bench press',
+    action: 'increase',
+    last_weight_kg: 70,
+    last_reps: 9,
+    last_rpe: 7,
+    recommended_weight_kg: 72.5,
+    target_reps: '8-10',
+    delta_kg: 2.5,
+    rationale: 'Last set was 9 reps against the 8-rep target, RPE 7. Try 72.5 kg next time.',
+  });
 });
 
 it('shows the PR and real recent sessions, by their trainer-given day name', async () => {

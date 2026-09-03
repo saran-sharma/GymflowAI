@@ -1518,3 +1518,22 @@ export interface OwnerDailyBrief {
   issues: OwnerIssue[];
   narration_source: 'deterministic' | 'llm';
 }
+
+export type ProgressionAction = 'increase' | 'hold' | 'reduce' | 'insufficient_data';
+
+/**
+ * A next-weight suggestion for one lift. Advisory — GymFlow's workout items
+ * carry a rep target, not a weight, so this never overwrites the trainer's
+ * programme. Fields map onto CURRENT / LAST PERFORMANCE / RECOMMENDED NEXT / WHY.
+ */
+export interface ProgressionRecommendation {
+  exercise: string;
+  action: ProgressionAction;
+  last_weight_kg: number | null;
+  last_reps: number | null;
+  last_rpe: number | null;
+  recommended_weight_kg: number | null;
+  target_reps: string | null;
+  delta_kg: number | null;
+  rationale: string;
+}

@@ -217,6 +217,7 @@ import type {
   NeedsAttention,
   OccupancyForecast,
   OwnerDailyBrief,
+  ProgressionRecommendation,
   PlanItemUpsert,
   PTOffer,
   PTPackage,
@@ -298,6 +299,32 @@ export const ownerDailyBrief = (token: string, branchId?: number) =>
     `/intelligence/owner/daily-brief${branchId ? `?branch_id=${branchId}` : ''}`,
     { token },
   );
+
+export const myExerciseRecommendation = (exercise: string, token: string, targetReps?: string) =>
+  request<ProgressionRecommendation>(
+    `/intelligence/me/exercises/${encodeURIComponent(exercise)}/recommendation${
+      targetReps ? `?target_reps=${encodeURIComponent(targetReps)}` : ''
+    }`,
+    { token },
+  );
+
+export const memberExerciseRecommendation = (
+  memberId: number,
+  exercise: string,
+  token: string,
+  opts?: { targetReps?: string; beforeSessionId?: number },
+) => {
+  const params = new URLSearchParams();
+  if (opts?.targetReps) params.set('target_reps', opts.targetReps);
+  if (opts?.beforeSessionId) params.set('before_session_id', String(opts.beforeSessionId));
+  const qs = params.toString();
+  return request<ProgressionRecommendation>(
+    `/intelligence/members/${memberId}/exercises/${encodeURIComponent(exercise)}/recommendation${
+      qs ? `?${qs}` : ''
+    }`,
+    { token },
+  );
+};
 
 export const myJourney = (token: string) => request<Journey | null>('/journeys/me', { token });
 

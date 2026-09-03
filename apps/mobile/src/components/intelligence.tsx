@@ -27,11 +27,13 @@ import type {
   MemberIntelligence,
   OwnerDailyBrief,
   OwnerIssue,
+  ProgressionRecommendation,
   TrainerAttentionQueue,
   TrainerBrief,
   TrendDirection,
 } from '../api/types';
 import {
+  Badge,
   Banner,
   Button,
   Card,
@@ -611,6 +613,113 @@ export function OwnerDailyBriefSection({
         </>
       ) : null}
     </Section>
+  );
+}
+
+/* ----------------------------------------------------- progression suggestion */
+
+const ACTION_META: Record<
+  ProgressionRecommendation['action'],
+  { label: string; tone: Tone; hue: string }
+> = {
+  increase: { label: 'Add load', tone: 'positive', hue: color.status.positive },
+  hold: { label: 'Hold', tone: 'info', hue: color.status.info },
+  reduce: { label: 'Back off', tone: 'caution', hue: color.status.warning },
+  insufficient_data: { label: 'Not yet', tone: 'neutral', hue: color.textTertiary },
+};
+
+/**
+ * The next-session suggestion for one lift: LAST PERFORMANCE, RECOMMENDED NEXT
+ * and WHY. It is advice that sits beside the trainer's programme — the caption
+ * says so — never a change to it.
+ */
+export function RecommendationCard({
+  data,
+  loading,
+  error,
+}: {
+  data: ProgressionRecommendation | null;
+  loading: boolean;
+  error: ApiError | null;
+}) {
+  const styles = useThemedStyles(buildStyles);
+
+  if (loading && !data) {
+    return (
+      <Card gap="sm">
+        <Eyebrow>Recommended next</Eyebrow>
+        <Skeleton width="55%" height={14} />
+        <Skeleton width="85%" height={12} />
+      </Card>
+    );
+  }
+  // A failed suggestion is not worth a visible error — it is an enhancement.
+  if ((error && !data) || !data) return null;
+
+  const meta = ACTION_META[data.action];
+  const hasLast = data.last_weight_kg != null && data.last_reps != null;
+  const deltaLabel =
+    data.action === 'insufficient_data' || data.delta_kg == null
+      ? null
+      : data.delta_kg > 0
+        ? `+${data.delta_kg} kg`
+        : data.delta_kg < 0
+          ? `${data.delta_kg} kg`
+          : 'same weight';
+
+  return (
+    <Card gap="sm" style={[styles.card, { borderColor: alpha(meta.hue, 0.35) }]}>
+      <Row gap="sm">
+        <Eyebrow>Recommended next</Eyebrow>
+        <Spacer />
+        <Badge label={meta.label} tone={meta.tone} />
+      </Row>
+
+      {data.action === 'insufficient_data' ? (
+        <Text variant="body" tone={color.textSecondary}>
+          {data.rationale}
+        </Text>
+      ) : (
+        <>
+          <Row gap="lg" align="baseline">
+            <Stack gap="xxs">
+              <Text variant="label" tone={color.textTertiary}>
+                Last performance
+              </Text>
+              <Text variant="mono" tone={color.textSecondary}>
+                {hasLast
+                  ? `${data.last_weight_kg} kg × ${data.last_reps}${
+                      data.last_rpe != null ? ` · RPE ${data.last_rpe}` : ''
+                    }`
+                  : '—'}
+              </Text>
+            </Stack>
+            <Spacer />
+            <Stack gap="xxs" align="flex-end">
+              <Text variant="label" tone={color.textTertiary}>
+                Next
+              </Text>
+              <Text variant="heading" tone={meta.hue}>
+                {data.recommended_weight_kg != null ? `${data.recommended_weight_kg} kg` : '—'}
+              </Text>
+              {deltaLabel ? (
+                <Text variant="label" tone={color.textTertiary}>
+                  {deltaLabel}
+                  {data.target_reps ? ` · ${data.target_reps} reps` : ''}
+                </Text>
+              ) : null}
+            </Stack>
+          </Row>
+          <Text variant="body" tone={color.textSecondary}>
+            {data.rationale}
+          </Text>
+        </>
+      )}
+
+      <Text variant="label" tone={color.textTertiary}>
+        A suggestion from your logged sets — not a change to your programme.
+      </Text>
+    </Card>
   );
 }
 
