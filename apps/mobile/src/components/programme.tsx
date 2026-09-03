@@ -15,9 +15,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { useAnimatedStyle } from 'react-native-reanimated';
 
 import type { SessionState, TrendPoint, WorkoutCategory, WorkoutSplit } from '../api/types';
-import { Badge, Eyebrow, Row, Text, color, radii, space } from '../design';
+import { Badge, Eyebrow, Motion, Row, Text, color, radii, space, useTravel } from '../design';
 
 /* --------------------------------------------------------------- splits */
 
@@ -382,24 +383,51 @@ export function BarChart({
     <View style={[styles.chart, { height }]}>
       {data.map((point, index) => (
         <View key={`${point.label}-${index}`} style={styles.chartColumn}>
-          <View style={styles.chartTrack}>
-            <View
-              testID="bar-chart-bar"
-              accessibilityLabel={`${point.label}: ${point.value}`}
-              style={[
-                styles.chartBar,
-                {
-                  height: `${barPct(point.value)}%`,
-                  backgroundColor: point.value ? tint : color.surfaceOverlay,
-                },
-              ]}
-            />
-          </View>
+          <Bar pct={barPct(point.value)} active={point.value > 0} tint={tint} point={point} />
           <Text variant="caption" tone={color.textTertiary} style={styles.chartLabel}>
             {point.label}
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+/**
+ * One bar. Its real height is a static `%` (so the value is exactly what the
+ * data says); the bar then *grows* into that height from the axis on mount —
+ * the chart reads itself out rather than appearing whole. `scaleY` from a
+ * bottom origin, so nothing reflows. Its own component so `useTravel` is one
+ * hook per bar, not a hook in a loop. Reduced motion snaps it to full height.
+ */
+function Bar({
+  pct,
+  active,
+  tint,
+  point,
+}: {
+  pct: number;
+  active: boolean;
+  tint: string;
+  point: { label: string; value: number };
+}) {
+  const grown = useTravel(1);
+  const reveal = useAnimatedStyle(() => ({ transform: [{ scaleY: grown.value }] }));
+  return (
+    <View style={styles.chartTrack}>
+      <Motion.View
+        testID="bar-chart-bar"
+        accessibilityLabel={`${point.label}: ${point.value}`}
+        style={[
+          styles.chartBar,
+          {
+            height: `${pct}%`,
+            transformOrigin: 'bottom',
+            backgroundColor: active ? tint : color.surfaceOverlay,
+          },
+          reveal,
+        ]}
+      />
     </View>
   );
 }

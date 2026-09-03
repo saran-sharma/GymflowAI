@@ -17,7 +17,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { ApiError } from '../../src/api/client';
@@ -34,6 +34,7 @@ import {
   Button,
   Chips,
   Input,
+  Motion,
   ProgressBar,
   Row,
   Screen,
@@ -42,6 +43,7 @@ import {
   Stack,
   Text,
   color,
+  slide,
   space,
 } from '../../src/design';
 import { useAuth } from '../../src/store/AuthContext';
@@ -108,6 +110,14 @@ export default function MemberOnboardingScreen() {
   const { withToken } = useAuth();
 
   const [step, setStep] = useState(0);
+  // Which way the last step change went, so the incoming step slides from the
+  // matching edge. A ref, not state — it only needs to be right at the moment
+  // the keyed step content re-mounts.
+  const direction = useRef<'forward' | 'back'>('forward');
+  const goToStep = (next: number) => {
+    direction.current = next > step ? 'forward' : 'back';
+    setStep(next);
+  };
   const [goal, setGoal] = useState('');
   const [experience, setExperience] = useState<string>(SKIP);
   const [style, setStyle] = useState<string>(SKIP);
@@ -166,6 +176,8 @@ export default function MemberOnboardingScreen() {
           <ProgressBar value={((step + 1) / STEPS.length) * 100} />
         </Stack>
 
+        <Motion.View key={step} entering={slide(direction.current)}>
+          <Stack gap="md">
         {step === 0 ? (
           <>
             <Section title="What's your main goal?">
@@ -261,6 +273,8 @@ export default function MemberOnboardingScreen() {
             </Section>
           </>
         ) : null}
+          </Stack>
+        </Motion.View>
 
         {error ? (
           <Banner tone="critical" icon="alert-circle-outline" testID="onboarding-error">
@@ -275,7 +289,7 @@ export default function MemberOnboardingScreen() {
               variant="secondary"
               testID="onboarding-back"
               disabled={busy}
-              onPress={() => setStep((s) => Math.max(0, s - 1))}
+              onPress={() => goToStep(Math.max(0, step - 1))}
             />
           ) : null}
           <Spacer />
@@ -291,7 +305,7 @@ export default function MemberOnboardingScreen() {
               title="Next"
               testID="onboarding-next"
               disabled={busy}
-              onPress={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              onPress={() => goToStep(Math.min(STEPS.length - 1, step + 1))}
             />
           )}
         </Row>

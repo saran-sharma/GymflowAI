@@ -54,6 +54,7 @@ import {
   Eyebrow,
   LinkButton,
   MetricRow,
+  Motion,
   Row,
   Screen,
   SkeletonScreen,
@@ -61,13 +62,16 @@ import {
   Segmented,
   SkeletonCard,
   Spacer,
+  Staggered,
   StatCard,
   StatRow,
   Stack,
   Text,
   color,
+  entrance,
   space,
   toneColor,
+  usePressMotion,
   useThemedStyles,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
@@ -234,20 +238,11 @@ export default function OwnerDashboardScreen() {
               Here&apos;s what needs your attention today.
             </Text>
           </Stack>
-          <Pressable
-            onPress={() => router.push('/(owner)/broadcast' as never)}
-            accessibilityRole="button"
-            accessibilityLabel="Send a broadcast"
-            accessibilityHint="Opens the broadcast composer to message members or trainers"
-            testID="dashboard-broadcast"
-            hitSlop={space.sm}
-            style={({ pressed }) => [styles.broadcastButton, pressed ? styles.broadcastPressed : null]}
-          >
-            <Ionicons name="megaphone-outline" size={20} color={color.text} />
-          </Pressable>
+          <BroadcastButton onPress={() => router.push('/(owner)/broadcast' as never)} />
           <AccountAvatar size={44} />
         </Row>
 
+        <Staggered>
         {/* ------------------------------------------------- key numbers */}
         <StatRow>
           <StatCard
@@ -313,8 +308,11 @@ export default function OwnerDashboardScreen() {
             />
           </StatRow>
         </Section>
+        </Staggered>
 
         {/* ----------------------------------------------------- attention */}
+        {/* Outside <Staggered>: its own rows stagger in (below), so a second
+            block-level entrance on the section would be motion on motion. */}
         <Section
           title="Attention"
           action={
@@ -338,6 +336,7 @@ export default function OwnerDashboardScreen() {
             <Card gap="none">
               {pendingCorrections > 0 ? (
                 <AttentionRow
+                  index={0}
                   title={`${pendingCorrections} correction${pendingCorrections === 1 ? '' : 's'} pending review`}
                   severity="warning"
                   onPress={() => router.push('/(owner)/corrections' as never)}
@@ -347,6 +346,7 @@ export default function OwnerDashboardScreen() {
               {attentionEntries.slice(0, 3).map((entry, index) => (
                 <AttentionRow
                   key={entry.key}
+                  index={index + (pendingCorrections > 0 ? 1 : 0)}
                   title={entry.title}
                   detail={entry.detail}
                   severity={entry.severity}
@@ -358,6 +358,7 @@ export default function OwnerDashboardScreen() {
           )}
         </Section>
 
+        <Staggered from={3}>
         {/* --------------------------------------------------------- feedback */}
         <Section title="Feedback">
           <Pressable
@@ -501,6 +502,7 @@ export default function OwnerDashboardScreen() {
           title="Monthly trend charts"
           detail="Revenue, membership growth and PT bookings by month need history GymFlow does not store yet. Punctuality, attendance and PT utilisation are shown above as period figures instead."
         />
+        </Staggered>
       </Body>
     </Screen>
   );
@@ -515,14 +517,18 @@ function AttentionRow({
   severity,
   onPress,
   withDivider,
+  index,
 }: {
   title: string;
   detail?: string;
   severity: AlertSeverity;
   onPress?: () => void;
   withDivider: boolean;
+  /** Position in the list — staggers the row in as the panel populates. */
+  index?: number;
 }) {
   const styles = useThemedStyles(buildStyles);
+  const press = usePressMotion(Boolean(onPress));
   const hue = toneColor[SEVERITY_TONE[severity]];
   const row = (
     <Row gap="sm" align="center" style={styles.attentionRow}>
@@ -542,23 +548,51 @@ function AttentionRow({
   );
 
   return (
-    <>
+    <Motion.View entering={index === undefined ? undefined : entrance(index)}>
       {onPress ? (
-        <Pressable
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel={detail ? `${title}. ${detail}` : title}
-          style={({ pressed }) => (pressed ? styles.attentionPressed : null)}
-        >
-          {row}
-        </Pressable>
+        <Motion.View style={press.style}>
+          <Pressable
+            onPress={onPress}
+            onPressIn={press.onPressIn}
+            onPressOut={press.onPressOut}
+            accessibilityRole="button"
+            accessibilityLabel={detail ? `${title}. ${detail}` : title}
+            style={({ pressed }) => (pressed ? styles.attentionPressed : null)}
+          >
+            {row}
+          </Pressable>
+        </Motion.View>
       ) : (
         <View accessible accessibilityLabel={detail ? `${title}. ${detail}` : title}>
           {row}
         </View>
       )}
       {withDivider ? <Divider /> : null}
-    </>
+    </Motion.View>
+  );
+}
+
+/** The megaphone in the dashboard header — the shared press spring, so it
+ * feels the same as every other control. */
+function BroadcastButton({ onPress }: { onPress: () => void }) {
+  const styles = useThemedStyles(buildStyles);
+  const press = usePressMotion();
+  return (
+    <Motion.View style={press.style}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        accessibilityRole="button"
+        accessibilityLabel="Send a broadcast"
+        accessibilityHint="Opens the broadcast composer to message members or trainers"
+        testID="dashboard-broadcast"
+        hitSlop={space.sm}
+        style={({ pressed }) => [styles.broadcastButton, pressed ? styles.broadcastPressed : null]}
+      >
+        <Ionicons name="megaphone-outline" size={20} color={color.text} />
+      </Pressable>
+    </Motion.View>
   );
 }
 

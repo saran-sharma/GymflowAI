@@ -40,7 +40,7 @@ import type {
   WorkoutItem,
   WorkoutSession,
 } from '../../src/api/types';
-import { KindTag, TodayCard } from '../../src/components/member';
+import { JourneyCompleteCard, KindTag, TodayCard } from '../../src/components/member';
 import { CategoryBadge, WorkoutArtwork } from '../../src/components/programme';
 import { TrainerReviewPrompt } from '../../src/components/trainer-review-prompt';
 import {
@@ -327,17 +327,22 @@ export default function MemberWorkoutScreen() {
           </Card>
         ) : null}
 
-        {/* General Training is over — nothing here to start or rest from. */}
-        {journeyInactive && !inAssessment ? (
+        {/* General Training is over — nothing here to start or rest from.
+            A finished journey gets the milestone treatment; a paused one is a
+            plain status card, because "on hold" is not a moment. */}
+        {journeyInactive && !inAssessment && journeyDone ? (
+          <JourneyCompleteCard
+            workoutsCompleted={plan.workouts_completed}
+            completionPct={plan.completion_pct}
+            detail="Your trainer plans what comes next."
+          />
+        ) : null}
+        {journeyInactive && !inAssessment && !journeyDone ? (
           <Card>
-            <Eyebrow>{journeyDone ? 'Programme complete' : 'Programme paused'}</Eyebrow>
-            <Text variant="title">
-              {journeyDone ? 'General Training complete' : 'General Training is on hold'}
-            </Text>
+            <Eyebrow>Programme paused</Eyebrow>
+            <Text variant="title">General Training is on hold</Text>
             <Text variant="body" tone={color.textSecondary}>
-              {journeyDone
-                ? `${plan.workouts_completed} workouts recorded. Your trainer plans what comes next.`
-                : 'Speak to your trainer at your branch about resuming your programme.'}
+              Speak to your trainer at your branch about resuming your programme.
             </Text>
           </Card>
         ) : null}

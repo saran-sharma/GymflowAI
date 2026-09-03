@@ -9,10 +9,12 @@
 import { Stack } from 'expo-router';
 import React from 'react';
 
-import { colors } from '../../src/theme';
+import { color } from '../../src/design';
 
 export default function OnboardingLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+    <Stack
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.background } }}
+    />
   );
 }

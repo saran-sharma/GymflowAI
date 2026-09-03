@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -19,14 +19,22 @@ import {
   ErrorState,
   Eyebrow,
   Loading,
-  Meter,
+  Motion,
+  ProgressBar,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
+  Section,
+  Spacer,
+  Staggered,
+  StatCard,
+  StatRow,
+  Stack,
+  Text,
+  color,
+  entrance,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, incentiveMeta, spacing, statusMeta } from '../../src/theme';
+import { incentiveMeta, statusMeta } from '../../src/theme';
 import { dayLabel, duration, percent, timeOfDay } from '../../src/utils/format';
 
 export default function TrainerAttendanceScreen() {
@@ -62,123 +70,143 @@ export default function TrainerAttendanceScreen() {
               void history.refresh();
               void incentive.refresh();
             }}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">This month</Txt>
+        <Text variant="title">This month</Text>
 
-        {summary ? (
-          <>
-            <View style={styles.tiles}>
-              <StatTile
+        <Staggered>
+          {summary ? (
+            <StatRow>
+              <StatCard
                 label="Punctuality"
                 value={percent(summary.punctuality_pct)}
-                accent={summary.punctuality_pct >= 90 ? colors.onTime : colors.late}
+                colorOverride={
+                  summary.punctuality_pct >= 90 ? color.status.positive : color.status.caution
+                }
               />
-              <StatTile
+              <StatCard
                 label="Attendance"
                 value={percent(summary.attendance_pct)}
-                accent={summary.attendance_pct >= 95 ? colors.onTime : colors.late}
+                colorOverride={
+                  summary.attendance_pct >= 95 ? color.status.positive : color.status.caution
+                }
               />
-            </View>
-            <View style={styles.tiles}>
-              <StatTile label="Late" value={summary.late_count} accent={colors.late} />
-              <StatTile label="Early exit" value={summary.early_exit_count} accent={colors.earlyExit} />
-              <StatTile label="Completed" value={summary.completed_shifts} />
-            </View>
+            </StatRow>
+          ) : null}
 
-            {/* Incentive eligibility — never a payout figure. */}
+          {summary ? (
+            <StatRow>
+              <StatCard
+                label="Late"
+                value={summary.late_count}
+                tone={summary.late_count ? 'caution' : undefined}
+              />
+              <StatCard
+                label="Early exit"
+                value={summary.early_exit_count}
+                colorOverride={
+                  summary.early_exit_count ? color.status.warning : undefined
+                }
+              />
+              <StatCard label="Completed" value={summary.completed_shifts} />
+            </StatRow>
+          ) : null}
+
+          {/* Incentive eligibility — never a payout figure. */}
+          {summary ? (
             <Card>
-              <Row style={styles.cardHead}>
+              <Row gap="sm">
                 <Eyebrow>Incentive eligibility</Eyebrow>
-                {eligibility ? <Badge label={eligibility.label} color={eligibility.color} /> : null}
+                <Spacer />
+                {eligibility ? (
+                  <Badge label={eligibility.label} colorOverride={eligibility.color} />
+                ) : null}
               </Row>
               <Divider />
-              {summary.checks.map((check) => (
-                <Row key={check.key} style={styles.check}>
-                  <Txt
-                    variant="label"
-                    color={check.passed ? colors.onTime : check.near_miss ? colors.late : colors.absent}
-                    style={styles.checkLabel}
-                  >
-                    {check.passed ? '✓' : check.near_miss ? '~' : '✕'}  {check.label}
-                  </Txt>
-                  <Txt variant="mono" color={colors.textMuted}>
-                    {check.actual}
-                  </Txt>
-                </Row>
-              ))}
-              <Banner tone="info">{summary.disclaimer}</Banner>
-            </Card>
-          </>
-        ) : null}
-
-        <Txt variant="heading" style={styles.sectionHead}>
-          Attendance history
-        </Txt>
-
-        {days.length === 0 ? (
-          <EmptyState
-            icon="calendar-outline"
-            title="No shifts recorded yet"
-            detail="Your attendance will appear here as soon as you check in."
-          />
-        ) : (
-          days.map((day) => {
-            const meta = statusMeta[day.status];
-            return (
-              <Card key={day.id} style={styles.dayCard}>
-                <Row style={styles.dayHead}>
-                  <Txt variant="heading">{dayLabel(day.work_date)}</Txt>
-                  <Badge label={meta.short} color={meta.color} />
-                </Row>
-                <Row style={styles.dayTimes}>
-                  <Txt variant="label" color={colors.textMuted}>
-                    In {timeOfDay(day.check_in_at)}
-                  </Txt>
-                  <Txt variant="label" color={colors.textMuted}>
-                    Out {timeOfDay(day.check_out_at)}
-                  </Txt>
-                  <Txt variant="label" color={colors.textFaint}>
-                    {duration(day.worked_minutes)}
-                  </Txt>
-                </Row>
-                {day.late_minutes > 0 || day.early_exit_minutes > 0 ? (
-                  <Row style={styles.dayFlags}>
-                    {day.late_minutes > 0 ? (
-                      <Txt variant="label" color={colors.late}>
-                        {day.late_minutes} min late
-                      </Txt>
-                    ) : null}
-                    {day.early_exit_minutes > 0 ? (
-                      <Txt variant="label" color={colors.earlyExit}>
-                        {day.early_exit_minutes} min early exit
-                      </Txt>
-                    ) : null}
+              <Stack gap="xs">
+                {summary.checks.map((check) => (
+                  <Row key={check.key} gap="sm">
+                    <Text variant="label" tone={color.textSecondary} style={styles.grow}>
+                      {check.label}
+                    </Text>
+                    <Text variant="mono" tone={color.textTertiary}>
+                      {check.actual}
+                    </Text>
+                    <Badge
+                      label={check.passed ? 'Pass' : check.near_miss ? 'Near' : 'Fail'}
+                      tone={check.passed ? 'positive' : check.near_miss ? 'caution' : 'critical'}
+                    />
                   </Row>
-                ) : null}
-                <Meter
-                  value={day.status === 'absent' ? 0 : 100}
-                  color={meta.color}
-                />
-              </Card>
-            );
-          })
-        )}
+                ))}
+              </Stack>
+              <Text variant="label" tone={color.textTertiary}>
+                {summary.disclaimer}
+              </Text>
+            </Card>
+          ) : null}
+        </Staggered>
+
+        <Section title="Attendance history">
+          {days.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No shifts recorded yet"
+              detail="Your attendance will appear here as soon as you check in."
+            />
+          ) : (
+            days.map((day, index) => {
+              const meta = statusMeta[day.status];
+              return (
+                <Motion.View key={day.id} entering={entrance(index)}>
+                <Card gap="xs">
+                  <Row gap="sm">
+                    <Text variant="heading" style={styles.grow}>
+                      {dayLabel(day.work_date)}
+                    </Text>
+                    <Badge label={meta.short} colorOverride={meta.color} />
+                  </Row>
+                  <Row gap="lg">
+                    <Text variant="label" tone={color.textSecondary}>
+                      In {timeOfDay(day.check_in_at)}
+                    </Text>
+                    <Text variant="label" tone={color.textSecondary}>
+                      Out {timeOfDay(day.check_out_at)}
+                    </Text>
+                    <Text variant="label" tone={color.textTertiary}>
+                      {duration(day.worked_minutes)}
+                    </Text>
+                  </Row>
+                  {day.late_minutes > 0 || day.early_exit_minutes > 0 ? (
+                    <Row gap="lg">
+                      {day.late_minutes > 0 ? (
+                        <Text variant="label" tone={color.status.caution}>
+                          {day.late_minutes} min late
+                        </Text>
+                      ) : null}
+                      {day.early_exit_minutes > 0 ? (
+                        <Text variant="label" tone={color.status.warning}>
+                          {day.early_exit_minutes} min early exit
+                        </Text>
+                      ) : null}
+                    </Row>
+                  ) : null}
+                  <ProgressBar
+                    value={day.status === 'absent' ? 0 : 100}
+                    colorOverride={meta.color}
+                  />
+                </Card>
+                </Motion.View>
+              );
+            })
+          )}
+        </Section>
       </Body>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  cardHead: { justifyContent: 'space-between' },
-  check: { justifyContent: 'space-between', paddingVertical: 3 },
-  checkLabel: { flex: 1 },
-  sectionHead: { marginTop: spacing.lg },
-  dayCard: { gap: spacing.xs },
-  dayHead: { justifyContent: 'space-between' },
-  dayTimes: { gap: spacing.lg },
-  dayFlags: { gap: spacing.lg },
+  grow: { flex: 1 },
 });

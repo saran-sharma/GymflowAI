@@ -3,20 +3,23 @@
  *
  * Reached from the desk rather than being the desk itself, but unchanged in
  * what it does. One job: get from opening the screen to a recorded check-in in
- * a couple of seconds. Everything else on this screen is confirmation of what the server
- * recorded — name, branch, shift, and the server's own time.
+ * a couple of seconds. Everything else on this screen is confirmation of what
+ * the server recorded — name, branch, shift, and the server's own time — and
+ * the verdict (on time / late / absent) is the server's, shown plainly the
+ * moment it lands.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Modal, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+
+import { Ionicons } from '@expo/vector-icons';
 
 import { ApiError, OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { CheckResponse, TrainerToday } from '../../src/api/types';
 import {
+  Badge,
   Banner,
   Body,
   Button,
@@ -25,16 +28,27 @@ import {
   ErrorState,
   Eyebrow,
   Loading,
+  Motion,
   OfflineNotice,
   Row,
   Screen,
-  Txt,
-} from '../../src/components/ui';
-import { useThemedStyles } from '../../src/design';
+  Sheet,
+  Spacer,
+  Stack,
+  SuccessCheck,
+  Text,
+  color,
+  entrance,
+  haptics,
+  radii,
+  space,
+  text as textTokens,
+  useThemedStyles,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
 import { useAuth } from '../../src/store/AuthContext';
 import { OFFLINE_MESSAGE, useNetwork } from '../../src/store/NetworkContext';
-import { colors, radius, spacing, statusMeta, typography } from '../../src/theme';
+import { statusMeta } from '../../src/theme';
 import { relativeMinutes, timeOfDay } from '../../src/utils/format';
 
 type Action = 'check_in' | 'check_out';
@@ -82,10 +96,8 @@ export default function TrainerShiftScreen() {
         setResult(response);
         setPinPrompt(null);
         setPin('');
-        void Haptics.notificationAsync(
-          response.status === 'late' || response.status === 'early_exit'
-            ? Haptics.NotificationFeedbackType.Warning
-            : Haptics.NotificationFeedbackType.Success,
+        haptics.notify(
+          response.status === 'late' || response.status === 'early_exit' ? 'warning' : 'success',
         );
         await today.refresh();
       } catch (caught) {
@@ -93,7 +105,7 @@ export default function TrainerShiftScreen() {
         setActionError(
           error?.code === OFFLINE_CODE ? OFFLINE_MESSAGE : (error?.message ?? 'Could not record that.'),
         );
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.notify('error');
       } finally {
         setBusy(false);
       }
@@ -127,95 +139,131 @@ export default function TrainerShiftScreen() {
 
   if (today.loading) return <Loading label="Loading your shift" />;
   if (today.error || !data) {
+    const offline = today.error?.code === OFFLINE_CODE;
     return (
       <Screen>
         <ErrorState
-          title={today.error?.code === OFFLINE_CODE ? 'No connection' : 'Could not load your shift'}
-          detail={today.error?.message}
+          offline={offline}
+          title={offline ? undefined : 'Could not load your shift'}
+          detail={offline ? undefined : today.error?.message}
           onRetry={today.reload}
         />
       </Screen>
     );
   }
 
+  const checkedIn = Boolean(data.check_in_at);
+  const complete = Boolean(data.check_out_at);
+  // The animated draw-on mark is reserved for a clean outcome. A late or
+  // early-exit shift was still recorded — it gets a quiet, static mark in the
+  // verdict's own colour, so the animation never reads as "well done" over a
+  // flag.
+  const cleanVerdict = data.status === 'on_time' || data.status === 'completed';
+
   return (
     <Screen>
-      <Body
-        refreshControl={
-          <RefreshControl
-            refreshing={today.refreshing}
-            onRefresh={today.refresh}
-            tintColor={colors.brand}
-          />
-        }
-      >
+      {/* `flexGrow` + the spacer below drop the check-in hero into the lower
+          third — the brief's "128dp, bottom-anchored, thumb-reachable". */}
+      <Body contentContainerStyle={styles.body}>
         {/* Identity: name, branch, shift. Three lines, nothing else. */}
-        <View style={styles.header}>
+        <Stack gap="xs">
           <Eyebrow>{data.trainer.branch_name}</Eyebrow>
-          <Txt variant="title">{data.trainer.full_name}</Txt>
-          <Row style={styles.shiftRow}>
-            <Ionicons name="time-outline" size={16} color={colors.textMuted} />
-            <Txt variant="body" color={colors.textMuted}>
-              {data.has_shift ? `Today's shift · ${data.shift_label}` : 'No shift rostered today'}
-            </Txt>
+          <Text variant="title">{data.trainer.full_name}</Text>
+          <Row gap="xs">
+            <Text variant="body" tone={color.textSecondary}>
+              {data.has_shift ? `Today’s shift · ${data.shift_label}` : 'No shift rostered today'}
+            </Text>
           </Row>
-        </View>
+        </Stack>
 
         {!isOnline ? <OfflineNotice message={OFFLINE_MESSAGE} /> : null}
 
-        {/* The confirmation panel, once something has been recorded. */}
-        {data.check_in_at ? (
-          <Card style={[styles.confirm, { borderColor: `${status?.color}55` }]}>
-            <Row style={styles.confirmHead}>
-              <Ionicons
-                name={data.check_out_at ? 'checkmark-done-circle' : 'checkmark-circle'}
-                size={26}
-                color={status?.color}
-              />
-              <Txt variant="heading" color={status?.color}>
-                {data.check_out_at ? '✓ SHIFT COMPLETE' : '✓ CHECKED IN'}
-              </Txt>
-            </Row>
+        {/* The verdict panel, once something has been recorded. It settles into
+            place rather than snapping — the server has spoken. */}
+        {checkedIn ? (
+          <Motion.View key={complete ? 'complete' : 'in'} entering={entrance(0)}>
+            <Card style={styles.verdict} gap="md">
+              <Row gap="md" align="center">
+                {cleanVerdict ? (
+                  <SuccessCheck
+                    size={40}
+                    colorOverride={status?.color}
+                    accessibilityLabel={complete ? 'Shift complete' : 'Checked in'}
+                  />
+                ) : (
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={40}
+                    color={status?.color ?? color.textSecondary}
+                    accessibilityLabel={complete ? 'Shift complete' : 'Checked in'}
+                  />
+                )}
+                <Stack gap="xxs" style={styles.grow}>
+                  <Text variant="heading" tone={status?.color}>
+                    {complete ? 'Shift complete' : 'Checked in'}
+                  </Text>
+                  <Text variant="label" tone={color.textTertiary}>
+                    Recorded by GymFlow · server time
+                  </Text>
+                </Stack>
+              </Row>
 
-            <Divider />
+              <Divider />
 
-            <Detail label="Server time" value={timeOfDay(data.check_in_at)} />
-            <Detail label="Branch" value={data.trainer.branch_name} />
-            <Detail label="Shift" value={data.shift_label ?? '—'} />
-            <Detail label="Status" value={status?.label ?? '—'} valueColor={status?.color} />
-            {data.late_minutes > 0 ? (
-              <Detail label="Late by" value={`${data.late_minutes} min`} valueColor={colors.late} />
-            ) : null}
-            {data.check_out_at ? (
-              <>
-                <Detail label="Check-out" value={timeOfDay(data.check_out_at)} />
-                {data.early_exit_minutes > 0 ? (
+              <Stack gap="xs">
+                <Detail label="Check-in" value={timeOfDay(data.check_in_at)} />
+                <Detail label="Status" value={status?.label ?? '—'} valueColor={status?.color} />
+                {data.late_minutes > 0 ? (
                   <Detail
-                    label="Left early by"
-                    value={`${data.early_exit_minutes} min`}
-                    valueColor={colors.earlyExit}
+                    label="Late by"
+                    value={`${data.late_minutes} min`}
+                    valueColor={color.status.caution}
                   />
                 ) : null}
-              </>
-            ) : null}
-          </Card>
+                {complete ? (
+                  <>
+                    <Detail label="Check-out" value={timeOfDay(data.check_out_at)} />
+                    {data.early_exit_minutes > 0 ? (
+                      <Detail
+                        label="Left early by"
+                        value={`${data.early_exit_minutes} min`}
+                        valueColor={color.status.warning}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+                <Detail label="Branch" value={data.trainer.branch_name} />
+                <Detail label="Shift" value={data.shift_label ?? '—'} />
+              </Stack>
+            </Card>
+          </Motion.View>
         ) : null}
 
-        {actionError ? <Banner tone="danger">{actionError}</Banner> : null}
-        {result && !actionError ? <Banner tone="success">{result.message}</Banner> : null}
+        {actionError ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {actionError}
+          </Banner>
+        ) : null}
+        {result && !actionError ? (
+          <Banner tone="positive" icon="checkmark-circle-outline">
+            {result.message}
+          </Banner>
+        ) : null}
 
-        {/* The action. */}
+        {/* The action, dropped to the thumb zone. */}
         {action ? (
-          <View style={styles.actionBlock}>
+          <>
+          <Spacer />
+          <Stack gap="md" style={styles.actionBlock}>
             {data.has_shift && action === 'check_in' && data.shift_start ? (
-              <Txt variant="label" color={colors.textFaint} style={styles.countdown}>
+              <Text variant="label" tone={color.textTertiary} align="center">
                 Shift starts {relativeMinutes(data.shift_start)} · {data.grace_minutes} min grace
-              </Txt>
+              </Text>
             ) : null}
 
             {qrEnabled ? (
               <Button
-                title={action === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
+                title={action === 'check_in' ? 'Check in' : 'Check out'}
                 size="hero"
                 icon="qr-code-outline"
                 loading={busy}
@@ -227,7 +275,13 @@ export default function TrainerShiftScreen() {
 
             {pinEnabled ? (
               <Button
-                title={qrEnabled ? 'Use PIN instead' : `${action === 'check_in' ? 'CHECK IN' : 'CHECK OUT'} WITH PIN`}
+                title={
+                  qrEnabled
+                    ? 'Use PIN instead'
+                    : action === 'check_in'
+                      ? 'Check in with PIN'
+                      : 'Check out with PIN'
+                }
                 size={qrEnabled ? 'md' : 'hero'}
                 variant={qrEnabled ? 'secondary' : 'primary'}
                 icon="keypad-outline"
@@ -239,24 +293,25 @@ export default function TrainerShiftScreen() {
                 testID="pin-action"
               />
             ) : null}
-          </View>
+          </Stack>
+          </>
         ) : (
           <Card>
-            <Txt variant="heading">
-              {data.check_out_at ? 'Nothing more to do today' : 'No action available'}
-            </Txt>
-            <Txt variant="body" color={colors.textMuted}>
-              {data.check_out_at
+            <Text variant="heading">
+              {complete ? 'Nothing more to do today' : 'No action available'}
+            </Text>
+            <Text variant="body" tone={color.textSecondary}>
+              {complete
                 ? 'Your shift is closed. See you tomorrow.'
                 : data.has_shift
                   ? 'Your shift has already been recorded.'
                   : 'You are not rostered today. Speak to your branch manager if that looks wrong.'}
-            </Txt>
+            </Text>
           </Card>
         )}
       </Body>
 
-      <PinDialog
+      <PinSheet
         visible={pinPrompt !== null}
         action={pinPrompt}
         pin={pin}
@@ -275,26 +330,30 @@ export default function TrainerShiftScreen() {
 function Detail({
   label,
   value,
-  valueColor = colors.text,
+  valueColor,
 }: {
   label: string;
   value: string;
   valueColor?: string;
 }) {
-  const styles = useThemedStyles(buildStyles);
   return (
-    <Row style={styles.detail}>
-      <Txt variant="label" color={colors.textMuted}>
+    <Row gap="md">
+      <Text variant="label" tone={color.textSecondary} style={{ flex: 1 }}>
         {label}
-      </Txt>
-      <Txt variant="mono" color={valueColor}>
+      </Text>
+      <Text variant="mono" tone={valueColor ?? color.text}>
         {value}
-      </Txt>
+      </Text>
     </Row>
   );
 }
 
-function PinDialog({
+/**
+ * PIN entry as a bottom sheet, not a centred dialog — the keypad and the
+ * confirm land in the thumb's reach, and the sheet clears the navigation bar
+ * and closes on hardware back.
+ */
+function PinSheet({
   visible,
   action,
   pin,
@@ -313,29 +372,16 @@ function PinDialog({
 }) {
   const styles = useThemedStyles(buildStyles);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.modalBackdrop}>
-        <Card style={styles.modalCard}>
-          <Txt variant="heading">
-            {action === 'check_in' ? 'Check in with PIN' : 'Check out with PIN'}
-          </Txt>
-          <Txt variant="body" color={colors.textMuted}>
-            Enter your GymFlow check-in PIN. The time is taken from the server.
-          </Txt>
-          <TextInput
-            value={pin}
-            onChangeText={(value) => onChange(value.replace(/\D/g, '').slice(0, 8))}
-            placeholder="••••••"
-            placeholderTextColor={colors.textFaint}
-            keyboardType="number-pad"
-            secureTextEntry
-            style={styles.pinInput}
-            autoFocus
-            accessibilityLabel="Check-in PIN"
-            testID="pin-input"
-          />
+    <Sheet
+      visible={visible}
+      onClose={onCancel}
+      title={action === 'check_out' ? 'Check out with PIN' : 'Check in with PIN'}
+      subtitle="Server time, not your phone"
+      testID="pin-sheet"
+      footer={
+        <>
           <Button
-            title="CONFIRM"
+            title="Confirm"
             size="lg"
             loading={busy}
             disabled={pin.length < 4}
@@ -343,38 +389,41 @@ function PinDialog({
             testID="pin-confirm"
           />
           <Button title="Cancel" variant="ghost" onPress={onCancel} />
-        </Card>
-      </View>
-    </Modal>
+        </>
+      }
+    >
+      <TextInput
+        value={pin}
+        onChangeText={(value) => onChange(value.replace(/\D/g, '').slice(0, 8))}
+        placeholder="••••••"
+        placeholderTextColor={color.textTertiary}
+        keyboardType="number-pad"
+        secureTextEntry
+        style={styles.pinInput}
+        autoFocus
+        accessibilityLabel="Check-in PIN"
+        testID="pin-input"
+      />
+    </Sheet>
   );
 }
 
 function buildStyles() {
   return StyleSheet.create({
-  header: { gap: spacing.xs, marginBottom: spacing.sm },
-  shiftRow: { gap: spacing.xs, marginTop: spacing.xs },
-  confirm: { borderWidth: 1.5 },
-  confirmHead: { gap: spacing.sm },
-  detail: { justifyContent: 'space-between', paddingVertical: 3 },
-  actionBlock: { gap: spacing.md, marginTop: spacing.sm },
-  countdown: { textAlign: 'center' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.82)',
-    justifyContent: 'center',
-    padding: spacing.xl,
-  },
-  modalCard: { gap: spacing.md },
-  pinInput: {
-    ...typography.display,
-    color: colors.text,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    height: 72,
-    textAlign: 'center',
-    letterSpacing: 8,
-  },
-});
+    grow: { flex: 1 },
+    body: { flexGrow: 1 },
+    verdict: { borderColor: color.borderStrong },
+    actionBlock: { marginTop: space.sm },
+    pinInput: {
+      ...textTokens.metric,
+      color: color.text,
+      backgroundColor: color.surfaceInput,
+      borderWidth: 1,
+      borderColor: color.border,
+      borderRadius: radii.md,
+      height: 72,
+      textAlign: 'center',
+      letterSpacing: 8,
+    },
+  });
 }

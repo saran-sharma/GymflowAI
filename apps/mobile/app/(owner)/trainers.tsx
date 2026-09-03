@@ -7,10 +7,20 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { Trainer } from '../../src/api/types';
-import { Body, EmptyState, ErrorState, Eyebrow, Screen, Txt } from '../../src/components/ui';
-import { PersonRow, SkeletonScreen } from '../../src/design';
+import {
+  Body,
+  EmptyState,
+  ErrorState,
+  Eyebrow,
+  PersonRow,
+  Screen,
+  SkeletonScreen,
+  Staggered,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, spacing } from '../../src/theme';
 
 export default function OwnerTrainersScreen() {
   const router = useRouter();
@@ -30,7 +40,7 @@ export default function OwnerTrainersScreen() {
   if (trainers.error) {
     const offline = trainers.error?.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen background="owner" backgroundIntensity="subtle">
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load trainers'}
@@ -42,36 +52,41 @@ export default function OwnerTrainersScreen() {
   }
 
   return (
-    <Screen>
+    <Screen background="owner" backgroundIntensity="subtle">
       <Body
         refreshControl={
           <RefreshControl
             refreshing={trainers.refreshing}
             onRefresh={trainers.refresh}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Trainers</Txt>
+        <Text variant="title">Trainers</Text>
 
         {grouped.length === 0 ? (
-          <EmptyState icon="people-outline" title="No trainers yet" />
+          <EmptyState
+            icon="people-outline"
+            title="No trainers yet"
+            detail="Trainers appear here once your branches add them in GymFlow."
+          />
         ) : (
-          grouped.map(([branchName, list]) => (
-            <View key={branchName} style={styles.group}>
-              <Eyebrow>{branchName}</Eyebrow>
-              {list.map((trainer, index) => (
-                <PersonRow
-                  key={trainer.id}
-                  index={index}
-                  name={trainer.full_name}
-                  detail={trainer.specialty ?? trainer.designation ?? 'Trainer'}
-                  onPress={() => router.push(`/(owner)/trainer/${trainer.id}` as never)}
-                  testID={`trainer-row-${trainer.id}`}
-                />
-              ))}
-            </View>
-          ))
+          <Staggered>
+            {grouped.map(([branchName, list]) => (
+              <View key={branchName} style={styles.group}>
+                <Eyebrow>{branchName}</Eyebrow>
+                {list.map((trainer) => (
+                  <PersonRow
+                    key={trainer.id}
+                    name={trainer.full_name}
+                    detail={trainer.specialty ?? trainer.designation ?? 'Trainer'}
+                    onPress={() => router.push(`/(owner)/trainer/${trainer.id}` as never)}
+                    testID={`trainer-row-${trainer.id}`}
+                  />
+                ))}
+              </View>
+            ))}
+          </Staggered>
         )}
       </Body>
     </Screen>
@@ -79,5 +94,5 @@ export default function OwnerTrainersScreen() {
 }
 
 const styles = StyleSheet.create({
-  group: { gap: spacing.sm, marginTop: spacing.md },
+  group: { gap: space.sm, marginTop: space.md },
 });

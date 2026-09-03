@@ -46,6 +46,7 @@ import {
   Screen,
   Section,
   Spacer,
+  Staggered,
   StatCard,
   StatRow,
   Stack,
@@ -189,6 +190,7 @@ export default function MemberProgressScreen() {
           </Text>
         </Stack>
 
+        <Staggered>
         {plan ? <WeekStrip days={days.data ?? []} today={journeyToday(plan)} /> : null}
 
         {totals ? (
@@ -306,6 +308,7 @@ export default function MemberProgressScreen() {
             })
           )}
         </Section>
+        </Staggered>
       </Body>
     </Screen>
   );

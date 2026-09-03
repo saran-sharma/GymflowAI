@@ -29,6 +29,7 @@ import type {
 import { AccountAvatar } from '../../src/components/account';
 import {
   FeelingCheckIn,
+  JourneyCompleteCard,
   NotConnected,
   PtLine,
   TodayCard,
@@ -51,6 +52,7 @@ import {
   StatCard,
   Section,
   Spacer,
+  Staggered,
   StatRow,
   Stack,
   Text,
@@ -236,6 +238,9 @@ export default function MemberHomeScreen() {
           <AccountAvatar size={44} />
         </Row>
 
+        {/* The greeting above is instant; everything below it is the screen
+            "arriving" once — a short staggered fade-in, top to bottom. */}
+        <Staggered>
         {membershipExpired ? (
           <Card>
             <Row gap="sm">
@@ -301,19 +306,19 @@ export default function MemberHomeScreen() {
         ) : null}
 
         {journeyDone && journey ? (
-          <Card>
-            <Eyebrow>Programme complete</Eyebrow>
-            <Text variant="heading">General Training complete</Text>
-            <Text variant="body" tone={color.textSecondary}>
-              {journey.workouts_completed} workouts recorded. Your trainer plans what comes next.
-            </Text>
-            {!journey.pt_converted ? (
-              <LinkButton
-                title="See what comes next"
-                onPress={() => router.push('/(member)/pt' as never)}
-              />
-            ) : null}
-          </Card>
+          <JourneyCompleteCard
+            workoutsCompleted={journey.workouts_completed}
+            completionPct={journey.completion_pct}
+            detail="Your trainer plans what comes next."
+            action={
+              !journey.pt_converted ? (
+                <LinkButton
+                  title="See what comes next"
+                  onPress={() => router.push('/(member)/pt' as never)}
+                />
+              ) : null
+            }
+          />
         ) : null}
 
         {/* The next PT session, when it is not already today's card. */}
@@ -358,6 +363,8 @@ export default function MemberHomeScreen() {
         ) : null}
 
         {/* How am I doing — three numbers, no more. */}
+        {/* One unit — the row enters via <Staggered>, the tiles don't each
+            animate on their own (that would be motion for motion's sake). */}
         <StatRow>
           <MetricTile
             label="Streak"
@@ -424,6 +431,7 @@ export default function MemberHomeScreen() {
             onPress={() => router.push('/(member)/alerts' as never)}
           />
         ) : null}
+        </Staggered>
       </Body>
     </Screen>
   );

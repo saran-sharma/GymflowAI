@@ -22,6 +22,7 @@ import type {
 import {
   Badge,
   Button,
+  Countdown,
   Divider,
   Eyebrow,
   Row,
@@ -30,6 +31,7 @@ import {
   Stack,
   Text,
   color,
+  haptics,
   radii,
   space,
   useThemedStyles,
@@ -355,6 +357,8 @@ export function ExerciseHistorySheet({
 export interface RestTimer {
   /** Seconds left, or null when no rest is running. */
   remaining: number | null;
+  /** What the rest was started from, so a ring can show the proportion left. */
+  total: number | null;
   start: (seconds: number) => void;
   extend: (seconds: number) => void;
   stop: () => void;
@@ -373,6 +377,10 @@ export interface RestTimer {
  */
 export function useRestTimer(): RestTimer {
   const [deadline, setDeadline] = useState<number | null>(null);
+  // What `start` (plus any `extend`s) was asked for, kept so a ring can draw
+  // the proportion left. Not derived from the deadline — once time has passed,
+  // "how much is left of what I asked for" is no longer recoverable from it.
+  const [total, setTotal] = useState<number | null>(null);
   // The tick's *value* is what re-derives `remaining`. A stable setter in the
   // dependency list would look like a repaint and never actually recompute.
   const [tick, setTick] = useState(0);
@@ -404,13 +412,19 @@ export function useRestTimer(): RestTimer {
 
   return {
     remaining,
-    start: useCallback((seconds: number) => setDeadline(Date.now() + seconds * 1000), []),
-    extend: useCallback(
-      (seconds: number) =>
-        setDeadline((current) => Math.max(current ?? Date.now(), Date.now()) + seconds * 1000),
-      [],
-    ),
-    stop: useCallback(() => setDeadline(null), []),
+    total,
+    start: useCallback((seconds: number) => {
+      setDeadline(Date.now() + seconds * 1000);
+      setTotal(seconds);
+    }, []),
+    extend: useCallback((seconds: number) => {
+      setDeadline((current) => Math.max(current ?? Date.now(), Date.now()) + seconds * 1000);
+      setTotal((current) => (current ?? 0) + seconds);
+    }, []),
+    stop: useCallback(() => {
+      setDeadline(null);
+      setTotal(null);
+    }, []),
   };
 }
 
@@ -428,26 +442,34 @@ export function clockLabel(seconds: number): string {
  */
 export function RestBar({ timer, onDone }: { timer: RestTimer; onDone?: () => void }) {
   const styles = useThemedStyles(buildStyles);
-  const { remaining } = timer;
+  const { remaining, total } = timer;
+  const finished = remaining === 0;
+
+  // One soft confirmation the instant the rest is up — the member has their
+  // hands on a bar and is not watching the screen. Fires once per rest.
+  useEffect(() => {
+    if (finished) haptics.notify('success');
+  }, [finished]);
+
   if (remaining === null) return null;
 
-  const finished = remaining === 0;
   return (
     <Row gap="md" style={[styles.rest, finished ? styles.restDone : null]}>
-      <Ionicons
-        name={finished ? 'checkmark-circle' : 'timer-outline'}
-        size={22}
-        color={finished ? color.status.positive : color.brand}
+      <Countdown
+        remaining={remaining}
+        total={total ?? (remaining || 1)}
+        size={60}
+        thickness={5}
+        accessibilityLabel={finished ? 'Rest over' : `Resting, ${clockLabel(remaining)} left`}
       />
-      <Stack gap="xxs">
+      <Stack gap="xxs" style={styles.grow}>
         <Eyebrow tone={finished ? color.status.positive : color.brand}>
           {finished ? 'Rest over' : 'Resting'}
         </Eyebrow>
-        <Text variant="metric" tone={finished ? color.text : color.text} style={styles.restClock}>
-          {clockLabel(remaining)}
+        <Text variant="label" tone={color.textTertiary}>
+          {finished ? 'Start your next set' : 'Or start early when you’re ready'}
         </Text>
       </Stack>
-      <Spacer />
       {!finished ? (
         <Button title="+30s" variant="ghost" size="sm" onPress={() => timer.extend(30)} />
       ) : null}

@@ -9,18 +9,49 @@
  * authenticated backend session (`homeRouteForRole` in `index.tsx`); a
  * mismatch is refused, not honoured.
  */
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Button, Row, Screen, SlamLogo, Stack, Text, color, space } from '../../src/design';
+import {
+  Card,
+  Divider,
+  NavRow,
+  Screen,
+  SlamLogo,
+  Stack,
+  Text,
+  color,
+  space,
+} from '../../src/design';
 
 type ExpectedRole = 'member' | 'trainer' | 'owner';
 
-const OPTIONS: { label: string; icon: string; expected: ExpectedRole }[] = [
-  { label: "I'm a Member", icon: '🏋️', expected: 'member' },
-  { label: "I'm a Trainer", icon: '🎯', expected: 'trainer' },
-  { label: "I'm a Gym Owner", icon: '📊', expected: 'owner' },
+const OPTIONS: {
+  label: string;
+  detail: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  expected: ExpectedRole;
+}[] = [
+  {
+    label: "I'm a Member",
+    detail: 'Today’s workout, PT and your progress',
+    icon: 'person-outline',
+    expected: 'member',
+  },
+  {
+    label: "I'm a Trainer",
+    detail: 'Your shift, clients and sessions',
+    icon: 'clipboard-outline',
+    expected: 'trainer',
+  },
+  {
+    label: "I'm a Gym Owner",
+    detail: 'Accountability and what needs attention',
+    icon: 'bar-chart-outline',
+    expected: 'owner',
+  },
 ];
 
 export default function RoleSelectScreen() {
@@ -32,33 +63,43 @@ export default function RoleSelectScreen() {
   return (
     <Screen edges={['top', 'bottom']} background="auth">
       <View style={styles.container}>
-        <Stack gap="xl" style={styles.hero}>
-          <Row gap="md" align="center">
-            <SlamLogo width={96} />
-            <Text style={styles.wordmark}>GymFlow</Text>
-          </Row>
-          <Text accessibilityRole="header" style={styles.question}>
-            How are you using GymFlow?
-          </Text>
+        <Stack gap="xl">
+          <Stack gap="sm">
+            <SlamLogo width={132} />
+            <Text variant="caption" caps tone={color.textTertiary}>
+              GymFlow
+            </Text>
+          </Stack>
+          <Stack gap="xs">
+            <Text variant="title" accessibilityRole="header">
+              How are you{'\n'}using GymFlow?
+            </Text>
+            <Text variant="body" tone={color.textSecondary}>
+              Pick the app built for you. You’ll still sign in to your own account.
+            </Text>
+          </Stack>
         </Stack>
 
-        <Stack gap="md" style={styles.options}>
-          {OPTIONS.map((option) => (
-            <Button
-              key={option.label}
-              title={`${option.icon}  ${option.label}`}
-              size="lg"
-              variant="secondary"
-              onPress={() => continueToLogin(option.expected)}
-              accessibilityLabel={option.label}
-              style={styles.optionButton}
-            />
+        <Card gap="none" style={styles.list}>
+          {OPTIONS.map((option, index) => (
+            <React.Fragment key={option.expected}>
+              {index > 0 ? <Divider /> : null}
+              <NavRow
+                label={option.label}
+                detail={option.detail}
+                icon={option.icon}
+                onPress={() => continueToLogin(option.expected)}
+                testID={`role-${option.expected}`}
+              />
+            </React.Fragment>
           ))}
-        </Stack>
+        </Card>
 
-        <Text variant="label" tone={color.textTertiary} style={styles.footnote}>
-          This only helps us show you the right screen. Your account role is always confirmed
-          when you sign in.
+        {/* Fine print sits under the list; the editorial photo fills the rest of
+            the viewport rather than a pinned footnote with a gap above it. */}
+        <Text variant="label" tone={color.textTertiary}>
+          This only helps us show you the right screen. Your account role is always confirmed when
+          you sign in.
         </Text>
       </View>
     </Screen>
@@ -68,14 +109,10 @@ export default function RoleSelectScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'space-between',
     paddingHorizontal: space.lg,
-    paddingVertical: space.xl,
+    paddingTop: space.xxl,
+    paddingBottom: space.xl,
+    gap: space.xl,
   },
-  hero: { alignItems: 'center', marginTop: space.xl },
-  wordmark: { fontSize: 28, fontWeight: '700', color: color.text },
-  question: { fontSize: 20, fontWeight: '600', color: color.text, textAlign: 'center' },
-  options: { marginBottom: space.md },
-  optionButton: { width: '100%' },
-  footnote: { textAlign: 'center' },
+  list: { paddingVertical: space.xs },
 });

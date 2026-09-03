@@ -20,18 +20,22 @@ import {
   Card,
   Eyebrow,
   LinkButton,
+  Motion,
   ProgressBar,
   ProgressRing,
   Row,
   Spacer,
   Stack,
+  SuccessCheck,
   Text,
   alpha,
   color,
   font,
   hairline,
   radii,
+  roleAccent,
   space,
+  usePressMotion,
   useThemedStyles,
   type Tone,
 } from '../design';
@@ -185,6 +189,7 @@ export function TodayCard({
 }: TodayCardProps) {
   const styles = useThemedStyles(buildMemberStyles);
   const meta = kindMeta[kind];
+  const press = usePressMotion(!disabled);
   return (
     <View style={styles.today} testID={testID}>
       <View style={[styles.todayRule, { backgroundColor: meta.hue }]} />
@@ -220,28 +225,28 @@ export function TodayCard({
           <ProgressBar value={percent} colorOverride={meta.hue} />
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={cta}
-          accessibilityState={{ disabled }}
-          disabled={disabled}
-          onPress={onPress}
-          style={({ pressed }) => [
-            styles.cta,
-            {
-              backgroundColor: meta.hue,
-              opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
-            },
-          ]}
-        >
-          <Text
-            variant="body"
-            tone={kind === 'rest' ? color.text : color.textInverse}
-            style={styles.ctaLabel}
+        {/* The one filled button on home — the shared press spring, so it
+            feels the same as every design-system Button elsewhere. */}
+        <Motion.View style={press.style}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={cta}
+            accessibilityState={{ disabled }}
+            disabled={disabled}
+            onPress={onPress}
+            onPressIn={press.onPressIn}
+            onPressOut={press.onPressOut}
+            style={[styles.cta, { backgroundColor: meta.hue, opacity: disabled ? 0.45 : 1 }]}
           >
-            {cta}
-          </Text>
-        </Pressable>
+            <Text
+              variant="body"
+              tone={kind === 'rest' ? color.text : color.textInverse}
+              style={styles.ctaLabel}
+            >
+              {cta}
+            </Text>
+          </Pressable>
+        </Motion.View>
 
         {secondary ? (
           <Pressable
@@ -258,6 +263,78 @@ export function TodayCard({
         ) : null}
       </Stack>
     </View>
+  );
+}
+
+/* -------------------------------------------------------- journey complete */
+
+export interface JourneyCompleteCardProps {
+  /** How many workouts the member logged across the whole journey. */
+  workoutsCompleted: number;
+  /** 0–100. Draws to full on mount. Defaults to 100 — the journey is done. */
+  completionPct?: number;
+  /** Pre-formatted "completed on" line, or null to omit it. */
+  completedLabel?: string | null;
+  /** Overrides the headline. */
+  title?: string;
+  /** The line under the headline. */
+  detail?: string;
+  /** A tertiary action under the card — "See what comes next". */
+  action?: React.ReactNode;
+}
+
+/**
+ * Finishing the 45-day journey is the one member milestone that earns a moment.
+ *
+ * The mark draws once (member accent, ~460ms), the workout count is stated
+ * plainly as a figure — not counted up — and the bar travels to full. That is
+ * the whole treatment: no confetti, nothing to dismiss. The `SuccessCheck` is
+ * the entrance; the card does not also slide, so it composes inside a
+ * `Staggered` body without doubling up. Reduced motion draws it complete and
+ * snaps the bar. Used on Home and Workout so "complete" reads the same on both.
+ */
+export function JourneyCompleteCard({
+  workoutsCompleted,
+  completionPct = 100,
+  completedLabel,
+  title = 'General Training complete',
+  detail,
+  action,
+}: JourneyCompleteCardProps) {
+  const styles = useThemedStyles(buildMemberStyles);
+  return (
+    <Card gap="md" style={styles.journeyDone}>
+      <Row gap="md" align="center">
+        <SuccessCheck size={40} colorOverride={roleAccent.member} accessibilityLabel={title} />
+        <Stack gap="xxs" style={styles.grow}>
+          <Eyebrow>Programme complete</Eyebrow>
+          <Text variant="heading">{title}</Text>
+        </Stack>
+      </Row>
+
+      <Row gap="sm" align="baseline">
+        <Text variant="metric" tone={color.text}>
+          {workoutsCompleted}
+        </Text>
+        <Text variant="body" tone={color.textSecondary}>
+          {workoutsCompleted === 1 ? 'workout recorded' : 'workouts recorded'}
+        </Text>
+      </Row>
+
+      <ProgressBar value={completionPct} colorOverride={roleAccent.member} />
+
+      {detail ? (
+        <Text variant="body" tone={color.textSecondary}>
+          {detail}
+        </Text>
+      ) : null}
+      {completedLabel ? (
+        <Text variant="label" tone={color.textTertiary}>
+          {completedLabel}
+        </Text>
+      ) : null}
+      {action}
+    </Card>
   );
 }
 
@@ -285,6 +362,7 @@ export interface WeekStripProps {
 
 export function WeekStrip({ days, today, onPress }: WeekStripProps) {
   const styles = useThemedStyles(buildMemberStyles);
+  const press = usePressMotion(Boolean(onPress));
   const week = weekAround(days, today);
   if (week.length === 0) return null;
 
@@ -334,14 +412,18 @@ export function WeekStrip({ days, today, onPress }: WeekStripProps) {
 
   if (!onPress) return <Card>{inner}</Card>;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="See your training week"
-      onPress={onPress}
-      style={({ pressed }) => [pressed ? styles.cardPressed : null]}
-    >
-      <Card>{inner}</Card>
-    </Pressable>
+    <Motion.View style={press.style}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="See your training week"
+        onPress={onPress}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        style={({ pressed }) => [pressed ? styles.cardPressed : null]}
+      >
+        <Card>{inner}</Card>
+      </Pressable>
+    </Motion.View>
   );
 }
 
@@ -892,6 +974,7 @@ function buildMemberStyles() {
     weekDay: { flex: 1 },
     weekPip: { width: 18, height: 18, borderRadius: 9 },
     grow: { flex: 1 },
+    journeyDone: { borderColor: alpha(roleAccent.member, 0.33) },
     feelingBigEmoji: { fontSize: 22, lineHeight: 26 },
     feelingOption: {
       flex: 1,

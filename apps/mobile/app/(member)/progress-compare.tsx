@@ -24,12 +24,14 @@ import {
   EmptyState,
   ErrorState,
   Loading,
+  Motion,
   Row,
   Screen,
   Spacer,
   Stack,
   Text,
   color,
+  entrance,
   space,
 } from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
@@ -127,6 +129,10 @@ export default function ProgressCompareScreen() {
         ) : (
           <>
             {before && after ? (
+              // Keyed on the pair so the before/after settles in each time the
+              // member picks a different two — the result "resolving" is the
+              // point of the screen.
+              <Motion.View key={`${before.id}-${after.id}`} entering={entrance(0)}>
               <Card gap="sm" testID="compare-result">
                 <Row gap="sm">
                   <View style={styles.side}>
@@ -159,6 +165,7 @@ export default function ProgressCompareScreen() {
                   onPress={() => setSharing(true)}
                 />
               </Card>
+              </Motion.View>
             ) : (
               <Text variant="label" tone={color.textTertiary}>
                 {beforeId == null ? 'Tap a photo to set “before”.' : 'Now tap a later photo for “after”.'}

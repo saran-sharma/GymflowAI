@@ -1,13 +1,17 @@
 /**
  * Incentive standing for every visible trainer.
  *
- * Eligibility only. There is no payout figure anywhere in this screen, and the
+ * Eligibility only. There is no payout figure anywhere on this screen, and the
  * SLAM policy disclaimer is always on it.
+ *
+ * The screen answers one question first — "who needs a decision from me?" — so
+ * the trainers that need review are pulled to the top, and each row leads with
+ * its verdict and the checks that are failing, not a wall of equal stats.
  */
 
 import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { RefreshControl } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
@@ -16,30 +20,51 @@ import {
   Badge,
   Banner,
   Body,
+  Card,
   EmptyState,
   ErrorState,
   Eyebrow,
-  Meter,
+  ProgressBar,
   Row,
   Screen,
-  StatTile,
-  Txt,
-} from '../../src/components/ui';
-import { SkeletonScreen, TappableCard } from '../../src/design';
+  Section,
+  SkeletonScreen,
+  Spacer,
+  Staggered,
+  StatCard,
+  StatRow,
+  Stack,
+  TappableCard,
+  Text,
+  color,
+} from '../../src/design';
 import { useApi } from '../../src/hooks/useApi';
-import { colors, incentiveMeta, spacing } from '../../src/theme';
+import { incentiveMeta } from '../../src/theme';
 import { percent } from '../../src/utils/format';
+
+/** Review first (a decision is owed), then not-eligible, then eligible. */
+const ORDER: Record<IncentiveResult['status'], number> = {
+  needs_review: 0,
+  not_eligible: 1,
+  eligible: 2,
+};
 
 export default function OwnerIncentivesScreen() {
   const router = useRouter();
   const results = useApi<IncentiveResult[]>((token) => api.listIncentives(token), []);
 
+  const rows = useMemo(
+    () => [...(results.data ?? [])].sort((a, b) => ORDER[a.status] - ORDER[b.status]),
+    [results.data],
+  );
+
   const tally = useMemo(() => {
-    const rows = results.data ?? [];
+    const all = results.data ?? [];
     return {
-      eligible: rows.filter((r) => r.status === 'eligible').length,
-      review: rows.filter((r) => r.status === 'needs_review').length,
-      not: rows.filter((r) => r.status === 'not_eligible').length,
+      total: all.length,
+      eligible: all.filter((r) => r.status === 'eligible').length,
+      review: all.filter((r) => r.status === 'needs_review').length,
+      not: all.filter((r) => r.status === 'not_eligible').length,
     };
   }, [results.data]);
 
@@ -47,7 +72,7 @@ export default function OwnerIncentivesScreen() {
   if (results.error) {
     const offline = results.error?.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen background="owner" backgroundIntensity="subtle">
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load incentives'}
@@ -58,86 +83,134 @@ export default function OwnerIncentivesScreen() {
     );
   }
 
-  const rows = results.data ?? [];
-
   return (
-    <Screen>
+    <Screen background="owner" backgroundIntensity="subtle">
       <Body
         refreshControl={
           <RefreshControl
             refreshing={results.refreshing}
             onRefresh={results.refresh}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <Txt variant="title">Incentives</Txt>
-        <Txt variant="body" color={colors.textMuted}>
-          Eligibility against the thresholds you configured. This is not a payout calculation.
-        </Txt>
-
-        <View style={styles.tiles}>
-          <StatTile label="Eligible" value={tally.eligible} accent={colors.onTime} />
-          <StatTile label="Needs review" value={tally.review} accent={colors.late} />
-          <StatTile label="Not eligible" value={tally.not} accent={colors.absent} />
-        </View>
+        <Stack gap="xxs">
+          <Text variant="title">Incentives</Text>
+          <Text variant="body" tone={color.textSecondary}>
+            Eligibility against the thresholds you configured — not a payout calculation.
+          </Text>
+        </Stack>
 
         {rows.length === 0 ? (
-          <EmptyState icon="ribbon-outline" title="Nothing to evaluate yet" />
+          <EmptyState
+            icon="ribbon-outline"
+            title="Nothing to evaluate yet"
+            detail="Incentive standing appears here once your trainers have shifts on record this period."
+          />
         ) : (
-          rows.map((row) => {
-            const meta = incentiveMeta[row.status];
-            return (
-              <TappableCard
-                key={row.trainer_id}
-                onPress={() => router.push(`/(owner)/trainer/${row.trainer_id}` as never)}
-                accessibilityLabel={`Open ${row.trainer_name}`}
-                testID={`incentive-row-${row.trainer_id}`}
-              >
-                <Row style={styles.head}>
-                  <View style={styles.headText}>
-                    <Txt variant="heading">{row.trainer_name}</Txt>
-                    <Eyebrow>{row.branch_name}</Eyebrow>
-                  </View>
-                  <Badge label={meta.label} color={meta.color} />
-                </Row>
+          <>
+            {/* Where things stand, and what is owed a decision. */}
+            <Staggered>
+              <StatRow>
+                <StatCard
+                  label="Eligible"
+                  value={`${tally.eligible}/${tally.total}`}
+                  tone="positive"
+                />
+                <StatCard
+                  label="Need review"
+                  value={tally.review}
+                  tone={tally.review ? 'caution' : undefined}
+                />
+                <StatCard
+                  label="Not eligible"
+                  value={tally.not}
+                  tone={tally.not ? 'critical' : undefined}
+                />
+              </StatRow>
 
-                <Meter value={row.score} color={meta.color} />
+              {tally.review > 0 ? (
+                <Banner tone="caution" icon="alert-circle-outline">
+                  {tally.review === 1
+                    ? '1 trainer needs a decision from you.'
+                    : `${tally.review} trainers need a decision from you.`}
+                </Banner>
+              ) : null}
+            </Staggered>
 
-                <Row style={styles.stats}>
-                  <Stat label="Punctuality" value={percent(row.punctuality_pct)} />
-                  <Stat label="Attendance" value={percent(row.attendance_pct)} />
-                  <Stat label="Late" value={String(row.late_count)} />
-                  <Stat label="Early" value={String(row.early_exit_count)} />
-                </Row>
-              </TappableCard>
-            );
-          })
+            {/* The roster — rows stagger themselves, so it stays out of the
+                block-level <Staggered> above. */}
+            <Section title="Trainers">
+              {rows.map((row, index) => (
+                <IncentiveRow
+                  key={row.trainer_id}
+                  row={row}
+                  index={index}
+                  onPress={() => router.push(`/(owner)/trainer/${row.trainer_id}` as never)}
+                />
+              ))}
+            </Section>
+
+            <Banner tone="info">
+              {rows[0]?.disclaimer ??
+                'Final payroll/incentive calculation is subject to SLAM policy.'}
+            </Banner>
+          </>
         )}
-
-        <Banner tone="info">
-          {rows[0]?.disclaimer ?? 'Final payroll/incentive calculation is subject to SLAM policy.'}
-        </Banner>
       </Body>
     </Screen>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/**
+ * One trainer's standing: the verdict, a bar for the composite score, and the
+ * checks that are actually failing — the thing the owner acts on.
+ */
+function IncentiveRow({
+  row,
+  index,
+  onPress,
+}: {
+  row: IncentiveResult;
+  index: number;
+  onPress: () => void;
+}) {
+  const meta = incentiveMeta[row.status];
+  const failing = row.checks.filter((check) => !check.passed);
+  const summary =
+    row.status === 'eligible'
+      ? 'All checks passing'
+      : failing.length === 0
+        ? 'Under review'
+        : `${failing.length} to fix · ${failing.map((c) => c.label).join(' · ')}`;
+
   return (
-    <View style={styles.stat}>
-      <Txt variant="body">{value}</Txt>
-      <Txt variant="caption" color={colors.textFaint}>
-        {label.toUpperCase()}
-      </Txt>
-    </View>
+    <TappableCard
+      onPress={onPress}
+      index={index}
+      accessibilityLabel={`${row.trainer_name}, ${meta.label}`}
+      testID={`incentive-row-${row.trainer_id}`}
+    >
+      <Row gap="sm">
+        <Stack gap="xxs" style={{ flex: 1 }}>
+          <Text variant="heading" numberOfLines={1}>
+            {row.trainer_name}
+          </Text>
+          <Eyebrow>{row.branch_name}</Eyebrow>
+        </Stack>
+        <Badge label={meta.label} colorOverride={meta.color} />
+      </Row>
+
+      <ProgressBar value={row.score} colorOverride={meta.color} />
+
+      <Row gap="sm">
+        <Text variant="label" tone={color.textSecondary} numberOfLines={1} style={{ flex: 1 }}>
+          {summary}
+        </Text>
+        <Text variant="mono" tone={color.textTertiary}>
+          {percent(row.punctuality_pct)}
+        </Text>
+      </Row>
+    </TappableCard>
   );
 }
-
-const styles = StyleSheet.create({
-  tiles: { flexDirection: 'row', gap: spacing.sm },
-  head: { justifyContent: 'space-between' },
-  headText: { flex: 1, gap: 2 },
-  stats: { justifyContent: 'space-between' },
-  stat: { gap: 2 },
-});

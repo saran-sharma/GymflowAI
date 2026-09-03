@@ -47,6 +47,7 @@ import {
   Section,
   SessionCard,
   Spacer,
+  Staggered,
   Stack,
   Text,
   color,
@@ -140,6 +141,7 @@ export default function TrainerDeskScreen() {
           <AccountAvatar size={40} />
         </Row>
 
+        <Staggered>
         <HeroCard
           testID="trainer-hero"
           eyebrow="Today"
@@ -271,8 +273,10 @@ export default function TrainerDeskScreen() {
             </Text>
           </Card>
         ) : null}
+        </Staggered>
 
-        {/* Today's sessions. */}
+        {/* Today's sessions — the cards stagger in themselves (index), so this
+            section stays outside <Staggered> to avoid motion on motion. */}
         <Section
           title="Today's sessions"
           action={
@@ -320,6 +324,7 @@ export default function TrainerDeskScreen() {
           )}
         </Section>
 
+        <Staggered from={5}>
         {clients.error ? (
           <Banner tone="caution" icon="alert-circle-outline">
             Your client list did not load. Pull to refresh.
@@ -342,6 +347,7 @@ export default function TrainerDeskScreen() {
             />
           </Stack>
         </Section>
+        </Staggered>
       </Body>
     </Screen>
   );

@@ -1,18 +1,17 @@
 /**
  * PT attendance — the split view.
  *
- * MEMBER on the left, TRAINER on the right, each with their own arrival state,
- * and the session number underneath. COMPLETE SESSION only lights up once both
- * sides are recorded present: that is the whole point of showing them apart.
+ * The trainer's operational counterpart to the member's exercise screen: fast,
+ * one-handed, and built around a single gate. MEMBER on the left, TRAINER on
+ * the right, each owning its own arrival state; recording an arrival buzzes and
+ * draws a check, and COMPLETE SESSION only lights once both sides are present —
+ * which is the whole reason for showing them apart.
  *
- * The layout is deliberately a single component reading `PTSplitView`. If SLAM
- * means something different by "split screen", this can be re-laid-out without
- * touching the PT model underneath.
+ * The layout reads `PTSplitView`. If SLAM means something different by "split
+ * screen" it can be re-laid-out without touching the PT model underneath.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import React, { useCallback, useState } from 'react';
 import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
 
@@ -21,6 +20,7 @@ import * as api from '../../../src/api/endpoints';
 import type { PTSplitView } from '../../../src/api/types';
 import { sessionMeta } from '../../../src/components/programme';
 import {
+  Avatar,
   Badge,
   Banner,
   Body,
@@ -32,13 +32,22 @@ import {
   Loading,
   Row,
   Screen,
-  Txt,
-} from '../../../src/components/ui';
-import { ScreenHeader, useThemedStyles } from '../../../src/design';
+  ScreenHeader,
+  Spacer,
+  Staggered,
+  Stack,
+  SuccessCheck,
+  Text,
+  alpha,
+  color,
+  haptics,
+  radii,
+  space,
+  useThemedStyles,
+} from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
 import { useAuth } from '../../../src/store/AuthContext';
-import { colors, radius, spacing } from '../../../src/theme';
-import { dayLabel, initials, timeOfDay } from '../../../src/utils/format';
+import { dayLabel, timeOfDay } from '../../../src/utils/format';
 
 export default function PtSplitScreen() {
   const styles = useThemedStyles(buildStyles);
@@ -62,11 +71,11 @@ export default function PtSplitScreen() {
       setError(null);
       try {
         await withToken(action);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.notify('success');
         success?.();
         await view.refresh();
       } catch (caught) {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.notify('error');
         setError(caught instanceof ApiError ? caught.message : 'That did not save. Try again.');
       } finally {
         setBusy(false);
@@ -79,7 +88,8 @@ export default function PtSplitScreen() {
   if (view.error || !view.data) {
     const offline = view.error?.code === OFFLINE_CODE;
     return (
-      <Screen>
+      <Screen edges={['top']}>
+        <ScreenHeader title="PT session" onBack={goBack} />
         <ErrorState
           offline={offline}
           title={offline ? undefined : 'We could not load this PT session'}
@@ -96,130 +106,155 @@ export default function PtSplitScreen() {
   const closed = session.status === 'completed' || session.status === 'cancelled';
 
   return (
-    <Screen edges={['top', 'bottom']}>
+    <Screen edges={['top']}>
+      <ScreenHeader
+        title="PT attendance"
+        subtitle={`${dayLabel(session.session_date)} · ${timeOfDay(session.scheduled_start)}`}
+        onBack={goBack}
+        action={<Badge label={meta.label} colorOverride={meta.color} />}
+      />
       <Body
         refreshControl={
           <RefreshControl
             refreshing={view.refreshing}
             onRefresh={() => void view.refresh()}
-            tintColor={colors.brand}
+            tintColor={color.brand}
           />
         }
       >
-        <ScreenHeader
-          title="PT attendance"
-          subtitle={`${dayLabel(session.session_date)} · ${timeOfDay(session.scheduled_start)}`}
-          onBack={goBack}
-          action={<Badge label={meta.label} color={meta.color} />}
-        />
-
-        {error ? <Banner tone="danger">{error}</Banner> : null}
-        {done ? <Banner tone="success">Session recorded.</Banner> : null}
-
-        {/* The split. Two sides, one row, each owning its own state. */}
-        <View style={styles.split}>
-          <Side
-            title="MEMBER"
-            name={split.member_name}
-            checkedIn={split.member_checked_in}
-            at={session.member_checked_in_at}
-            disabled={busy || closed}
-            onPress={() => void act((token) => api.ptRecordArrival(session.id, 'member', token))}
-          />
-          <Side
-            title="TRAINER"
-            name={split.trainer_name}
-            checkedIn={split.trainer_checked_in}
-            at={session.trainer_checked_in_at}
-            disabled={busy || closed}
-            onPress={() => void act((token) => api.ptRecordArrival(session.id, 'trainer', token))}
-          />
-        </View>
-
-        <Card>
-          <Row style={styles.cardHead}>
-            <Eyebrow>Session</Eyebrow>
-            <Txt variant="heading">
-              {session.session_number} / {session.package_size ?? '—'}
-            </Txt>
-          </Row>
-          <Divider />
-          <Txt variant="label" color={colors.textMuted}>
-            Times are recorded by the GymFlow server when you tap, not from this phone.
-          </Txt>
-        </Card>
-
-        {!closed ? (
-          <>
-            <Button
-              title="COMPLETE SESSION"
-              size="lg"
-              icon="checkmark-done"
-              loading={busy}
-              disabled={!split.can_complete}
-              onPress={() =>
-                void act(
-                  (token) => api.ptCompleteSession(session.id, token),
-                  () => setDone(true),
-                )
-              }
-            />
-            {!split.can_complete ? (
-              <Txt variant="label" color={colors.textFaint} style={styles.hint}>
-                Both the member and the trainer must be marked present first.
-              </Txt>
-            ) : null}
-
-            <Button
-              title="Member did not show"
-              variant="danger"
-              icon="close-circle-outline"
-              disabled={busy}
-              onPress={() =>
-                Alert.alert('Mark as no-show?', 'This does not use one of the member’s sessions.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'No-show',
-                    style: 'destructive',
-                    onPress: () =>
-                      void act((token) => api.ptCloseSession(session.id, 'no_show', token)),
-                  },
-                ])
-              }
-            />
-            <Button
-              title="Cancel session"
-              variant="ghost"
-              disabled={busy}
-              onPress={() =>
-                Alert.alert(
-                  'Cancel this session?',
-                  'The member keeps the session in their package.',
-                  [
-                    { text: 'Keep it', style: 'cancel' },
-                    {
-                      text: 'Cancel session',
-                      style: 'destructive',
-                      onPress: () =>
-                        void act((token) => api.ptCloseSession(session.id, 'cancelled', token)),
-                    },
-                  ],
-                )
-              }
-            />
-          </>
-        ) : (
-          <Banner tone={session.status === 'completed' ? 'success' : 'warning'}>
-            {session.status === 'completed'
-              ? `Completed${session.completed_at ? ` at ${timeOfDay(session.completed_at)}` : ''}.`
-              : 'This session was cancelled.'}
+        {error ? (
+          <Banner tone="critical" icon="alert-circle-outline">
+            {error}
           </Banner>
-        )}
+        ) : null}
+        {done && !error ? (
+          <Banner tone="positive" icon="checkmark-circle-outline">
+            Session recorded.
+          </Banner>
+        ) : null}
+
+        <Staggered>
+          {/* The split. Two sides, one row, each owning its own state. */}
+          <Row gap="sm" align="stretch">
+            <Side
+              title="Member"
+              name={split.member_name}
+              checkedIn={split.member_checked_in}
+              at={session.member_checked_in_at}
+              disabled={busy || closed}
+              onPress={() =>
+                void act((token) => api.ptRecordArrival(session.id, 'member', token))
+              }
+            />
+            <Side
+              title="Trainer"
+              name={split.trainer_name}
+              checkedIn={split.trainer_checked_in}
+              at={session.trainer_checked_in_at}
+              disabled={busy || closed}
+              onPress={() =>
+                void act((token) => api.ptRecordArrival(session.id, 'trainer', token))
+              }
+            />
+          </Row>
+
+          <Card>
+            <Row gap="sm">
+              <Eyebrow>Session</Eyebrow>
+              <Spacer />
+              <Text variant="heading">
+                {session.session_number} / {session.package_size ?? '—'}
+              </Text>
+            </Row>
+            <Divider />
+            <Text variant="label" tone={color.textTertiary}>
+              Times are recorded by the GymFlow server when you tap, not from this phone.
+            </Text>
+          </Card>
+
+          {!closed ? (
+            <Stack gap="sm">
+              <Button
+                title="Complete session"
+                size="lg"
+                icon="checkmark-done"
+                loading={busy}
+                disabled={!split.can_complete}
+                onPress={() =>
+                  void act(
+                    (token) => api.ptCompleteSession(session.id, token),
+                    () => setDone(true),
+                  )
+                }
+              />
+              {!split.can_complete ? (
+                <Text variant="label" tone={color.textTertiary} align="center">
+                  Mark both the member and the trainer present first.
+                </Text>
+              ) : null}
+
+              <Button
+                title="Member did not show"
+                variant="destructive"
+                icon="close-circle-outline"
+                disabled={busy}
+                onPress={() =>
+                  Alert.alert(
+                    'Mark as no-show?',
+                    'This does not use one of the member’s sessions.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'No-show',
+                        style: 'destructive',
+                        onPress: () =>
+                          void act((token) => api.ptCloseSession(session.id, 'no_show', token)),
+                      },
+                    ],
+                  )
+                }
+              />
+              <Button
+                title="Cancel session"
+                variant="ghost"
+                disabled={busy}
+                onPress={() =>
+                  Alert.alert(
+                    'Cancel this session?',
+                    'The member keeps the session in their package.',
+                    [
+                      { text: 'Keep it', style: 'cancel' },
+                      {
+                        text: 'Cancel session',
+                        style: 'destructive',
+                        onPress: () =>
+                          void act((token) => api.ptCloseSession(session.id, 'cancelled', token)),
+                      },
+                    ],
+                  )
+                }
+              />
+            </Stack>
+          ) : (
+            <Banner tone={session.status === 'completed' ? 'positive' : 'caution'}>
+              {session.status === 'completed'
+                ? `Completed${session.completed_at ? ` at ${timeOfDay(session.completed_at)}` : ''}.`
+                : 'This session was cancelled.'}
+            </Banner>
+          )}
+        </Staggered>
       </Body>
     </Screen>
   );
 }
 
+/**
+ * One side of the split: who they are, and whether their arrival is on record.
+ *
+ * Not checked in → one button. Checked in → the mark draws once and the
+ * server's time sits under it. The card tints toward positive so "both green"
+ * is readable across the row without reading either label.
+ */
 function Side({
   title,
   name,
@@ -237,30 +272,30 @@ function Side({
 }) {
   const styles = useThemedStyles(buildStyles);
   return (
-    <View style={[styles.side, checkedIn && styles.sideIn]}>
-      <Eyebrow color={checkedIn ? colors.onTime : colors.textFaint}>{title}</Eyebrow>
-      <View style={[styles.sideAvatar, checkedIn && styles.sideAvatarIn]}>
-        <Txt variant="heading" color={checkedIn ? colors.onTime : colors.textMuted}>
-          {initials(name)}
-        </Txt>
-      </View>
-      <Txt variant="body" numberOfLines={2} style={styles.sideName}>
+    <View style={[styles.side, checkedIn ? styles.sideIn : null]}>
+      <Eyebrow tone={checkedIn ? color.status.positive : color.textTertiary}>{title}</Eyebrow>
+      <Avatar name={name} size={56} accent={checkedIn} />
+      <Text variant="body" align="center" numberOfLines={2} style={styles.sideName}>
         {name}
-      </Txt>
+      </Text>
       {checkedIn ? (
-        <>
-          <Row style={styles.sideStatus}>
-            <Ionicons name="checkmark-circle" size={16} color={colors.onTime} />
-            <Txt variant="label" color={colors.onTime}>
-              Checked in
-            </Txt>
-          </Row>
-          <Txt variant="mono" color={colors.textMuted}>
+        <Stack gap="xxs" align="center">
+          <SuccessCheck key="in" size={28} tone="positive" accessibilityLabel="Present" />
+          <Text variant="label" tone={color.status.positive}>
+            Present
+          </Text>
+          <Text variant="mono" tone={color.textSecondary}>
             {timeOfDay(at)}
-          </Txt>
-        </>
+          </Text>
+        </Stack>
       ) : (
-        <Button title="CHECK IN" variant="secondary" disabled={disabled} onPress={onPress} />
+        <Button
+          title="Mark present"
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onPress={onPress}
+        />
       )}
     </View>
   );
@@ -268,34 +303,21 @@ function Side({
 
 function buildStyles() {
   return StyleSheet.create({
-  grow: { flex: 1 },
-  cardHead: { justifyContent: 'space-between' },
-  split: { flexDirection: 'row', gap: spacing.sm },
-  side: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    minHeight: 220,
-  },
-  sideIn: { borderColor: `${colors.onTime}66`, backgroundColor: `${colors.onTime}0F` },
-  sideAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.raised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sideAvatarIn: { borderColor: colors.onTime },
-  sideName: { textAlign: 'center' },
-  sideStatus: { gap: 4 },
-  hint: { textAlign: 'center' },
-});
+    side: {
+      flex: 1,
+      alignItems: 'center',
+      gap: space.sm,
+      backgroundColor: color.surfaceRaised,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: color.border,
+      padding: space.lg,
+      minHeight: 220,
+    },
+    sideIn: {
+      borderColor: alpha(color.status.positive, 0.4),
+      backgroundColor: alpha(color.status.positive, 0.06),
+    },
+    sideName: { textAlign: 'center' },
+  });
 }

@@ -37,7 +37,9 @@ export default function TrainerLayout() {
       <Tabs.Screen name="profile" options={{ href: null }} />
       {/* Reached from the desk and from the account sheet, not tabs of their own. */}
       <Tabs.Screen name="shift" options={{ href: null }} />
-      <Tabs.Screen name="scan" options={{ href: null }} />
+      {/* The scanner is full-screen camera — the tab bar is hidden, not just
+          drawn over. `AnimatedTabBar` reads this the way the stock bar would. */}
+      <Tabs.Screen name="scan" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="availability" options={{ href: null }} />
       <Tabs.Screen name="corrections" options={{ href: null }} />
       <Tabs.Screen name="classes" options={{ href: null }} />

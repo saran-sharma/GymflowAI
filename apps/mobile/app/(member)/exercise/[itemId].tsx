@@ -46,12 +46,15 @@ import {
   Eyebrow,
   Input,
   Loading,
+  Motion,
   Row,
   Screen,
   Spacer,
   Stack,
   Text,
   color,
+  entrance,
+  haptics,
   space,
 } from '../../../src/design';
 import { useApi } from '../../../src/hooks/useApi';
@@ -211,6 +214,10 @@ export default function ExerciseScreen() {
       setDraft(null);
       setRecords(beaten);
       rest.start(item?.rest_seconds || FALLBACK_REST_SECONDS);
+      // A light tick confirms the set landed; a beaten record is the one
+      // moment on this screen that earns the stronger success pattern.
+      if (beaten.length > 0) haptics.notify('success');
+      else haptics.impact('light');
     }
   };
 
@@ -333,15 +340,16 @@ export default function ExerciseScreen() {
               No sets logged yet. Enter your first below.
             </Text>
           ) : (
-            logged.map((entry) => (
-              <SetRow
-                key={entry.id}
-                entry={entry}
-                editing={editing === entry.id}
-                disabled={busy || closed}
-                onEdit={() => beginEdit(entry)}
-                onDelete={() => remove(entry)}
-              />
+            logged.map((entry, index) => (
+              <Motion.View key={entry.id} entering={entrance(index)}>
+                <SetRow
+                  entry={entry}
+                  editing={editing === entry.id}
+                  disabled={busy || closed}
+                  onEdit={() => beginEdit(entry)}
+                  onDelete={() => remove(entry)}
+                />
+              </Motion.View>
             ))
           )}
         </Stack>
