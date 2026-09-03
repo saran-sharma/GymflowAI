@@ -88,7 +88,59 @@ class MemberIntelligence(BaseModel):
     coverage: IntelligenceCoverage
 
 
+class TrainerBrief(BaseModel):
+    """A structured read of one member for the trainer who coaches them.
+
+    Reuses the same deterministic signals as ``MemberIntelligence`` — the
+    insights list is identical — but framed for a coach: the current state at a
+    glance, what is going well, what to watch, and a short list of concrete
+    focus points. Carries no owner-only information: no incentive, revenue or
+    payment figure appears here.
+    """
+
+    member_id: int
+    member_name: str
+    generated_at: datetime
+    state: IntelligenceState
+    #: Current-state facts — journey day, last session, cadence, next PT.
+    today: list[InsightEvidence] = Field(default_factory=list)
+    #: Positive / informational insights.
+    progress: list[IntelligenceInsight] = Field(default_factory=list)
+    #: Attention / critical insights.
+    watch: list[IntelligenceInsight] = Field(default_factory=list)
+    #: 1–3 deterministic, plain-language things to work on next session.
+    suggested_focus: list[str] = Field(default_factory=list)
+    coverage: IntelligenceCoverage
+
+
+class AttentionItem(BaseModel):
+    """One member a trainer should look at, and exactly why.
+
+    ``reason`` is a specific sentence, never a bare score. ``route`` is the
+    in-app path to that member's detail so the desk item is a deep link, not a
+    dead end.
+    """
+
+    member_id: int
+    member_name: str
+    #: 0 is most urgent. Stable across calls for an unchanged database.
+    priority: int
+    severity: Severity
+    reason: str
+    detail: str | None = None
+    route: str
+    metrics: list[InsightEvidence] = Field(default_factory=list)
+
+
+class TrainerAttentionQueue(BaseModel):
+    generated_at: datetime
+    #: How many assigned members were evaluated to produce ``items``.
+    considered: int
+    items: list[AttentionItem] = Field(default_factory=list)
+
+
 __all__ = [
+    "AttentionItem",
     "InsightAction",
     "InsightEvidence",
     "IntelligenceCoverage",
@@ -97,4 +149,6 @@ __all__ = [
     "MemberIntelligence",
     "NarrationSource",
     "Severity",
+    "TrainerAttentionQueue",
+    "TrainerBrief",
 ]
