@@ -8,11 +8,22 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
-import React, { useRef, useState } from 'react';
+import {
+  BottomTabBarHeightCallbackContext,
+  type BottomTabBarProps,
+} from 'expo-router/build/react-navigation/bottom-tabs';
+import React, { useContext, useRef, useState } from 'react';
 import { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { type ColorValue, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  type ColorValue,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  type StyleProp,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
 import { Motion } from './motion';
 import { Row, Text } from './primitives';
@@ -197,7 +208,11 @@ function buildNavigationStyles() {
     daySelected: { backgroundColor: color.brand, borderColor: color.brand },
     dayPressed: { backgroundColor: color.surfaceOverlay },
     dayDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
-    header: { minHeight: HIT_TARGET },
+    // Same 16pt gutter as `Body`, so the back chevron and the trailing action
+    // line up with the screen's content instead of hugging the physical edge.
+    // `headerButton`'s -8 nudge then lands the chevron's optical centre on that
+    // gutter rather than past it.
+    header: { minHeight: HIT_TARGET, paddingHorizontal: space.lg },
     // A fixed width keeps the title centred, but a trailing `action` is not
     // always a 44pt icon button — a status badge ("In progress", "Upcoming")
     // needs to say its own word. `minWidth` still reserves the icon-button
@@ -581,6 +596,25 @@ export function AnimatedTabBar({
   const styles = useThemedStyles(buildNavigationStyles);
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
+  // A custom `tabBar` never tells the navigator how tall it actually renders,
+  // so `useBottomTabBarHeight()` (and therefore every screen's bottom padding)
+  // is left guessing from `tabBarStyle.height`. Report the measured height so
+  // `Body` can pad the scroll content to clear the bar on any device / nav
+  // mode, not just this one.
+  const reportHeight = useContext(BottomTabBarHeightCallbackContext);
+
+  // A custom `tabBar` bypasses react-navigation's own `BottomTabBar`, which is
+  // the thing that normally honours `tabBarStyle: { display: 'none' }`. A
+  // full-screen route (the QR scanner) needs the bar gone, not just drawn
+  // behind it, so this reads the same option the stock bar would and steps
+  // aside. The focused route is the authority — a pushed full-screen route
+  // over a tab still sets `state.index` to itself.
+  const focusedStyle = StyleSheet.flatten(
+    descriptors[state.routes[state.index]?.key]?.options.tabBarStyle as
+      | StyleProp<ViewStyle>
+      | undefined,
+  );
+  const hidden = focusedStyle?.display === 'none';
 
   // A screen hidden from the bar (`href: null`) does not get `tabBarButton:
   // null` — expo-router gives it `tabBarButton: () => null`, a function,
@@ -612,10 +646,16 @@ export function AnimatedTabBar({
     transform: [{ translateX: withSpring(activeIndex * slot, motion.press) }],
   }));
 
+  if (hidden) return null;
+
   return (
     <View
       style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      onLayout={(event) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        setWidth(w);
+        reportHeight?.(h);
+      }}
     >
       {/* Decorative: the selected state is announced by each tab, not by this. */}
       {slot > 0 ? (

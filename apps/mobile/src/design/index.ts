@@ -12,7 +12,8 @@
  *   controls    Button, Badge, Input, ProgressBar, MetricRow
  *   cards       StatCard, SessionCard, ProgressCard, AlertCard, Banner
  *   feedback    Loading, Skeleton, EmptyState, ErrorState, OfflineNotice
- *   motion      press springs, staggered entrances
+ *   motion      press springs, staggered entrances, reduced-motion hook
+ *   haptics     the one place the app buzzes (impact / notify / selection)
  *   overlay     Sheet — the one modal shape
  *   navigation  tab bar options, Segmented
  *   brand       SlamLogo, SlamMark, BrandHeader, Avatar, DemoTag
@@ -32,6 +33,7 @@ export * from './controls';
 export * from './cards';
 export * from './feedback';
 export * from './motion';
+export * from './haptics';
 export * from './navigation';
 export * from './overlay';
 export * from './brand';

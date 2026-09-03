@@ -531,3 +531,106 @@ export function ProgressRing({
     </View>
   );
 }
+
+/* --------------------------------------------------------------- countdown */
+
+export interface CountdownProps {
+  /** Seconds left. */
+  remaining: number;
+  /** The full duration this countdown started from, for the arc proportion. */
+  total: number;
+  size?: number;
+  thickness?: number;
+  tone?: Tone;
+  colorOverride?: string;
+  /** Overrides the centre figure. Defaults to `m:ss` of `remaining`. */
+  label?: string;
+  caption?: string;
+  accessibilityLabel?: string;
+}
+
+/** `1:30` — a countdown reads as a clock, so it is formatted as one. */
+function clock(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A ring that empties as a timer runs down.
+ *
+ * The arc travels — it does not tick in steps — so the eye reads "time
+ * draining" rather than "number changed". The centre figure is the real clock
+ * value and simply updates; it is a measurement, not a count-up. When the
+ * timer reaches zero the ring is empty and the colour turns positive: the rest
+ * is over, not failed.
+ *
+ * Reduced motion snaps the arc to each value instead of sweeping.
+ */
+export function Countdown({
+  remaining,
+  total,
+  size = 72,
+  thickness = 6,
+  tone = 'brand',
+  colorOverride,
+  label,
+  caption,
+  accessibilityLabel,
+}: CountdownProps) {
+  const styles = useThemedStyles(buildControlStyles);
+  const finished = remaining <= 0;
+  const fraction =
+    total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const hue = finished
+    ? toneColor.positive
+    : (colorOverride ?? toneColor[tone]);
+
+  const travelled = useTravel(fraction, motion.base);
+  const sweep = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - travelled.value / 100),
+  }));
+
+  return (
+    <View
+      style={{ width: size, height: size }}
+      accessible
+      accessibilityRole="timer"
+      accessibilityLabel={accessibilityLabel ?? `${clock(remaining)} remaining`}
+    >
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color.surfaceOverlay}
+          strokeWidth={thickness}
+          fill="none"
+        />
+        <AnimatedCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={hue}
+          strokeWidth={thickness}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          animatedProps={sweep}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <View style={[styles.ringCentre, { width: size, height: size }]}>
+        <Text variant="mono" tone={finished ? color.status.positive : color.text} numberOfLines={1}>
+          {label ?? clock(remaining)}
+        </Text>
+        {caption ? (
+          <Text variant="caption" caps tone={color.textTertiary} numberOfLines={1}>
+            {caption}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}

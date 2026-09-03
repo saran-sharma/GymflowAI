@@ -9,14 +9,24 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View, type ViewStyle } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { Button } from './controls';
-import { Motion, usePulse } from './motion';
+import { Motion, useReducedMotion, usePulse } from './motion';
 import { Card, Row, Screen, Stack, Text } from './primitives';
-import { color, radii, space } from './tokens';
+import { alpha, color, motion as motionTokens, radii, space, toneColor, type Tone } from './tokens';
 import { useThemedStyles } from './useThemedStyles';
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -236,6 +246,109 @@ export function OfflineNotice({ message }: { message: string }) {
       <Text variant="label" tone={color.brandAccent} style={styles.grow}>
         {message}
       </Text>
+    </View>
+  );
+}
+
+/* ---------------------------------------------------------- success check */
+
+export interface SuccessCheckProps {
+  size?: number;
+  tone?: Tone;
+  colorOverride?: string;
+  /** Announced to a screen reader. The moment, not the shape: "Checked in". */
+  accessibilityLabel?: string;
+}
+
+/**
+ * A circle that closes and a tick that draws inside it, once.
+ *
+ * The one "something good just happened" mark in the app — a valid QR scan, a
+ * recorded check-in, a finished workout. It is a confirmation, not a
+ * celebration: no confetti, no bounce, nothing to dismiss. The stroke sweep is
+ * ~260ms and the tick follows it; the whole thing is under `motion.slow` and
+ * never gates a tap.
+ *
+ * One-shot by construction — it animates on mount. To replay it, remount with
+ * a changing `key`. Reduced motion draws it complete with no sweep.
+ */
+export function SuccessCheck({
+  size = 64,
+  tone = 'positive',
+  colorOverride,
+  accessibilityLabel,
+}: SuccessCheckProps) {
+  const reduce = useReducedMotion();
+  const progress = useSharedValue(reduce ? 1 : 0);
+  const hue = colorOverride ?? toneColor[tone];
+
+  const thickness = Math.max(3, size * 0.075);
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  // A tick sitting in the lower-left third of the box, drawn as one stroke.
+  const tickPath = `M ${size * 0.3} ${size * 0.52} L ${size * 0.44} ${size * 0.66} L ${size * 0.7} ${size * 0.36}`;
+  const tickLength = size * 0.62;
+
+  useEffect(() => {
+    if (reduce) {
+      progress.value = 1;
+      return;
+    }
+    progress.value = 0;
+    progress.value = withTiming(1, {
+      duration: motionTokens.slow + 140,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [progress, reduce]);
+
+  const ringProps = useAnimatedProps(() => {
+    const swept = Math.min(1, progress.value / 0.6);
+    return { strokeDashoffset: circumference * (1 - swept) };
+  });
+  const tickProps = useAnimatedProps(() => {
+    const drawn = Math.max(0, (progress.value - 0.5) / 0.5);
+    return { strokeDashoffset: tickLength * (1 - drawn) };
+  });
+
+  return (
+    <View
+      style={{ width: size, height: size }}
+      accessible={accessibilityLabel !== undefined}
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={alpha(hue, 0.18)}
+          strokeWidth={thickness}
+          fill="none"
+        />
+        <AnimatedCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={hue}
+          strokeWidth={thickness}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          animatedProps={ringProps}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        <AnimatedPath
+          d={tickPath}
+          stroke={hue}
+          strokeWidth={thickness}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          strokeDasharray={`${tickLength} ${tickLength}`}
+          animatedProps={tickProps}
+        />
+      </Svg>
     </View>
   );
 }

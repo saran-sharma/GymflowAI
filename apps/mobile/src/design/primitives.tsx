@@ -7,7 +7,8 @@
  * quietly stop being systems.
  */
 
-import React from 'react';
+import { BottomTabBarHeightContext } from 'expo-router/build/react-navigation/bottom-tabs';
+import React, { useContext } from 'react';
 import {
   ScrollView,
   type ScrollViewProps,
@@ -245,12 +246,23 @@ export function Screen({
   );
 }
 
-/** The scrolling body of a screen, with the standard page padding and rhythm. */
+/**
+ * The scrolling body of a screen, with the standard page padding and rhythm.
+ *
+ * The bottom padding clears the floating tab bar when the screen is inside a
+ * tab navigator — `AnimatedTabBar` reports its real measured height, so a
+ * fully-scrolled last row is never jammed against or hidden behind the bar on
+ * any device or navigation mode. Outside a tab navigator (auth, onboarding,
+ * pushed detail routes in a stack) there is no bar, and it falls back to the
+ * plain page bottom padding.
+ */
 export function Body({ children, contentContainerStyle, ...rest }: ScrollViewProps) {
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  const paddingBottom = tabBarHeight != null ? tabBarHeight + space.md : space.xxxl;
   return (
     <ScrollView
       style={styles.body}
-      contentContainerStyle={[styles.bodyContent, contentContainerStyle]}
+      contentContainerStyle={[styles.bodyContent, { paddingBottom }, contentContainerStyle]}
       showsVerticalScrollIndicator={false}
       {...rest}
     >
