@@ -213,6 +213,7 @@ import type {
   MemberHome,
   MemberIntake,
   MemberIntakeIn,
+  MemberIntelligence,
   NeedsAttention,
   OccupancyForecast,
   PlanItemUpsert,
@@ -274,6 +275,14 @@ export const memberBodyComposition = (memberId: number, token: string) =>
   request<BodyCompositionHistory>(`/journeys/members/${memberId}/progress/body-composition`, {
     token,
   });
+
+/* ------------------------------------------------------------ intelligence */
+
+export const myIntelligence = (token: string) =>
+  request<MemberIntelligence>('/intelligence/me', { token });
+
+export const memberIntelligence = (memberId: number, token: string) =>
+  request<MemberIntelligence>(`/intelligence/members/${memberId}`, { token });
 
 export const myJourney = (token: string) => request<Journey | null>('/journeys/me', { token });
 

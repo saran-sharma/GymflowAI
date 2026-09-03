@@ -1406,3 +1406,59 @@ export interface ProgressSharePayload {
   compare_photo_url: string | null;
   included: { date?: string; period?: string; message?: string };
 }
+
+/* ------------------------------------------------------------ intelligence */
+
+export type InsightSeverity = 'positive' | 'info' | 'attention' | 'critical';
+
+export type InsightType =
+  | 'consistency'
+  | 'inactivity'
+  | 'personal_record'
+  | 'trend'
+  | 'plateau'
+  | 'journey'
+  | 'membership';
+
+export interface InsightEvidence {
+  label: string;
+  value: string;
+}
+
+export interface InsightAction {
+  label: string;
+  route?: string | null;
+}
+
+/**
+ * One explained observation. Every field is a figure GymFlow computed or a
+ * sentence built from those figures — nothing here comes from a language
+ * model. Rendered by a single component across the member, trainer and owner
+ * surfaces.
+ */
+export interface IntelligenceInsight {
+  id: string;
+  type: InsightType;
+  severity: InsightSeverity;
+  title: string;
+  summary: string;
+  evidence: InsightEvidence[];
+  action?: InsightAction | null;
+}
+
+export interface IntelligenceCoverage {
+  completed_sessions: number;
+  weeks_of_history: number;
+  analysed_through: string;
+}
+
+export interface MemberIntelligence {
+  member_id: number;
+  generated_at: string;
+  state: 'ok' | 'insufficient_data';
+  headline: string;
+  insights: IntelligenceInsight[];
+  next_action?: InsightAction | null;
+  narration_source: 'deterministic' | 'llm';
+  coverage: IntelligenceCoverage;
+}

@@ -30,6 +30,7 @@ const mockMe = jest.fn();
 const mockStats = jest.fn();
 const mockStrength = jest.fn();
 const mockBodyComposition = jest.fn();
+const mockIntelligence = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   myJourney: (...a: unknown[]) => mockJourney(...a),
   myJourneyDays: (...a: unknown[]) => mockDays(...a),
@@ -38,6 +39,7 @@ jest.mock('../src/api/endpoints', () => ({
   memberActivityStats: (...a: unknown[]) => mockStats(...a),
   myStrengthTrend: (...a: unknown[]) => mockStrength(...a),
   myBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
+  myIntelligence: (...a: unknown[]) => mockIntelligence(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -73,6 +75,16 @@ beforeEach(() => {
     latest: null,
     measurements: [],
   } satisfies BodyCompositionHistory);
+  mockIntelligence.mockResolvedValue({
+    member_id: 2,
+    generated_at: '2026-08-20T00:00:00Z',
+    state: 'insufficient_data',
+    headline: 'Complete a few workouts and GymFlow will start showing your training trends here.',
+    insights: [],
+    next_action: null,
+    narration_source: 'deterministic',
+    coverage: { completed_sessions: 1, weeks_of_history: 0, analysed_through: '2026-08-20T00:00:00Z' },
+  });
 });
 
 describe('the consistency chart', () => {

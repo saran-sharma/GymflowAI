@@ -26,9 +26,11 @@ import type {
   Journey,
   JourneyDay,
   MemberActivity,
+  MemberIntelligence,
   StrengthTrend,
 } from '../../src/api/types';
 import { BarChart } from '../../src/components/programme';
+import { MemberIntelligenceSection } from '../../src/components/intelligence';
 import {
   BodyCompositionSection,
   WeekStrip,
@@ -135,6 +137,7 @@ export default function MemberProgressScreen() {
     (token) => api.myBodyComposition(token),
     [],
   );
+  const intel = useApi<MemberIntelligence>((token) => api.myIntelligence(token), []);
 
   const refreshAll = useCallback(() => {
     void journey.refresh();
@@ -142,7 +145,8 @@ export default function MemberProgressScreen() {
     void stats.refresh();
     void strength.refresh();
     void bodyComposition.refresh();
-  }, [journey, timeline, stats, strength, bodyComposition]);
+    void intel.refresh();
+  }, [journey, timeline, stats, strength, bodyComposition, intel]);
 
   const entries = timeline.data ?? [];
   // Called unconditionally, before either early return below, so this
@@ -192,6 +196,14 @@ export default function MemberProgressScreen() {
 
         <Staggered>
         {plan ? <WeekStrip days={days.data ?? []} today={journeyToday(plan)} /> : null}
+
+        <MemberIntelligenceSection
+          data={intel.data}
+          loading={intel.loading}
+          error={intel.error}
+          onRetry={() => void intel.reload()}
+          onNavigate={(route) => router.push(route as never)}
+        />
 
         {totals ? (
           <Section title="Your activity">
