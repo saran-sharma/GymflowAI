@@ -14,6 +14,7 @@ from app.api.v1 import (
     hardware,
     inbody,
     incentives,
+    intelligence,
     journeys,
     marketing,
     members,
@@ -49,6 +50,7 @@ api_router.include_router(sessions.router)
 api_router.include_router(payments.router)
 api_router.include_router(marketing.router)
 api_router.include_router(performance.router)
+api_router.include_router(intelligence.router)
 api_router.include_router(alerts.router)
 api_router.include_router(settings.router)
 api_router.include_router(hardware.router)
