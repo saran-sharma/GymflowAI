@@ -229,6 +229,7 @@ import type {
   StrengthTrend,
   TrainerAttentionQueue,
   TrainerBrief,
+  WeeklySummary,
   TrainerClient,
   TrainerClientDetail,
   TrainerPerformance,
@@ -305,6 +306,18 @@ export const myExerciseRecommendation = (exercise: string, token: string, target
     `/intelligence/me/exercises/${encodeURIComponent(exercise)}/recommendation${
       targetReps ? `?target_reps=${encodeURIComponent(targetReps)}` : ''
     }`,
+    { token },
+  );
+
+export const myWeeklySummary = (token: string, weekEnding?: string) =>
+  request<WeeklySummary>(
+    `/intelligence/me/weekly${weekEnding ? `?week_ending=${weekEnding}` : ''}`,
+    { token },
+  );
+
+export const ownerWeeklySummary = (token: string, branchId?: number) =>
+  request<WeeklySummary>(
+    `/intelligence/owner/weekly${branchId ? `?branch_id=${branchId}` : ''}`,
     { token },
   );
 

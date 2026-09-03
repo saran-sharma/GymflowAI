@@ -31,6 +31,7 @@ import type {
   TrainerAttentionQueue,
   TrainerBrief,
   TrendDirection,
+  WeeklySummary,
 } from '../api/types';
 import {
   Badge,
@@ -613,6 +614,93 @@ export function OwnerDailyBriefSection({
         </>
       ) : null}
     </Section>
+  );
+}
+
+/* --------------------------------------------------------- weekly summary */
+
+const MOVEMENT_META: Record<
+  WeeklySummary['movement'],
+  { label: string; tone: Tone; hue: string }
+> = {
+  ahead: { label: 'Ahead', tone: 'positive', hue: color.status.positive },
+  steady: { label: 'Steady', tone: 'info', hue: color.status.info },
+  behind: { label: 'Behind', tone: 'caution', hue: color.status.warning },
+};
+
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Last week at a glance: the metrics that moved, the direction they moved, and
+ * one sentence. Factual numbers from the server; the sentence has a template
+ * fallback. Renders nothing on error — a recap, not core content.
+ */
+export function WeeklySummaryCard({
+  data,
+  loading,
+  error,
+  title = 'Last week',
+}: {
+  data: WeeklySummary | null;
+  loading: boolean;
+  error: ApiError | null;
+  title?: string;
+}) {
+  const styles = useThemedStyles(buildStyles);
+
+  if (loading && !data) {
+    return (
+      <Card gap="sm">
+        <Eyebrow>{title}</Eyebrow>
+        <Skeleton width="60%" height={14} />
+        <Skeleton width="85%" height={12} />
+      </Card>
+    );
+  }
+  if ((error && !data) || !data) return null;
+
+  const meta = MOVEMENT_META[data.movement];
+  return (
+    <Card gap="sm" style={[styles.card, { borderColor: alpha(meta.hue, 0.35) }]}>
+      <Row gap="sm">
+        <Eyebrow>{title}</Eyebrow>
+        <Text variant="label" tone={color.textTertiary}>
+          {shortDate(data.week_start)} – {shortDate(data.week_end)}
+        </Text>
+        <Spacer />
+        <Badge label={meta.label} tone={meta.tone} />
+      </Row>
+
+      <Text variant="body">{data.headline}</Text>
+
+      <Stack gap="xxs" style={styles.evidence}>
+        {data.metrics.map((m) => (
+          <Row key={m.label} gap="sm">
+            <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+              {m.label}
+            </Text>
+            {m.direction && m.direction !== 'flat' ? (
+              <Ionicons
+                name={m.direction === 'up' ? 'arrow-up' : 'arrow-down'}
+                size={13}
+                color={color.textTertiary}
+              />
+            ) : null}
+            <Text variant="mono" tone={color.textSecondary}>
+              {m.value}
+              {m.previous != null ? (
+                <Text variant="mono" tone={color.textTertiary}>{`  (was ${m.previous})`}</Text>
+              ) : null}
+            </Text>
+          </Row>
+        ))}
+      </Stack>
+    </Card>
   );
 }
 

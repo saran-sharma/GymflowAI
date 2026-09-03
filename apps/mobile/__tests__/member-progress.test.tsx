@@ -31,6 +31,7 @@ const mockStats = jest.fn();
 const mockStrength = jest.fn();
 const mockBodyComposition = jest.fn();
 const mockIntelligence = jest.fn();
+const mockWeekly = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   myJourney: (...a: unknown[]) => mockJourney(...a),
   myJourneyDays: (...a: unknown[]) => mockDays(...a),
@@ -40,6 +41,7 @@ jest.mock('../src/api/endpoints', () => ({
   myStrengthTrend: (...a: unknown[]) => mockStrength(...a),
   myBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
   myIntelligence: (...a: unknown[]) => mockIntelligence(...a),
+  myWeeklySummary: (...a: unknown[]) => mockWeekly(...a),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
@@ -84,6 +86,15 @@ beforeEach(() => {
     next_action: null,
     narration_source: 'deterministic',
     coverage: { completed_sessions: 1, weeks_of_history: 0, analysed_through: '2026-08-20T00:00:00Z' },
+  });
+  mockWeekly.mockResolvedValue({
+    audience: 'member',
+    week_start: '2026-08-10',
+    week_end: '2026-08-16',
+    headline: 'Steady week — 2 sessions, in line with the week before.',
+    movement: 'steady',
+    metrics: [{ label: 'Training sessions', value: '2', previous: '2', direction: 'flat' }],
+    narration_source: 'deterministic',
   });
 });
 

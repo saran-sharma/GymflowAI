@@ -1519,6 +1519,25 @@ export interface OwnerDailyBrief {
   narration_source: 'deterministic' | 'llm';
 }
 
+export interface WeeklyMetric {
+  label: string;
+  value: string;
+  previous?: string | null;
+  direction?: TrendDirection | null;
+}
+
+/** One week, member or owner — the same shape, different metrics. */
+export interface WeeklySummary {
+  audience: 'member' | 'owner';
+  week_start: string;
+  week_end: string;
+  scope?: string | null;
+  headline: string;
+  movement: 'ahead' | 'steady' | 'behind';
+  metrics: WeeklyMetric[];
+  narration_source: 'deterministic' | 'llm';
+}
+
 export type ProgressionAction = 'increase' | 'hold' | 'reduce' | 'insufficient_data';
 
 /**
