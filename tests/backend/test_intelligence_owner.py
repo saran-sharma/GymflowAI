@@ -47,6 +47,15 @@ def test_no_punctuality_issue_when_on_target(db, world):
     assert not any(i.id == "trainer_punctuality" for i in _brief(db, [b]).issues)
 
 
+def test_no_punctuality_issue_on_a_tiny_sample(db, world):
+    """One late shift early in the month is not a trend."""
+    t = world["trainer_ngk"]
+    b = world["branches"]["ngk"].id
+    add_attendance(db, t.id, b, on=date(2026, 6, 3), status=AttendanceStatus.LATE, n=3)
+    db.commit()
+    assert not any(i.id == "trainer_punctuality" for i in _brief(db, [b]).issues)
+
+
 def test_absence_issue_is_critical_past_two(db, world):
     t = world["trainer_ngk"]
     b = world["branches"]["ngk"].id

@@ -80,7 +80,7 @@ def _direction(current: float, previous: float, *, flat_band: float = 2.0) -> st
 def _punctuality_issue(db: Session, branch_ids, today: date) -> OwnerIssue | None:
     start, end = month_bounds(today)
     on_time, present = _punctuality(db, branch_ids, start, end)
-    if present == 0:
+    if present < T.owner_punctuality_min_shifts:
         return None
     pct = round(on_time * 100 / present, 1)
     if pct >= T.owner_punctuality_floor_pct:
@@ -268,11 +268,13 @@ def _branch_lag_issue(db: Session, branch_ids, today: date) -> OwnerIssue | None
     total_on, total_present = 0, 0
     for branch in branches:
         on_time, present = _punctuality(db, [branch.id], start, end)
-        if present == 0:
+        if present < T.owner_punctuality_min_shifts:
             continue
         per_branch.append((branch, round(on_time * 100 / present, 1), present))
         total_on += on_time
         total_present += present
+    if len(per_branch) < 2:
+        return None
     if not per_branch or total_present == 0:
         return None
 

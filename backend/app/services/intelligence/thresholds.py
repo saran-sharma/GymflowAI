@@ -79,6 +79,9 @@ class IntelligenceThresholds:
     # -- owner daily brief ----------------------------------------
     #: Month-to-date on-time rate below this is an attention issue for the owner.
     owner_punctuality_floor_pct: float = 85.0
+    #: …but not until there are at least this many shifts in the window. Early in
+    #: a month one late shift is not a trend.
+    owner_punctuality_min_shifts: int = 10
     #: A member with no session or visit in this many days counts as inactive in
     #: the owner's rollup.
     owner_inactive_member_days: int = 14

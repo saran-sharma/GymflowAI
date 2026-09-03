@@ -69,7 +69,7 @@ export function severityMeta(severity: InsightSeverity): {
     case 'positive':
       return { tone: 'positive', icon: 'trending-up-outline', hue: color.status.positive };
     default:
-      return { tone: 'info', icon: 'ellipse-outline', hue: color.status.info };
+      return { tone: 'info', icon: 'information-circle-outline', hue: color.status.info };
   }
 }
 

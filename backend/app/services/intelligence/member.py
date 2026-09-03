@@ -49,6 +49,17 @@ def _kg(value: float) -> str:
     return f"{value:g} kg"
 
 
+def _load(value: float) -> str:
+    """A total-volume figure, which runs to five or six digits over a month.
+
+    Shown in tonnes once it passes 10,000 kg — "104 t" is a number a person
+    can hold, "104,231 kg" is not — and thousands-separated below that.
+    """
+    if value >= 10_000:
+        return f"{round(value / 1000, 1):g} t"
+    return f"{value:,.0f} kg"
+
+
 def _days(value: int) -> str:
     return "1 day" if value == 1 else f"{value} days"
 
@@ -159,11 +170,11 @@ def _trend_insight(s: sig.TrendSignal) -> IntelligenceInsight | None:
         evidence=[
             InsightEvidence(
                 label="This period",
-                value=f"{_kg(s.current_volume_kg)} · {s.current_sessions} sessions",
+                value=f"{_load(s.current_volume_kg)} · {s.current_sessions} sessions",
             ),
             InsightEvidence(
                 label="Previous",
-                value=f"{_kg(s.previous_volume_kg)} · {s.previous_sessions} sessions",
+                value=f"{_load(s.previous_volume_kg)} · {s.previous_sessions} sessions",
             ),
             InsightEvidence(label="Change", value=f"{'+' if up else '−'}{pct:g}%"),
         ],
