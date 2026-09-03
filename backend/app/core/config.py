@@ -129,6 +129,22 @@ class Settings(BaseSettings):
     intelligence_enabled: bool = False
     push_enabled: bool = False
 
+    # ---------------------------------------------------- intelligence narration
+    # The intelligence layer's signals, insights, evidence and actions are all
+    # computed by GymFlow code. This only governs the one headline sentence at
+    # the top of an intelligence section: "template" (the default) assembles it
+    # from those figures with string templates and needs nothing external;
+    # "llm" asks a configured provider to rephrase the template sentence, and
+    # falls back to it on timeout, error or an off-brief response. No provider
+    # package ships in V1, so "llm" currently logs and behaves as "template".
+    # Any provider credential is read here, server-side only, and is never sent
+    # to the mobile app.
+    intelligence_narrator: Literal["template", "llm"] = "template"
+    intelligence_llm_model: str = ""
+    intelligence_llm_api_key: str = ""
+    intelligence_llm_timeout_seconds: float = 6.0
+    intelligence_llm_max_output_tokens: int = 400
+
     # ------------------------------------------- fingerprint / X2008 (ADMS)
     # SLAM's confirmed real device (X2008, serial CUB7250201499) authenticates
     # itself to GymFlow's older-style "pull" protocols with a numeric
