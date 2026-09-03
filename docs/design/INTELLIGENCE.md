@@ -132,8 +132,19 @@ surfaces differ only in which subset they show.
 | --- | --- | --- | --- |
 | GET | `/api/v1/intelligence/me` | any member | their own `MemberIntelligence` |
 | GET | `/api/v1/intelligence/members/{id}` | member (self), trainer (same branch), management (in scope) | that member's `MemberIntelligence` |
+| GET | `/api/v1/intelligence/members/{id}/brief` | **staff only** (trainer same branch, management in scope) | `TrainerBrief` — Today / Watch / Progress / Suggested focus, same insights framed for a coach; no owner-only figure |
+| GET | `/api/v1/intelligence/trainer/attention` | trainer | `TrainerAttentionQueue` — the caller's assigned members ranked by a transparent weight table, each with the reason and a deep link |
+| GET | `/api/v1/intelligence/owner/daily-brief` | management (`?branch_id=`) | `OwnerDailyBrief` — aggregate attention issues (punctuality, absence, quiet members, renewals, PT-ready, branch lag); no revenue |
 
 `?on=YYYY-MM-DD` overrides "today" for deterministic tests.
+
+### Trainer attention weights (auditable, in `trainer._ATTENTION_WEIGHTS`)
+
+`inactive` 100 · `membership_expiring` 80 · `journey_missed` 70 · `inactivity_slipping` 60 · `consistency_low` 55 · `trend_declining` 45 · `plateau` 25. The highest-scoring signal owns the row's reason; a member scoring 0 is not listed.
+
+### Owner issue thresholds (in `thresholds.py`)
+
+Trainer punctuality: MTD on-time `< owner_punctuality_floor_pct` (85), but only past `owner_punctuality_min_shifts` (10) shifts. Absence: any unworked shift, critical past two. Quiet members: no workout/PT/visit in `owner_inactive_member_days` (14) as a share of the active roster, attention past 15%, critical past 30%. Renewals: active memberships ending within `owner_renewal_horizon_days` (14). Branch lag: a branch `owner_branch_lag_points` (8) below the group average.
 
 ---
 
@@ -152,23 +163,58 @@ All business thresholds live in `app/services/intelligence/thresholds.py`
 
 ---
 
-## 6. Tests
+## 6. Tests (`tests/backend/`)
 
 - `test_intelligence_signals.py` — each calculator's classification boundaries
   and insufficient-data paths, deterministic dates.
 - `test_intelligence_member.py` — insight assembly, severity ordering, empty
-  state, evidence-on-every-insight.
+  state, evidence-on-every-insight, and that a broken narrator does not take the
+  read down.
 - `test_intelligence_narrator.py` — template pass-through; LLM used when valid;
-  fallback on provider error / timeout / markup / empty / off-brief.
+  fallback on provider error / timeout / markup / empty / off-brief; `safe_narrate`.
 - `test_intelligence_api.py` — authorization matrix (self / cross-member /
   cross-branch / unauth / 404), insufficient-data over HTTP, no-PII check.
+- `test_intelligence_trainer.py` — brief progress/watch split, specific
+  suggested-focus, thin-history, no owner-only field; attention-queue ranking,
+  visible reason, deep link, empty-when-healthy; staff-only + branch-scope
+  gates; attention endpoint needs a trainer account.
+- `test_intelligence_owner.py` — each issue's threshold (incl. the small-sample
+  punctuality guard), the calm empty brief, management-only gate, scope label,
+  branch-manager scoping.
+
+Mobile: `__tests__/member-intelligence.test.tsx`, `trainer-copilot.test.tsx`,
+`owner-daily-brief.test.tsx` — loading / insufficient-data / provider-error /
+calm / normal states, evidence rendering, action deep-linking, list caps.
 
 ---
 
-## 7. Remaining / pending
+## 7. Device QA (Pixel 6a, serial 33181JEGR09774)
 
-- Live LLM provider wiring + verification (no key available).
-- Weekly summary as a stored artefact (P1).
-- Trainer Copilot brief + Needs-Attention triage (P0.5) — in progress.
-- Owner GymFlow Intelligence + Daily Brief (P0.6) — in progress.
-- Progression recommendation engine, Ask GymFlow, nudges (P1/P2).
+- **Member Progress** — "What stands out" section verified end-to-end: real
+  `/intelligence/me` data (inactivity 16 d, volume −57%, 12 PRs), headline,
+  three insight cards with evidence rows and working actions, provider-error
+  banner seen and recovered.
+- **Owner Dashboard** — "This morning" section verified: scope, headline, three
+  issue cards (critical absence, renewals, PT-ready) with evidence and deep
+  links; the small-sample punctuality issue correctly suppressed after the fix.
+- **Trainer** — `/intelligence/members/{id}/brief` and
+  `/intelligence/trainer/attention` verified via authenticated curl against the
+  running backend (brief split correct, queue ranked, reasons specific); the UI
+  renders through the same `InsightCard`/section components validated on the
+  member and owner surfaces. On-device screenshot deferred (device instability
+  during the session — notification spam, dev-menu overlay).
+- Font scale 1.3 / reduced motion: the sections use only `Section`/`Card`/
+  `Text`/`Row`/`Stack` (text wraps, no fixed heights) and add no animation of
+  their own — they inherit each screen's existing `<Staggered>` entrance, which
+  already honours `useReducedMotion`.
+
+---
+
+## 8. Remaining / pending
+
+- Live LLM provider wiring + verification (no key available in this
+  environment) — abstraction, schemas, deterministic fallback, tests, UI and
+  endpoints are all in place; only a real key + a provider client remain.
+- Weekly intelligence summary as a stored artefact (P1).
+- Workout progression recommendation engine (P1).
+- Ask GymFlow (P1), contextual nudges (P2).
