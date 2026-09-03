@@ -9,7 +9,7 @@ trusted to produce.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -207,6 +207,36 @@ class ProgressionRecommendation(BaseModel):
         )
 
 
+class WeeklyMetric(BaseModel):
+    """One row of a weekly summary. ``value``/``previous`` are preformatted;
+    ``direction`` is set only when there is a meaningful week-over-week move."""
+
+    label: str
+    value: str
+    previous: str | None = None
+    direction: TrendDirection | None = None
+
+
+WeeklyMovement = Literal["ahead", "steady", "behind"]
+
+
+class WeeklySummary(BaseModel):
+    """One week, for a member or an owner. The reusable shape behind
+    `/intelligence/{me,members/{id},owner}/weekly` — same model, different
+    metrics."""
+
+    audience: Literal["member", "owner"]
+    week_start: date
+    week_end: date
+    #: Owner only: "All branches" or a branch name.
+    scope: str | None = None
+    #: One plain sentence; the narrator may rephrase it, the template always works.
+    headline: str
+    movement: WeeklyMovement
+    metrics: list[WeeklyMetric] = Field(default_factory=list)
+    narration_source: NarrationSource
+
+
 __all__ = [
     "AttentionItem",
     "InsightAction",
@@ -224,4 +254,7 @@ __all__ = [
     "TrainerAttentionQueue",
     "TrainerBrief",
     "TrendDirection",
+    "WeeklyMetric",
+    "WeeklyMovement",
+    "WeeklySummary",
 ]

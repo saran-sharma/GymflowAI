@@ -34,8 +34,10 @@ from app.services.intelligence.schemas import (
     ProgressionRecommendation,
     TrainerAttentionQueue,
     TrainerBrief,
+    WeeklySummary,
 )
 from app.services.intelligence.trainer import build_attention_queue, build_trainer_brief
+from app.services.intelligence.weekly import member_weekly_summary, owner_weekly_summary
 
 from .journeys import _load_member, _trainer_of, assert_can_read_member
 from .trainers import _my_trainer
@@ -124,6 +126,51 @@ def my_exercise_recommendation(
         before_session_id=before_session_id,
     )
     return ProgressionRecommendation.from_domain(rec)
+
+
+@router.get("/me/weekly", response_model=WeeklySummary)
+def my_weekly_summary(
+    week_ending: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WeeklySummary:
+    member = db.scalar(select(Member).where(Member.user_id == user.id))
+    if member is None:
+        raise HTTPException(status_code=404, detail="This account has no member record")
+    return member_weekly_summary(db, member, week_ending=week_ending, narrator=build_narrator())
+
+
+@router.get("/members/{member_id}/weekly", response_model=WeeklySummary)
+def member_weekly(
+    member_id: int,
+    week_ending: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WeeklySummary:
+    member = _load_member(db, member_id)
+    assert_can_read_member(db, user, member)
+    return member_weekly_summary(db, member, week_ending=week_ending, narrator=build_narrator())
+
+
+@router.get("/owner/weekly", response_model=WeeklySummary)
+def owner_weekly(
+    branch_id: int | None = Query(default=None),
+    week_ending: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> WeeklySummary:
+    allowed = scoped_branch_filter(user, branch_id)
+    scope_label = "All branches"
+    if allowed is not None and len(allowed) == 1:
+        branch = db.get(Branch, allowed[0])
+        scope_label = branch.name if branch else "One branch"
+    return owner_weekly_summary(
+        db,
+        branch_ids=allowed,
+        scope_label=scope_label,
+        week_ending=week_ending,
+        narrator=build_narrator(),
+    )
 
 
 @router.get("/members/{member_id}/brief", response_model=TrainerBrief)

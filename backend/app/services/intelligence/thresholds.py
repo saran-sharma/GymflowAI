@@ -113,6 +113,10 @@ class IntelligenceThresholds:
     #: Missing target reps on the top set by at least this many → reduce.
     progression_reps_miss_for_backoff: int = 3
 
+    # -- weekly summary -----------------------------------------
+    #: A week-over-week change smaller than this reads as "steady".
+    weekly_movement_pct: float = 10.0
+
 
 THRESHOLDS = IntelligenceThresholds()
 
