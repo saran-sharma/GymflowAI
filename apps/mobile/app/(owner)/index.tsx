@@ -40,10 +40,12 @@ import type {
   MarketingDashboard,
   NeedsAttention,
   Occupancy,
+  OwnerDailyBrief,
   Renewals,
   RevenueSummary,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
+import { OwnerDailyBriefSection } from '../../src/components/intelligence';
 import { NotConnected } from '../../src/components/member';
 import {
   Body,
@@ -131,6 +133,7 @@ export default function OwnerDashboardScreen() {
   const revenue = useApi<RevenueSummary>((token) => api.revenueSummary(token, 30), []);
   const marketing = useApi<MarketingDashboard>((token) => api.marketingDashboard(token), []);
   const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
+  const dailyBrief = useApi<OwnerDailyBrief>((token) => api.ownerDailyBrief(token), []);
 
   const refreshAll = useCallback(() => {
     void dashboard.refresh();
@@ -142,7 +145,19 @@ export default function OwnerDashboardScreen() {
     void revenue.refresh();
     void marketing.refresh();
     void branches.refresh();
-  }, [dashboard, occupancy, renewals, performance, attention, insights, revenue, marketing, branches]);
+    void dailyBrief.refresh();
+  }, [
+    dashboard,
+    occupancy,
+    renewals,
+    performance,
+    attention,
+    insights,
+    revenue,
+    marketing,
+    branches,
+    dailyBrief,
+  ]);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
   useFocusEffect(
@@ -243,6 +258,15 @@ export default function OwnerDashboardScreen() {
         </Row>
 
         <Staggered>
+        {/* -------------------------------- what needs attention today */}
+        <OwnerDailyBriefSection
+          data={dailyBrief.data}
+          loading={dailyBrief.loading}
+          error={dailyBrief.error}
+          onRetry={() => void dailyBrief.reload()}
+          onNavigate={(route) => router.push(route as never)}
+        />
+
         {/* ------------------------------------------------- key numbers */}
         <StatRow>
           <StatCard

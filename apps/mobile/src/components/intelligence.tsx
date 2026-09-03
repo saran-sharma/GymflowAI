@@ -25,8 +25,11 @@ import type {
   IntelligenceInsight,
   InsightSeverity,
   MemberIntelligence,
+  OwnerDailyBrief,
+  OwnerIssue,
   TrainerAttentionQueue,
   TrainerBrief,
+  TrendDirection,
 } from '../api/types';
 import {
   Banner,
@@ -449,6 +452,161 @@ export function NeedsAttentionSection({
           <Divider />
           <Text variant="label" tone={color.textTertiary} align="center">
             {data.items.length - shown.length} more need a look
+          </Text>
+        </>
+      ) : null}
+    </Section>
+  );
+}
+
+/* --------------------------------------------------------- owner daily brief */
+
+const DIRECTION_ICON: Record<TrendDirection, IconName> = {
+  up: 'trending-up-outline',
+  down: 'trending-down-outline',
+  flat: 'remove-outline',
+};
+
+function OwnerIssueCard({
+  issue,
+  onNavigate,
+}: {
+  issue: OwnerIssue;
+  onNavigate: (route: string) => void;
+}) {
+  const styles = useThemedStyles(buildStyles);
+  const meta = severityMeta(issue.severity);
+  return (
+    <Card gap="sm" style={[styles.card, { borderColor: alpha(meta.hue, 0.35) }]}>
+      <Row gap="sm" align="flex-start">
+        <View style={[styles.iconWrap, { backgroundColor: alpha(meta.hue, 0.12) }]}>
+          <Ionicons name={meta.icon} size={16} color={meta.hue} />
+        </View>
+        <Stack gap="xxs" style={styles.grow}>
+          <Row gap="xs">
+            <Text variant="heading" style={styles.grow}>
+              {issue.title}
+            </Text>
+            {issue.direction ? (
+              <Ionicons
+                name={DIRECTION_ICON[issue.direction]}
+                size={15}
+                color={color.textTertiary}
+              />
+            ) : null}
+          </Row>
+          <Text variant="body" tone={color.textSecondary}>
+            {issue.summary}
+          </Text>
+        </Stack>
+      </Row>
+
+      {issue.evidence.length > 0 ? (
+        <Stack gap="xxs" style={styles.evidence}>
+          {issue.evidence.map((item) => (
+            <Row key={`${item.label}-${item.value}`} gap="sm">
+              <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+                {item.label}
+              </Text>
+              <Text variant="mono" tone={color.textSecondary}>
+                {item.value}
+              </Text>
+            </Row>
+          ))}
+        </Stack>
+      ) : null}
+
+      {issue.action?.route ? (
+        <Row>
+          <Spacer />
+          <LinkButton
+            title={issue.action.label}
+            onPress={() => onNavigate(issue.action!.route!)}
+          />
+        </Row>
+      ) : null}
+    </Card>
+  );
+}
+
+interface OwnerBriefProps {
+  data: OwnerDailyBrief | null;
+  loading: boolean;
+  error: ApiError | null;
+  onRetry: () => void;
+  onNavigate: (route: string) => void;
+  limit?: number;
+}
+
+/**
+ * "What needs my attention today?" — a compact list of aggregate issues, each
+ * with the count it was judged on, a direction where one is meaningful, and a
+ * deep link. No revenue figure: GymFlow has no money model.
+ */
+export function OwnerDailyBriefSection({
+  data,
+  loading,
+  error,
+  onRetry,
+  onNavigate,
+  limit = 4,
+}: OwnerBriefProps) {
+  const styles = useThemedStyles(buildStyles);
+
+  if (loading && !data) {
+    return (
+      <Section title="This morning">
+        <Card gap="sm">
+          <Skeleton width="65%" height={16} />
+          <Skeleton width="90%" height={12} />
+        </Card>
+      </Section>
+    );
+  }
+
+  if (error && !data) {
+    const offline = error.code === OFFLINE_CODE;
+    return (
+      <Section title="This morning">
+        <Banner tone="info" icon="cloud-offline-outline">
+          {offline
+            ? 'Your brief will load when you are back online.'
+            : 'Your brief is unavailable right now.'}
+        </Banner>
+        {!offline ? <LinkButton title="Try again" onPress={onRetry} /> : null}
+      </Section>
+    );
+  }
+
+  if (!data) return null;
+
+  if (data.issues.length === 0) {
+    return (
+      <Section title="This morning">
+        <Card>
+          <Text variant="body" tone={color.textSecondary}>
+            {data.headline}
+          </Text>
+        </Card>
+      </Section>
+    );
+  }
+
+  const shown = data.issues.slice(0, limit);
+  return (
+    <Section title="This morning">
+      <Card gap="xxs" style={styles.headline}>
+        <Eyebrow>{data.scope}</Eyebrow>
+        <Text variant="body">{data.headline}</Text>
+      </Card>
+      {shown.map((issue) => (
+        <OwnerIssueCard key={issue.id} issue={issue} onNavigate={onNavigate} />
+      ))}
+      {data.issues.length > shown.length ? (
+        <>
+          <Divider />
+          <Text variant="label" tone={color.textTertiary} align="center">
+            {data.issues.length - shown.length} more on the list
           </Text>
         </>
       ) : null}

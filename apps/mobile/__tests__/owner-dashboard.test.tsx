@@ -41,6 +41,7 @@ const mockInsights = jest.fn();
 const mockRevenue = jest.fn();
 const mockMarketing = jest.fn();
 const mockBranches = jest.fn();
+const mockDailyBrief = jest.fn();
 
 jest.mock('../src/api/endpoints', () => ({
   dashboard: (...a: unknown[]) => mockDashboard(...a),
@@ -52,6 +53,7 @@ jest.mock('../src/api/endpoints', () => ({
   revenueSummary: (...a: unknown[]) => mockRevenue(...a),
   marketingDashboard: (...a: unknown[]) => mockMarketing(...a),
   listBranches: (...a: unknown[]) => mockBranches(...a),
+  ownerDailyBrief: (...a: unknown[]) => mockDailyBrief(...a),
 }));
 
 const mockAuth = {
@@ -147,6 +149,13 @@ beforeEach(() => {
     pending_corrections: 1,
   } satisfies NeedsAttention);
   mockInsights.mockResolvedValue([]);
+  mockDailyBrief.mockResolvedValue({
+    generated_at: '2026-08-21T10:00:00Z',
+    scope: 'All branches',
+    headline: 'Nothing needs your attention this morning.',
+    issues: [],
+    narration_source: 'deterministic',
+  });
   mockRevenue.mockResolvedValue({
     period_start: '2026-07-22',
     period_end: '2026-08-21',

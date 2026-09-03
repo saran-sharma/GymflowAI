@@ -1496,3 +1496,25 @@ export interface TrainerAttentionQueue {
   considered: number;
   items: AttentionItem[];
 }
+
+export type TrendDirection = 'up' | 'down' | 'flat';
+
+/** One thing on the owner's desk this morning. `direction` is set only where a
+ * comparable prior period exists (a rate vs last month, a branch vs the group). */
+export interface OwnerIssue {
+  id: string;
+  severity: InsightSeverity;
+  title: string;
+  summary: string;
+  evidence: InsightEvidence[];
+  direction?: TrendDirection | null;
+  action?: InsightAction | null;
+}
+
+export interface OwnerDailyBrief {
+  generated_at: string;
+  scope: string;
+  headline: string;
+  issues: OwnerIssue[];
+  narration_source: 'deterministic' | 'llm';
+}

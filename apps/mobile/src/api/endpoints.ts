@@ -216,6 +216,7 @@ import type {
   MemberIntelligence,
   NeedsAttention,
   OccupancyForecast,
+  OwnerDailyBrief,
   PlanItemUpsert,
   PTOffer,
   PTPackage,
@@ -291,6 +292,12 @@ export const memberTrainerBrief = (memberId: number, token: string) =>
 
 export const trainerAttention = (token: string) =>
   request<TrainerAttentionQueue>('/intelligence/trainer/attention', { token });
+
+export const ownerDailyBrief = (token: string, branchId?: number) =>
+  request<OwnerDailyBrief>(
+    `/intelligence/owner/daily-brief${branchId ? `?branch_id=${branchId}` : ''}`,
+    { token },
+  );
 
 export const myJourney = (token: string) => request<Journey | null>('/journeys/me', { token });
 
