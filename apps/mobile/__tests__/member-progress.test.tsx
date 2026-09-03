@@ -42,6 +42,15 @@ jest.mock('../src/api/endpoints', () => ({
   myBodyComposition: (...a: unknown[]) => mockBodyComposition(...a),
   myIntelligence: (...a: unknown[]) => mockIntelligence(...a),
   myWeeklySummary: (...a: unknown[]) => mockWeekly(...a),
+  askSuggestions: jest.fn().mockResolvedValue({ suggestions: [] }),
+  askGymFlow: jest.fn().mockResolvedValue({
+    question: '',
+    intent: 'unrecognised',
+    answer: '',
+    source: 'deterministic',
+    data: [],
+    suggestions: [],
+  }),
 }));
 
 const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };

@@ -1538,6 +1538,23 @@ export interface WeeklySummary {
   narration_source: 'deterministic' | 'llm';
 }
 
+/** One answer from Ask GymFlow. `answer` is prose assembled from figures the
+ * server computed; `data` is those figures; `source` is always 'deterministic'
+ * in V1 (no model). */
+export interface AskAnswer {
+  question: string;
+  intent: string;
+  answer: string;
+  source: 'deterministic' | 'llm';
+  data: InsightEvidence[];
+  action?: InsightAction | null;
+  suggestions: string[];
+}
+
+export interface AskSuggestions {
+  suggestions: string[];
+}
+
 export type ProgressionAction = 'increase' | 'hold' | 'reduce' | 'insufficient_data';
 
 /**

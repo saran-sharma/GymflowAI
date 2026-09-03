@@ -193,6 +193,8 @@ import type {
   ActivityEntry,
   AppAlert,
   AppSetting,
+  AskAnswer,
+  AskSuggestions,
   Assessment,
   AttendanceCorrection,
   BodyCompositionHistory,
@@ -306,6 +308,23 @@ export const myExerciseRecommendation = (exercise: string, token: string, target
     `/intelligence/me/exercises/${encodeURIComponent(exercise)}/recommendation${
       targetReps ? `?target_reps=${encodeURIComponent(targetReps)}` : ''
     }`,
+    { token },
+  );
+
+export const askGymFlow = (
+  question: string,
+  token: string,
+  memberId?: number,
+) =>
+  request<AskAnswer>('/intelligence/ask', {
+    method: 'POST',
+    body: memberId ? { question, member_id: memberId } : { question },
+    token,
+  });
+
+export const askSuggestions = (token: string, memberId?: number) =>
+  request<AskSuggestions>(
+    `/intelligence/ask/suggestions${memberId ? `?member_id=${memberId}` : ''}`,
     { token },
   );
 

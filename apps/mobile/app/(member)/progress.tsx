@@ -14,7 +14,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
@@ -31,6 +31,7 @@ import type {
   WeeklySummary,
 } from '../../src/api/types';
 import { BarChart } from '../../src/components/programme';
+import { AskGymFlowRow, AskGymFlowSheet } from '../../src/components/ask-gymflow';
 import {
   MemberIntelligenceSection,
   WeeklySummaryCard,
@@ -129,6 +130,7 @@ const TIMELINE: Record<ActivityEntry['kind'], { label: string; hue: string }> = 
 
 export default function MemberProgressScreen() {
   const router = useRouter();
+  const [askOpen, setAskOpen] = useState(false);
   const journey = useApi<Journey | null>((token) => api.myJourney(token), []);
   const days = useApi<JourneyDay[]>((token) => api.myJourneyDays(token), []);
   const timeline = useApi<ActivityEntry[]>((token) => api.memberActivity(token, 40), []);
@@ -216,6 +218,8 @@ export default function MemberProgressScreen() {
           loading={weeklySummary.loading}
           error={weeklySummary.error}
         />
+
+        <AskGymFlowRow onPress={() => setAskOpen(true)} />
 
         {totals ? (
           <Section title="Your activity">
@@ -334,6 +338,12 @@ export default function MemberProgressScreen() {
         </Section>
         </Staggered>
       </Body>
+
+      <AskGymFlowSheet
+        visible={askOpen}
+        onClose={() => setAskOpen(false)}
+        onNavigate={(route) => router.push(route as never)}
+      />
     </Screen>
   );
 }
