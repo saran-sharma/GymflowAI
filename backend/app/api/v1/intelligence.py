@@ -27,9 +27,11 @@ from app.db.models import Branch, Member, RoleKey, Trainer, User
 from app.db.session import get_db
 from app.services.intelligence import build_member_intelligence, build_narrator
 from app.services.intelligence.owner import build_owner_daily_brief
+from app.services.intelligence.progression import recommendation_for
 from app.services.intelligence.schemas import (
     MemberIntelligence,
     OwnerDailyBrief,
+    ProgressionRecommendation,
     TrainerAttentionQueue,
     TrainerBrief,
 )
@@ -68,6 +70,60 @@ def my_intelligence(
     if member is None:
         raise HTTPException(status_code=404, detail="This account has no member record")
     return build_member_intelligence(db, member, today=on, narrator=build_narrator())
+
+
+@router.get(
+    "/members/{member_id}/exercises/{exercise}/recommendation",
+    response_model=ProgressionRecommendation,
+)
+def exercise_recommendation(
+    member_id: int,
+    exercise: str,
+    target_reps: str | None = Query(default=None),
+    before_session_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProgressionRecommendation:
+    """A conservative next-weight suggestion for one lift.
+
+    Advisory only — it sits beside the trainer's programme and never rewrites
+    it (a workout item has a rep target, not a weight). Same read rule as the
+    rest of the surface.
+    """
+    member = _load_member(db, member_id)
+    assert_can_read_member(db, user, member)
+    rec = recommendation_for(
+        db,
+        member_id=member.id,
+        exercise=exercise,
+        target_reps=target_reps,
+        before_session_id=before_session_id,
+    )
+    return ProgressionRecommendation.from_domain(rec)
+
+
+@router.get(
+    "/me/exercises/{exercise}/recommendation",
+    response_model=ProgressionRecommendation,
+)
+def my_exercise_recommendation(
+    exercise: str,
+    target_reps: str | None = Query(default=None),
+    before_session_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProgressionRecommendation:
+    member = db.scalar(select(Member).where(Member.user_id == user.id))
+    if member is None:
+        raise HTTPException(status_code=404, detail="This account has no member record")
+    rec = recommendation_for(
+        db,
+        member_id=member.id,
+        exercise=exercise,
+        target_reps=target_reps,
+        before_session_id=before_session_id,
+    )
+    return ProgressionRecommendation.from_domain(rec)
 
 
 @router.get("/members/{member_id}/brief", response_model=TrainerBrief)

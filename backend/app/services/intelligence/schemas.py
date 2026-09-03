@@ -170,6 +170,43 @@ class OwnerDailyBrief(BaseModel):
     narration_source: NarrationSource
 
 
+ProgressionAction = Literal["increase", "hold", "reduce", "insufficient_data"]
+
+
+class ProgressionRecommendation(BaseModel):
+    """A next-weight suggestion for one lift.
+
+    It is advice, not a prescription — GymFlow's workout items carry a rep
+    target, never a weight, so there is nothing here to overwrite. The member or
+    their trainer decides whether to take it. Fields map onto the UI's
+    CURRENT / LAST PERFORMANCE / RECOMMENDED NEXT / WHY.
+    """
+
+    exercise: str
+    action: ProgressionAction
+    last_weight_kg: float | None = None
+    last_reps: int | None = None
+    last_rpe: float | None = None
+    recommended_weight_kg: float | None = None
+    target_reps: str | None = None
+    delta_kg: float | None = None
+    rationale: str
+
+    @classmethod
+    def from_domain(cls, rec) -> ProgressionRecommendation:
+        return cls(
+            exercise=rec.exercise,
+            action=rec.action.value,
+            last_weight_kg=rec.last_weight_kg,
+            last_reps=rec.last_reps,
+            last_rpe=rec.last_rpe,
+            recommended_weight_kg=rec.recommended_weight_kg,
+            target_reps=rec.target_reps,
+            delta_kg=rec.delta_kg,
+            rationale=rec.rationale,
+        )
+
+
 __all__ = [
     "AttentionItem",
     "InsightAction",
@@ -181,6 +218,8 @@ __all__ = [
     "NarrationSource",
     "OwnerDailyBrief",
     "OwnerIssue",
+    "ProgressionAction",
+    "ProgressionRecommendation",
     "Severity",
     "TrainerAttentionQueue",
     "TrainerBrief",
