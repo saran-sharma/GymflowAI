@@ -135,8 +135,40 @@ surfaces differ only in which subset they show.
 | GET | `/api/v1/intelligence/members/{id}/brief` | **staff only** (trainer same branch, management in scope) | `TrainerBrief` — Today / Watch / Progress / Suggested focus, same insights framed for a coach; no owner-only figure |
 | GET | `/api/v1/intelligence/trainer/attention` | trainer | `TrainerAttentionQueue` — the caller's assigned members ranked by a transparent weight table, each with the reason and a deep link |
 | GET | `/api/v1/intelligence/owner/daily-brief` | management (`?branch_id=`) | `OwnerDailyBrief` — aggregate attention issues (punctuality, absence, quiet members, renewals, PT-ready, branch lag); no revenue |
+| GET | `/api/v1/intelligence/{me,members/{id}}/exercises/{exercise}/recommendation` | member (self), staff (same read rule) | `ProgressionRecommendation` — conservative next-weight advice for one lift; `?before_session_id=` excludes the open session |
+| GET | `/api/v1/intelligence/{me,members/{id}}/weekly`, `/owner/weekly` | member / staff / management | `WeeklySummary` — one reusable shape, member or owner metrics, `?week_ending=` |
+| POST | `/api/v1/intelligence/ask` | any role (`{question, member_id?}`) | `AskAnswer` — one intent-matched deterministic answer + the data behind it |
+| GET | `/api/v1/intelligence/ask/suggestions` | any role (`?member_id=`) | `AskSuggestions` — role-aware starter chips |
 
 `?on=YYYY-MM-DD` overrides "today" for deterministic tests.
+
+### Workout progression rule (`progression.py`, thresholds centralised)
+
+Nothing until two logged sessions of the lift. Add load (`+2.5 kg`, or `+5 kg`
+for compound lower-body) only when the last top set met its rep target and RPE
+(if recorded) was `≤ progression_rpe_ok` (8). Hold when reps were short, or hit
+but hard. Back off `−10%` only when reps were `≥ 3` under target or RPE was 10.
+Never a jump over `progression_max_increase_pct` (5%) of the last top weight.
+It is advice — workout items carry a rep target, not a weight, so there is
+nothing to overwrite.
+
+### Weekly summary
+
+`WeeklySummary` (audience, week, headline, `movement: ahead|steady|behind`, a
+list of `WeeklyMetric` with `previous` + `direction`). Member metrics: sessions,
+total load, gym visits, PRs — movement follows sessions, then load. Owner
+metrics: trainer punctuality week-over-week, unworked shifts, new members.
+"Last week" is the most recent completed Mon–Sun.
+
+### Ask GymFlow
+
+Intent match → the same builder the screens use → a short answer + its data.
+Member intents: overview, consistency, last-trained, records, last-week,
+next-weight (needs the lift named). Trainer (client in context): how-is-X,
+focus, who-needs-attention. Owner: attention, punctuality, last-week.
+Unrecognised → "here is what you can ask". No model; `source` is always
+`deterministic`. A member's `member_id` is ignored; staff must pass one they
+can read.
 
 ### Trainer attention weights (auditable, in `trainer._ATTENTION_WEIGHTS`)
 
@@ -181,10 +213,18 @@ All business thresholds live in `app/services/intelligence/thresholds.py`
 - `test_intelligence_owner.py` — each issue's threshold (incl. the small-sample
   punctuality guard), the calm empty brief, management-only gate, scope label,
   branch-manager scoping.
+- `test_intelligence_progression.py` — every rule branch, the 5% cap, the
+  open-session exclusion, the read-rule on the endpoint.
+- `test_intelligence_weekly.py` — member ahead/behind/steady/zero, default-week
+  resolution, owner punctuality movement + counts, the endpoint gates.
+- `test_intelligence_ask.py` — each member/trainer/owner intent, unrecognised
+  fallback, `member_id` ignored for a member, cross-branch 403, role-aware
+  suggestion chips.
 
-Mobile: `__tests__/member-intelligence.test.tsx`, `trainer-copilot.test.tsx`,
-`owner-daily-brief.test.tsx` — loading / insufficient-data / provider-error /
-calm / normal states, evidence rendering, action deep-linking, list caps.
+Mobile: `__tests__/{member-intelligence,trainer-copilot,owner-daily-brief,
+progression-recommendation,weekly-summary,ask-gymflow}.test.tsx` — loading /
+insufficient-data / provider-error / calm / normal states, evidence rendering,
+action deep-linking, list caps, and (Ask) chip→answer and type→answer flows.
 
 ---
 
@@ -212,9 +252,21 @@ calm / normal states, evidence rendering, action deep-linking, list caps.
 
 ## 8. Remaining / pending
 
-- Live LLM provider wiring + verification (no key available in this
-  environment) — abstraction, schemas, deterministic fallback, tests, UI and
-  endpoints are all in place; only a real key + a provider client remain.
-- Weekly intelligence summary as a stored artefact (P1).
-- Workout progression recommendation engine (P1).
-- Ask GymFlow (P1), contextual nudges (P2).
+- **Live LLM provider** wiring + verification — no key in this environment. The
+  abstraction (`IntelligenceNarrator`), schemas, deterministic fallback, output
+  validation, tests, UI and endpoints are all in place; only a real key + a
+  provider client class remain. `INTELLIGENCE_NARRATOR=llm` currently logs and
+  behaves as `template`.
+- **Weekly summary as a stored artefact** — today every read recomputes. A
+  `member_weekly_summaries` / `owner_weekly_summaries` table would make
+  "since last week" language stable and let a digest be sent.
+- **Owner weekly UI** — the `/owner/weekly` endpoint ships but is not surfaced
+  (the daily brief leads that dashboard).
+- **Ask GymFlow entry points** for trainer client-detail and owner dashboard —
+  the reusable `AskGymFlowRow`/`AskGymFlowSheet` support a `memberId`; only the
+  member Progress entry point is wired.
+- **Contextual nudges** (P2) — not started. Would build on the same signals
+  with dedupe + cooldown tables and the existing alert channel.
+- **Adaptive workout** (P2) — the progression recommendation is the safe first
+  version (explicit advice, never a silent program change); a fuller
+  CURRENT/LAST/NEXT/WHY panel mid-workout is the next step.
