@@ -139,6 +139,37 @@ class TrainerAttentionQueue(BaseModel):
     items: list[AttentionItem] = Field(default_factory=list)
 
 
+TrendDirection = Literal["up", "down", "flat"]
+
+
+class OwnerIssue(BaseModel):
+    """One thing on the owner's desk this morning.
+
+    ``direction`` is set only where a comparable prior period exists — a
+    month-to-date rate against last month, a branch against the group. It is
+    ``None`` for a plain count with nothing honest to compare it to.
+    """
+
+    id: str
+    severity: Severity
+    title: str
+    #: The explanation — why this is on the list.
+    summary: str
+    evidence: list[InsightEvidence] = Field(default_factory=list)
+    direction: TrendDirection | None = None
+    action: InsightAction | None = None
+
+
+class OwnerDailyBrief(BaseModel):
+    generated_at: datetime
+    #: "All branches" or the branch name the brief was scoped to.
+    scope: str
+    #: One plain sentence. The empty-state copy when there is nothing to flag.
+    headline: str
+    issues: list[OwnerIssue] = Field(default_factory=list)
+    narration_source: NarrationSource
+
+
 __all__ = [
     "AttentionItem",
     "InsightAction",
@@ -148,7 +179,10 @@ __all__ = [
     "IntelligenceState",
     "MemberIntelligence",
     "NarrationSource",
+    "OwnerDailyBrief",
+    "OwnerIssue",
     "Severity",
     "TrainerAttentionQueue",
     "TrainerBrief",
+    "TrendDirection",
 ]

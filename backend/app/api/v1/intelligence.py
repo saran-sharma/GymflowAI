@@ -22,12 +22,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.deps import get_current_user
-from app.db.models import Member, RoleKey, Trainer, User
+from app.core.deps import get_current_user, require_management, scoped_branch_filter
+from app.db.models import Branch, Member, RoleKey, Trainer, User
 from app.db.session import get_db
 from app.services.intelligence import build_member_intelligence, build_narrator
+from app.services.intelligence.owner import build_owner_daily_brief
 from app.services.intelligence.schemas import (
     MemberIntelligence,
+    OwnerDailyBrief,
     TrainerAttentionQueue,
     TrainerBrief,
 )
@@ -108,6 +110,29 @@ def trainer_attention(
     """
     trainer: Trainer = _my_trainer(db, user)
     return build_attention_queue(db, trainer, today=on, limit=limit)
+
+
+@router.get("/owner/daily-brief", response_model=OwnerDailyBrief)
+def owner_daily_brief(
+    branch_id: int | None = Query(default=None),
+    on: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> OwnerDailyBrief:
+    """The owner's "what needs my attention today?" — aggregate counts across
+    the branches this account may see, never invented revenue."""
+    allowed = scoped_branch_filter(user, branch_id)
+    scope_label = "All branches"
+    if allowed is not None and len(allowed) == 1:
+        branch = db.get(Branch, allowed[0])
+        scope_label = branch.name if branch else "One branch"
+    return build_owner_daily_brief(
+        db,
+        branch_ids=allowed,
+        scope_label=scope_label,
+        today=on,
+        narrator=build_narrator(),
+    )
 
 
 __all__ = ["router"]

@@ -76,6 +76,22 @@ class IntelligenceThresholds:
     #: intelligence (and the trainer/owner views) as something to act on.
     membership_expiry_attention_days: int = 14
 
+    # -- owner daily brief ----------------------------------------
+    #: Month-to-date on-time rate below this is an attention issue for the owner.
+    owner_punctuality_floor_pct: float = 85.0
+    #: A member with no session or visit in this many days counts as inactive in
+    #: the owner's rollup.
+    owner_inactive_member_days: int = 14
+    #: Inactive members above this share of the active roster is an attention
+    #: issue; above the critical share it is critical.
+    owner_inactive_share_attention: float = 0.15
+    owner_inactive_share_critical: float = 0.30
+    #: Renewals inside this window are surfaced as a count to work.
+    owner_renewal_horizon_days: int = 14
+    #: A branch whose month-to-date on-time rate is at least this many points
+    #: below the group average is called out by name.
+    owner_branch_lag_points: float = 8.0
+
 
 THRESHOLDS = IntelligenceThresholds()
 

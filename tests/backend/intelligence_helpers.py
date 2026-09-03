@@ -12,8 +12,10 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    AttendanceStatus,
     Member,
     SessionStatus,
+    TrainerAttendance,
     WorkoutSession,
     WorkoutSessionItem,
     WorkoutSet,
@@ -93,3 +95,27 @@ def add_weekly_workouts(
                 exercise=exercise,
                 sets=[(weight_kg, 8)],
             )
+
+
+def add_attendance(
+    db: Session,
+    trainer_id: int,
+    branch_id: int,
+    *,
+    on: date,
+    status: AttendanceStatus,
+    n: int = 1,
+) -> None:
+    """``n`` TrainerAttendance rows on consecutive days back from ``on``."""
+    from datetime import timedelta
+
+    for i in range(n):
+        db.add(
+            TrainerAttendance(
+                trainer_id=trainer_id,
+                branch_id=branch_id,
+                work_date=on - timedelta(days=i),
+                status=status,
+            )
+        )
+    db.flush()
