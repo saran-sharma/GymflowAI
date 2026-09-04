@@ -42,6 +42,7 @@ const mockRevenue = jest.fn();
 const mockMarketing = jest.fn();
 const mockBranches = jest.fn();
 const mockDailyBrief = jest.fn();
+const mockWeekly = jest.fn();
 
 jest.mock('../src/api/endpoints', () => ({
   dashboard: (...a: unknown[]) => mockDashboard(...a),
@@ -54,6 +55,16 @@ jest.mock('../src/api/endpoints', () => ({
   marketingDashboard: (...a: unknown[]) => mockMarketing(...a),
   listBranches: (...a: unknown[]) => mockBranches(...a),
   ownerDailyBrief: (...a: unknown[]) => mockDailyBrief(...a),
+  ownerWeeklySummary: (...a: unknown[]) => mockWeekly(...a),
+  askSuggestions: jest.fn().mockResolvedValue({ suggestions: [] }),
+  askGymFlow: jest.fn().mockResolvedValue({
+    question: '',
+    intent: 'unrecognised',
+    answer: '',
+    source: 'deterministic',
+    data: [],
+    suggestions: [],
+  }),
 }));
 
 const mockAuth = {
@@ -154,6 +165,19 @@ beforeEach(() => {
     scope: 'All branches',
     headline: 'Nothing needs your attention this morning.',
     issues: [],
+    narration_source: 'deterministic',
+  });
+  mockWeekly.mockResolvedValue({
+    audience: 'owner',
+    week_start: '2026-08-10',
+    week_end: '2026-08-16',
+    scope: 'All branches',
+    headline: 'Steady week — 88% on time, 2 new members.',
+    movement: 'steady',
+    metrics: [
+      { label: 'Trainer punctuality', value: '88%', previous: '86%', direction: 'flat' },
+      { label: 'Member visits', value: '210', previous: '198', direction: 'up' },
+    ],
     narration_source: 'deterministic',
   });
   mockRevenue.mockResolvedValue({

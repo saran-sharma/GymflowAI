@@ -105,6 +105,40 @@ def test_owner_week_counts_absences_and_new_members(db, world):
     assert s.movement == "behind"  # 3 absences forces it
 
 
+def test_owner_week_counts_member_visit_days_week_over_week(db, world):
+    from datetime import UTC, datetime
+
+    from app.db.models import AttendanceEvent, CaptureMethod, EventType, PersonType
+
+    member = world["member_ngk"]
+    b = world["branches"]["ngk"].id
+
+    def _visit(day: date):
+        db.add(
+            AttendanceEvent(
+                branch_id=b,
+                user_id=member.user_id,
+                person_type=PersonType.MEMBER,
+                event_type=EventType.CHECK_IN,
+                method=CaptureMethod.QR,
+                occurred_at=datetime(day.year, day.month, day.day, 8, tzinfo=UTC),
+                work_date=day,
+            )
+        )
+
+    # 3 visit-days this week (06-02, 06-04, 06-06); 1 last week (05-27).
+    for d in (2, 4, 6):
+        _visit(date(2026, 6, d))
+    _visit(date(2026, 5, 27))
+    db.commit()
+
+    s = owner_weekly_summary(db, branch_ids=[b], week_ending=WEEK_END)
+    row = _m(s, "Member visits")
+    assert row.value == "3"
+    assert row.previous == "1"
+    assert row.direction == "up"
+
+
 # --------------------------------------------------------------- endpoints
 
 

@@ -43,9 +43,10 @@ import type {
   OwnerDailyBrief,
   Renewals,
   RevenueSummary,
+  WeeklySummary,
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
-import { OwnerDailyBriefSection } from '../../src/components/intelligence';
+import { OwnerDailyBriefSection, WeeklySummaryCard } from '../../src/components/intelligence';
 import { AskGymFlowRow, AskGymFlowSheet } from '../../src/components/ask-gymflow';
 import { NotConnected } from '../../src/components/member';
 import {
@@ -136,6 +137,7 @@ export default function OwnerDashboardScreen() {
   const marketing = useApi<MarketingDashboard>((token) => api.marketingDashboard(token), []);
   const branches = useApi<Branch[]>((token) => api.listBranches(token), []);
   const dailyBrief = useApi<OwnerDailyBrief>((token) => api.ownerDailyBrief(token), []);
+  const weekly = useApi<WeeklySummary>((token) => api.ownerWeeklySummary(token), []);
 
   const refreshAll = useCallback(() => {
     void dashboard.refresh();
@@ -148,6 +150,7 @@ export default function OwnerDashboardScreen() {
     void marketing.refresh();
     void branches.refresh();
     void dailyBrief.refresh();
+    void weekly.refresh();
   }, [
     dashboard,
     occupancy,
@@ -159,6 +162,7 @@ export default function OwnerDashboardScreen() {
     marketing,
     branches,
     dailyBrief,
+    weekly,
   ]);
 
   // The dashboard is the screen most likely to be stale — refresh on return.
@@ -273,6 +277,14 @@ export default function OwnerDashboardScreen() {
         <AskGymFlowRow
           onPress={() => setAsk({ open: true })}
           detail="Ask about your gyms"
+        />
+
+        {/* ---------------------------- how last week went, week over week */}
+        <WeeklySummaryCard
+          data={weekly.data}
+          loading={weekly.loading}
+          error={weekly.error}
+          title="Last week"
         />
 
         {/* ------------------------------------------------- key numbers */}

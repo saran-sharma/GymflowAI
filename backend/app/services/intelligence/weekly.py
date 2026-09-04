@@ -16,7 +16,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.clock import branch_today
-from app.db.models import Branch, Member, TrainerAttendance
+from app.db.models import (
+    AttendanceEvent,
+    Branch,
+    EventType,
+    Member,
+    PersonType,
+    TrainerAttendance,
+)
 from app.domain.shift_engine import ON_TIME_STATUSES, PRESENT_STATUSES
 from app.services import activity_service
 from app.services.intelligence import signals as sig
@@ -208,7 +215,28 @@ def owner_weekly_summary(
     new_this = _new_members(start, end)
     new_prev = _new_members(prev_start, prev_end)
 
+    def _visit_days(a: date, b: date) -> int:
+        """Distinct member check-in days across the window and branch scope —
+        the closest honest proxy for 'how busy was the floor'."""
+        stmt = select(
+            func.count(
+                func.distinct(func.concat(AttendanceEvent.user_id, AttendanceEvent.work_date))
+            )
+        ).where(
+            AttendanceEvent.person_type == PersonType.MEMBER,
+            AttendanceEvent.event_type == EventType.CHECK_IN,
+            AttendanceEvent.work_date >= a,
+            AttendanceEvent.work_date <= b,
+        )
+        if branch_ids is not None:
+            stmt = stmt.where(AttendanceEvent.branch_id.in_(branch_ids))
+        return int(db.scalar(stmt) or 0)
+
+    visits_this = _visit_days(start, end)
+    visits_prev = _visit_days(prev_start, prev_end)
+
     absent_this = _absences(db, branch_ids, start, end)
+    absent_prev = _absences(db, branch_ids, prev_start, prev_end)
 
     metrics = [
         WeeklyMetric(
@@ -217,7 +245,19 @@ def owner_weekly_summary(
             previous=f"{prev_pct:g}%" if p_present else None,
             direction=pct_dir,
         ),
-        WeeklyMetric(label="Unworked shifts", value=str(absent_this)),
+        WeeklyMetric(
+            label="Member visits",
+            value=str(visits_this),
+            previous=str(visits_prev),
+            direction=_direction(visits_this, visits_prev),
+        ),
+        WeeklyMetric(
+            label="Unworked shifts",
+            value=str(absent_this),
+            previous=str(absent_prev),
+            # Fewer unworked shifts is better, so invert the arrow's meaning.
+            direction=_direction(absent_this, absent_prev),
+        ),
         WeeklyMetric(
             label="New members",
             value=str(new_this),
