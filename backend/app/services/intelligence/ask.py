@@ -17,6 +17,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
+from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -190,7 +191,7 @@ def _member_next_weight(ctx: AskContext) -> tuple[str, InsightAction | None]:
         _ev(ctx, "Last set", f"{rec.last_weight_kg:g} kg × {rec.last_reps}")
         _ev(ctx, "Suggested next", f"{rec.recommended_weight_kg:g} kg")
     return f"{rec.rationale} This is a suggestion, not a change to your programme.", InsightAction(
-        label=f"Open {hit}", route="/(member)/progress-exercise"
+        label=f"Open {hit}", route=f"/(member)/progress-exercise?exercise={quote(hit)}"
     )
 
 

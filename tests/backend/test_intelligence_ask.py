@@ -71,6 +71,9 @@ def test_member_next_weight_needs_the_lift_named(client, db, world, auth):
     ).json()
     assert named["intent"] == "next_weight"
     assert "not a change to your programme" in named["answer"]
+    # The deep link must carry the lift — progress-exercise renders nothing
+    # without an ?exercise= query param.
+    assert named["action"]["route"] == "/(member)/progress-exercise?exercise=Back%20Squat"
 
 
 def test_unrecognised_member_question_says_what_can_be_asked(client, world, auth):
