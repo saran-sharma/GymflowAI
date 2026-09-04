@@ -133,6 +133,45 @@ def _member_last_week(ctx: AskContext) -> tuple[str, InsightAction | None]:
     return s.headline, None
 
 
+def _member_slowdown(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """ "Why has my progress slowed / stalled / plateaued?" — the specific
+    reason from the trend, plateau and consistency signals."""
+    s = sig.member_signals(ctx.db, ctx.member, today=ctx.today)
+    reasons: list[str] = []
+    if s.trend.direction == "declining" and s.trend.volume_change_pct is not None:
+        reasons.append(
+            f"training volume is down {abs(s.trend.volume_change_pct):g}% over the last "
+            f"{s.trend.window_days} days"
+        )
+        _ev(ctx, "Volume change", f"{s.trend.volume_change_pct:g}%")
+    if s.consistency.level == "low":
+        reasons.append(
+            f"only {s.consistency.sessions_in_window} sessions in the last "
+            f"{s.consistency.window_weeks} weeks"
+        )
+        _ev(
+            ctx,
+            f"Last {s.consistency.window_weeks} weeks",
+            f"{s.consistency.sessions_in_window} sessions",
+        )
+    if s.plateau.detected and s.plateau.exercise:
+        reasons.append(f"{s.plateau.exercise} has been flat for {s.plateau.span_days} days")
+        _ev(ctx, "Plateau", s.plateau.exercise)
+    if s.inactivity.level in ("slipping", "inactive") and s.inactivity.days_since_training:
+        reasons.append(f"no session logged in {s.inactivity.days_since_training} days")
+
+    if not reasons:
+        return (
+            "Nothing in your data points to a slowdown — consistency, volume and your key "
+            "lifts are all holding or improving.",
+            InsightAction(label="See progress", route="/(member)/progress"),
+        )
+    return (
+        "The likely reasons: " + "; ".join(reasons) + ".",
+        InsightAction(label="See progress", route="/(member)/progress"),
+    )
+
+
 def _member_next_weight(ctx: AskContext) -> tuple[str, InsightAction | None]:
     trained = journey_service.trained_exercises(ctx.db, member_id=ctx.member.id, limit=25)
     text = ctx.match.group(0).lower() if ctx.match else ""
@@ -199,6 +238,30 @@ def _trainer_attention(ctx: AskContext) -> tuple[str, InsightAction | None]:
     ), InsightAction(label="Open Desk", route="/(trainer)")
 
 
+def _trainer_focus_today(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """ "What should I focus on today?" with no client in context — the single
+    most pressing client across the trainer's list."""
+    if ctx.member is not None:
+        return _trainer_focus(ctx)
+    trainer = ctx.db.scalar(select(Trainer).where(Trainer.user_id == ctx.user.id))
+    if trainer is None:
+        return "This account is not a trainer.", None
+    q = build_attention_queue(ctx.db, trainer, today=ctx.today, limit=3)
+    if not q.items:
+        return (
+            f"Nothing pressing — all {q.considered} of your clients are on track. Focus on "
+            f"today's scheduled sessions.",
+            InsightAction(label="Open Desk", route="/(trainer)"),
+        )
+    for item in q.items:
+        _ev(ctx, item.member_name, item.reason)
+    top = q.items[0]
+    return (
+        f"Start with {top.member_name} — {top.reason.lower()}. "
+        f"{len(q.items)} client{'s' if len(q.items) != 1 else ''} to look at in all."
+    ), InsightAction(label=f"Open {top.member_name}", route=top.route)
+
+
 # --------------------------------------------------------------- owner intents
 
 
@@ -227,6 +290,46 @@ def _owner_last_week(ctx: AskContext) -> tuple[str, InsightAction | None]:
     for m in s.metrics:
         _ev(ctx, m.label, m.value + (f" (was {m.previous})" if m.previous else ""))
     return s.headline, None
+
+
+def _owner_branch(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """ "Which branch needs attention?" — the branch flagged in the daily brief,
+    or the one with the lowest month-to-date punctuality in scope."""
+    brief = build_owner_daily_brief(ctx.db, branch_ids=ctx.branch_ids, today=ctx.today)
+    lag = next((i for i in brief.issues if i.id == "branch_lag"), None)
+    if lag is not None:
+        for e in lag.evidence:
+            _ev(ctx, e.label, e.value)
+        return lag.summary, lag.action
+
+    from app.db.models import Branch
+    from app.services.incentive_service import month_bounds
+
+    from .owner import _punctuality
+
+    stmt = select(Branch).where(Branch.is_active.is_(True))
+    if ctx.branch_ids is not None:
+        stmt = stmt.where(Branch.id.in_(ctx.branch_ids))
+    branches = list(ctx.db.scalars(stmt).all())
+    if len(branches) < 2:
+        return (
+            "You have one branch in scope, so there is no branch comparison to make.",
+            InsightAction(label="Open trainers", route="/(owner)/trainers"),
+        )
+    start, end = month_bounds(ctx.today)
+    scored = []
+    for b in branches:
+        on_time, present = _punctuality(ctx.db, [b.id], start, end)
+        if present:
+            scored.append((b, round(on_time * 100 / present, 1)))
+    if not scored:
+        return "No trainer shifts recorded this month yet.", None
+    worst, pct = min(scored, key=lambda r: r[1])
+    _ev(ctx, worst.name, f"{pct:g}% on time (MTD)")
+    return (
+        f"{worst.name} has the lowest trainer punctuality this month at {pct:g}%.",
+        InsightAction(label=f"Open {worst.name}", route=f"/(owner)/branch/{worst.id}"),
+    )
 
 
 def _owner_explain(ctx: AskContext) -> tuple[str, InsightAction | None]:
@@ -279,7 +382,20 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
             re.compile(r"\bprs?\b|personal record|\brecords?\b|new best|heaviest", re.I),
             _member_records,
         ),
-        ("last_week", re.compile(r"last week|this week|past week|weekly", re.I), _member_last_week),
+        (
+            "last_week",
+            re.compile(r"last week|this week|past week|weekly|what changed", re.I),
+            _member_last_week,
+        ),
+        (
+            "slowdown",
+            re.compile(
+                r"why.*(slow|slowed|stall|stalled|plateau|not improv|no progress|flat)|"
+                r"progress slowed|why.*not.*(gain|improv)",
+                re.I,
+            ),
+            _member_slowdown,
+        ),
         (
             "next_weight",
             re.compile(
@@ -296,12 +412,19 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
         ),
     ],
     "trainer": [
-        ("focus", re.compile(r"focus|work on|priorit|what should i", re.I), _trainer_focus),
         (
             "attention",
-            re.compile(r"who|attention|needs? a look|triage|check in on", re.I),
+            re.compile(r"\bwho\b|attention|needs? a look|triage|check in on", re.I),
             _trainer_attention,
         ),
+        (
+            "focus_today",
+            re.compile(
+                r"focus.*(today|now)|what should i (focus|do) (on )?today|today.*focus", re.I
+            ),
+            _trainer_focus_today,
+        ),
+        ("focus", re.compile(r"focus|work on|priorit|what should i", re.I), _trainer_focus),
         ("member", re.compile(r"how('?s| is)|doing|state|status|update on", re.I), _trainer_member),
     ],
     "owner": [
@@ -325,6 +448,11 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
             _owner_last_week,
         ),
         (
+            "branch",
+            re.compile(r"which branch|what branch|branch.*(attention|worst|behind|lag)", re.I),
+            _owner_branch,
+        ),
+        (
             "attention",
             re.compile(r"attention|needs?|issue|problem|what should i|priorit", re.I),
             _owner_attention,
@@ -334,22 +462,26 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
 
 _SUGGESTIONS = {
     "member": [
-        "How am I doing?",
-        "What should I work on next?",
-        "Am I training consistently?",
-        "How was last week?",
+        "How am I progressing?",
+        "What changed this week?",
+        "What should I focus on?",
+        "Why has my progress slowed?",
         "Any recent personal records?",
     ],
     "trainer_member": [
-        "How is {name}?",
+        "How is {name} progressing?",
         "What should I focus on with {name}?",
         "Who needs attention?",
     ],
-    "trainer": ["Who needs attention?"],
+    "trainer": [
+        "Who needs attention?",
+        "What should I focus on today?",
+    ],
     "owner": [
-        "What needs my attention today?",
-        "How is trainer punctuality?",
-        "How was last week?",
+        "What needs my attention?",
+        "How is attendance trending?",
+        "Which branch needs attention?",
+        "What changed this week?",
     ],
 }
 

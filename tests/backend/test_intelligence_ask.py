@@ -222,15 +222,85 @@ def test_suggestions_are_role_aware(client, db, world, auth):
     member_chips = client.get(
         f"{API}/ask/suggestions", headers=auth(world["member_ngk_user"])
     ).json()["suggestions"]
-    assert any("How am I doing" in c for c in member_chips)
+    assert any("progressing" in c.lower() for c in member_chips)
+    assert any("slowed" in c.lower() for c in member_chips)
 
     owner_chips = client.get(f"{API}/ask/suggestions", headers=auth(world["owner"])).json()[
         "suggestions"
     ]
     assert any("attention" in c.lower() for c in owner_chips)
+    assert any("branch" in c.lower() for c in owner_chips)
+
+    trainer_chips_no_ctx = client.get(
+        f"{API}/ask/suggestions", headers=auth(world["trainer_ngk_user"])
+    ).json()["suggestions"]
+    assert any("focus on today" in c.lower() for c in trainer_chips_no_ctx)
 
     trainer_chips = client.get(
         f"{API}/ask/suggestions?member_id={world['member_ngk'].id}",
         headers=auth(world["trainer_ngk_user"]),
     ).json()["suggestions"]
     assert any("Aditya" in c for c in trainer_chips)  # first name substituted
+
+
+def test_member_slowdown_question_gives_the_specific_reason(client, db, world, auth):
+    from datetime import date, timedelta
+
+    from intelligence_helpers import add_weekly_workouts
+
+    member = world["member_ngk"]
+    # Heavier previous 4 weeks, much lighter recent 4 → a declining trend.
+    span = 28
+    add_weekly_workouts(
+        db, member, ending=date.today() - timedelta(days=span), weeks=4, per_week=3, weight_kg=80
+    )
+    add_weekly_workouts(db, member, ending=date.today(), weeks=4, per_week=3, weight_kg=40)
+    db.commit()
+
+    body = _ask(client, auth(world["member_ngk_user"]), "Why has my progress slowed?").json()
+    assert body["intent"] == "slowdown"
+    assert "volume is down" in body["answer"].lower()
+    assert body["data"]
+
+
+def test_trainer_focus_today_without_a_client_picks_the_top_of_the_queue(client, db, world, auth):
+    from datetime import date, timedelta
+
+    for days_ago in (60, 55, 50, 45):
+        add_workout(db, world["member_ngk"], on=date.today() - timedelta(days=days_ago))
+    db.commit()
+    body = _ask(client, auth(world["trainer_ngk_user"]), "What should I focus on today?").json()
+    assert body["intent"] == "focus_today"
+    assert body["data"]
+    assert body["action"]["route"].startswith("/(trainer)/client/")
+
+
+def test_owner_which_branch_needs_attention(client, db, world, auth):
+    from datetime import date, timedelta
+
+    from intelligence_helpers import add_attendance
+
+    from app.db.models import AttendanceStatus
+
+    # Nagalkeni all late this month, Boganhalli all on time.
+    add_attendance(
+        db,
+        world["trainer_ngk"].id,
+        world["branches"]["ngk"].id,
+        on=date.today().replace(day=1) + timedelta(days=1),
+        status=AttendanceStatus.LATE,
+        n=12,
+    )
+    add_attendance(
+        db,
+        world["trainer_bgh"].id,
+        world["branches"]["bgh"].id,
+        on=date.today().replace(day=1) + timedelta(days=1),
+        status=AttendanceStatus.COMPLETED,
+        n=12,
+    )
+    db.commit()
+    body = _ask(client, auth(world["owner"]), "Which branch needs attention?").json()
+    assert body["intent"] == "branch"
+    assert "Nagalkeni" in body["answer"]
+    assert body["action"]["route"].startswith("/(owner)/branch/")
