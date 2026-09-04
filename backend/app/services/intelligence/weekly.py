@@ -102,6 +102,7 @@ def member_weekly_summary(
 
     sessions_dir = _direction(this_sessions, prev_sessions)
     volume_dir = _direction(this_volume, prev_volume)
+    load_now, load_prev = _load_pair(this_volume, prev_volume)
 
     metrics = [
         WeeklyMetric(
@@ -112,8 +113,8 @@ def member_weekly_summary(
         ),
         WeeklyMetric(
             label="Total load",
-            value=_load(this_volume),
-            previous=_load(prev_volume),
+            value=load_now,
+            previous=load_prev,
             direction=volume_dir,
         ),
         WeeklyMetric(label="Gym visits", value=str(this_counts["gym_visits"])),
@@ -271,7 +272,11 @@ def owner_weekly_summary(
         movement = "behind"
 
     if present == 0:
-        fallback = "No shifts recorded last week."
+        fallback = "No trainer shifts recorded last week" + (
+            f", down from {prev_pct:g}% on time the week before." if p_present else "."
+        )
+        if p_present:
+            movement = "behind"
     elif movement == "ahead":
         fallback = f"Good week on the floor — {pct:g}% of shifts on time."
     elif movement == "behind":
@@ -325,10 +330,17 @@ def _absences(db: Session, branch_ids: list[int] | None, start: date, end: date)
     return int(db.scalar(stmt) or 0)
 
 
-def _load(value: float) -> str:
-    if value >= 10_000:
+def _load(value: float, *, unit: str = "auto") -> str:
+    if unit == "t" or (unit == "auto" and value >= 10_000):
         return f"{round(value / 1000, 1):g} t"
     return f"{value:,.0f} kg"
+
+
+def _load_pair(current: float, previous: float) -> tuple[str, str]:
+    """Format a value and its previous in the *same* unit — so a row never
+    reads "0 kg (was 22.1 t)"."""
+    unit = "t" if max(current, previous) >= 10_000 else "kg"
+    return _load(current, unit=unit), _load(previous, unit=unit)
 
 
 __all__ = ["member_weekly_summary", "owner_weekly_summary"]

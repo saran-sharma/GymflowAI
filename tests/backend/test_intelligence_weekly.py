@@ -169,3 +169,24 @@ def test_weekly_endpoints_and_their_gates(client, db, world, auth):
 
     denied = client.get(f"{API}/owner/weekly", headers=auth(world["member_ngk_user"]))
     assert denied.status_code == 403
+
+
+def test_total_load_row_uses_one_unit_for_value_and_previous(db, world):
+    """No "0 kg (was 22.1 t)" — both sides of a row share a unit."""
+    from datetime import date
+
+    from app.services.intelligence.weekly import _load_pair
+
+    member = world["member_ngk"]
+    # A heavy week, then nothing.
+    add_workout(db, member, on=date(2026, 5, 28), exercise="Deadlift", sets=[(200, 8)] * 15)
+    db.commit()
+
+    s = member_weekly_summary(db, member, week_ending=WEEK_END)
+    row = _m(s, "Total load")
+    # Both end with the same unit token.
+    assert row.value.split()[-1] == (row.previous or "0 kg").split()[-1]
+
+    now_s, prev_s = _load_pair(0, 25_000)
+    assert now_s.endswith(" t") and prev_s.endswith(" t")
+    assert now_s == "0 t"
