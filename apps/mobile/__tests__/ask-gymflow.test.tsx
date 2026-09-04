@@ -93,3 +93,22 @@ it('the entry row is a plain row, not a floating button', () => {
   expect(onPress).toHaveBeenCalled();
   expect(screen.getByText('Ask about your training')).toBeTruthy();
 });
+
+it('fires the contextual question once when opened with initialQuestion', async () => {
+  await open({ initialQuestion: 'Tell me more about: 15 unworked shifts this month' });
+  await waitFor(() =>
+    expect(mockAsk).toHaveBeenCalledWith(
+      'Tell me more about: 15 unworked shifts this month',
+      'token',
+      undefined,
+    ),
+  );
+  expect(mockAsk).toHaveBeenCalledTimes(1);
+});
+
+it('carries the member context and the contextual question together', async () => {
+  await open({ memberId: 7, initialQuestion: 'What should I focus on with them?' });
+  await waitFor(() =>
+    expect(mockAsk).toHaveBeenCalledWith('What should I focus on with them?', 'token', 7),
+  );
+});

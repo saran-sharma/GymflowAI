@@ -12,7 +12,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 
 import { OFFLINE_CODE } from '../../src/api/client';
@@ -27,6 +27,7 @@ import type {
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
 import { NeedsAttentionSection } from '../../src/components/intelligence';
+import { AskGymFlowRow, AskGymFlowSheet } from '../../src/components/ask-gymflow';
 import { LiveGym } from '../../src/components/livegym';
 import { NotConnected } from '../../src/components/member';
 import { TrainerTestimonialsSection } from '../../src/components/testimonials';
@@ -86,6 +87,7 @@ const KIND_LABEL: Record<ScheduleItem['kind'], string> = {
 
 export default function TrainerDeskScreen() {
   const router = useRouter();
+  const [askOpen, setAskOpen] = useState(false);
   const today = useApi<TrainerToday>((token) => api.myToday(token), []);
   const schedule = useApi<ScheduleItem[]>((token) => api.myScheduleToday(token), []);
   const clients = useApi<TrainerClient[]>((token) => api.myClients(token), []);
@@ -202,6 +204,11 @@ export default function TrainerDeskScreen() {
           error={attention.error}
           onRetry={() => void attention.reload()}
           onNavigate={(route) => router.push(route as never)}
+        />
+
+        <AskGymFlowRow
+          onPress={() => setAskOpen(true)}
+          detail="Ask about your clients"
         />
 
         {/* What the desk can actually count. */}
@@ -363,6 +370,12 @@ export default function TrainerDeskScreen() {
         </Section>
         </Staggered>
       </Body>
+
+      <AskGymFlowSheet
+        visible={askOpen}
+        onClose={() => setAskOpen(false)}
+        onNavigate={(route) => router.push(route as never)}
+      />
     </Screen>
   );
 }

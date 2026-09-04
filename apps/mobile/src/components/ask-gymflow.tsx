@@ -57,10 +57,23 @@ interface Props {
   onClose: () => void;
   /** A client a trainer/owner is asking about; omitted for a member's own. */
   memberId?: number;
+  /**
+   * A question to ask the moment the sheet opens — for a contextual entry
+   * point like "Tell me more" on an owner issue. The member/branch context
+   * still comes from `memberId` + the caller's role, server-side; the question
+   * is just text.
+   */
+  initialQuestion?: string;
   onNavigate?: (route: string) => void;
 }
 
-export function AskGymFlowSheet({ visible, onClose, memberId, onNavigate }: Props) {
+export function AskGymFlowSheet({
+  visible,
+  onClose,
+  memberId,
+  initialQuestion,
+  onNavigate,
+}: Props) {
   const styles = useThemedStyles(buildStyles);
   const { withToken } = useAuth();
 
@@ -69,9 +82,13 @@ export function AskGymFlowSheet({ visible, onClose, memberId, onNavigate }: Prop
   const [answer, setAnswer] = useState<AskAnswer | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const askedOnOpen = React.useRef<string | null>(null);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      askedOnOpen.current = null;
+      return;
+    }
     let alive = true;
     void withToken((token) => api.askSuggestions(token, memberId))
       .then((res) => {
@@ -108,6 +125,15 @@ export function AskGymFlowSheet({ visible, onClose, memberId, onNavigate }: Prop
     },
     [busy, memberId, withToken],
   );
+
+  // Fire the contextual question once per open, after `submit` is defined.
+  useEffect(() => {
+    if (visible && initialQuestion && askedOnOpen.current !== initialQuestion) {
+      askedOnOpen.current = initialQuestion;
+      void submit(initialQuestion);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialQuestion, submit]);
 
   const reset = () => {
     setQuestion('');

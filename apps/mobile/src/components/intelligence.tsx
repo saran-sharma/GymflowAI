@@ -473,9 +473,11 @@ const DIRECTION_ICON: Record<TrendDirection, IconName> = {
 function OwnerIssueCard({
   issue,
   onNavigate,
+  onAsk,
 }: {
   issue: OwnerIssue;
   onNavigate: (route: string) => void;
+  onAsk?: (question: string) => void;
 }) {
   const styles = useThemedStyles(buildStyles);
   const meta = severityMeta(issue.severity);
@@ -519,13 +521,22 @@ function OwnerIssueCard({
         </Stack>
       ) : null}
 
-      {issue.action?.route ? (
-        <Row>
+      {issue.action?.route || onAsk ? (
+        <Row gap="lg">
+          {onAsk ? (
+            <LinkButton
+              title="Tell me more"
+              tone={color.textSecondary}
+              onPress={() => onAsk(`Tell me more about: ${issue.title}`)}
+            />
+          ) : null}
           <Spacer />
-          <LinkButton
-            title={issue.action.label}
-            onPress={() => onNavigate(issue.action!.route!)}
-          />
+          {issue.action?.route ? (
+            <LinkButton
+              title={issue.action.label}
+              onPress={() => onNavigate(issue.action!.route!)}
+            />
+          ) : null}
         </Row>
       ) : null}
     </Card>
@@ -538,6 +549,9 @@ interface OwnerBriefProps {
   error: ApiError | null;
   onRetry: () => void;
   onNavigate: (route: string) => void;
+  /** When set, each issue gets a quiet "Tell me more" that opens Ask GymFlow
+   * pre-seeded with a question about that issue. */
+  onAsk?: (question: string) => void;
   limit?: number;
 }
 
@@ -552,6 +566,7 @@ export function OwnerDailyBriefSection({
   error,
   onRetry,
   onNavigate,
+  onAsk,
   limit = 4,
 }: OwnerBriefProps) {
   const styles = useThemedStyles(buildStyles);
@@ -603,7 +618,7 @@ export function OwnerDailyBriefSection({
         <Text variant="body">{data.headline}</Text>
       </Card>
       {shown.map((issue) => (
-        <OwnerIssueCard key={issue.id} issue={issue} onNavigate={onNavigate} />
+        <OwnerIssueCard key={issue.id} issue={issue} onNavigate={onNavigate} onAsk={onAsk} />
       ))}
       {data.issues.length > shown.length ? (
         <>

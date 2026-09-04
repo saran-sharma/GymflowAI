@@ -46,6 +46,7 @@ import type {
 } from '../../src/api/types';
 import { AccountAvatar } from '../../src/components/account';
 import { OwnerDailyBriefSection } from '../../src/components/intelligence';
+import { AskGymFlowRow, AskGymFlowSheet } from '../../src/components/ask-gymflow';
 import { NotConnected } from '../../src/components/member';
 import {
   Body,
@@ -118,6 +119,7 @@ export default function OwnerDashboardScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [period, setPeriod] = useState<Period>('week');
+  const [ask, setAsk] = useState<{ open: boolean; question?: string }>({ open: false });
 
   const dashboard = useApi<Dashboard>((token) => api.dashboard(token), []);
   const occupancy = useApi<Occupancy[]>((token) => api.allOccupancy(token), []);
@@ -265,6 +267,12 @@ export default function OwnerDashboardScreen() {
           error={dailyBrief.error}
           onRetry={() => void dailyBrief.reload()}
           onNavigate={(route) => router.push(route as never)}
+          onAsk={(question) => setAsk({ open: true, question })}
+        />
+
+        <AskGymFlowRow
+          onPress={() => setAsk({ open: true })}
+          detail="Ask about your gyms"
         />
 
         {/* ------------------------------------------------- key numbers */}
@@ -528,6 +536,13 @@ export default function OwnerDashboardScreen() {
         />
         </Staggered>
       </Body>
+
+      <AskGymFlowSheet
+        visible={ask.open}
+        onClose={() => setAsk({ open: false })}
+        initialQuestion={ask.question}
+        onNavigate={(route) => router.push(route as never)}
+      />
     </Screen>
   );
 }

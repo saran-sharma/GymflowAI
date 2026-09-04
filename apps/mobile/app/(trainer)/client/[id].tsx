@@ -24,6 +24,7 @@ import type {
 } from '../../../src/api/types';
 import { ConvertToPt, conversionState } from '../../../src/components/conversion';
 import { TrainerBriefSection } from '../../../src/components/intelligence';
+import { AskGymFlowRow, AskGymFlowSheet } from '../../../src/components/ask-gymflow';
 import { FitnessProfile } from '../../../src/components/fitness-profile';
 import { MemberProgressPhotos } from '../../../src/components/member-progress-photos';
 import {
@@ -93,6 +94,7 @@ export default function TrainerClientDetailScreen() {
   const { withToken } = useAuth();
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
+  const [ask, setAsk] = useState<{ open: boolean; question?: string }>({ open: false });
 
   const detail = useApi<TrainerClientDetail>(
     (token) => api.myClientDetail(memberId, token),
@@ -266,6 +268,11 @@ export default function TrainerClientDetailScreen() {
           onNavigate={(route) => router.push(route as never)}
         />
 
+        <AskGymFlowRow
+          onPress={() => setAsk({ open: true, question: 'What should I focus on with them?' })}
+          detail={`Ask about ${client.full_name.split(' ')[0]}`}
+        />
+
         <ConvertToPt
           state={conversionState(journey, pack)}
           memberName={client.full_name}
@@ -432,6 +439,14 @@ export default function TrainerClientDetailScreen() {
           Back to clients
         </Text>
       </Body>
+
+      <AskGymFlowSheet
+        visible={ask.open}
+        onClose={() => setAsk({ open: false })}
+        memberId={memberId}
+        initialQuestion={ask.question}
+        onNavigate={(route) => router.push(route as never)}
+      />
     </Screen>
   );
 }

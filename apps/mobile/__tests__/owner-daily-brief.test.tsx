@@ -64,6 +64,37 @@ it('lists issues with evidence and deep-links each action', () => {
   expect(onNavigate).toHaveBeenCalledWith('/(owner)/renewals');
 });
 
+it('offers "Tell me more" per issue when onAsk is wired', () => {
+  const onAsk = jest.fn();
+  render(
+    <OwnerDailyBriefSection
+      data={brief()}
+      loading={false}
+      error={null}
+      onRetry={noop}
+      onNavigate={noop}
+      onAsk={onAsk}
+    />,
+  );
+  fireEvent.press(screen.getAllByText('Tell me more')[0]);
+  expect(onAsk).toHaveBeenCalledWith(
+    'Tell me more about: Trainer punctuality is below target',
+  );
+});
+
+it('has no "Tell me more" affordance when onAsk is not provided', () => {
+  render(
+    <OwnerDailyBriefSection
+      data={brief()}
+      loading={false}
+      error={null}
+      onRetry={noop}
+      onNavigate={noop}
+    />,
+  );
+  expect(screen.queryByText('Tell me more')).toBeNull();
+});
+
 it('shows the calm headline when there is nothing to flag', () => {
   render(
     <OwnerDailyBriefSection
