@@ -229,6 +229,37 @@ def _owner_last_week(ctx: AskContext) -> tuple[str, InsightAction | None]:
     return s.headline, None
 
 
+def _owner_explain(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """ "Tell me more" / "why is this flagged" for one dashboard issue.
+
+    Re-runs the daily brief (same authorization, same branch scope) and picks
+    the issue whose title/id shares the most words with the question. Nothing
+    outside the owner's scope is ever reached — ``branch_ids`` is the caller's
+    ``scoped_branch_filter``.
+    """
+    brief = build_owner_daily_brief(ctx.db, branch_ids=ctx.branch_ids, today=ctx.today)
+    if not brief.issues:
+        return "Nothing is flagged right now — nothing needs your attention this morning.", None
+
+    text = (ctx.match.group(0) if ctx.match else "").lower()
+    words = set(re.findall(r"[a-z]{4,}", text))
+
+    def _overlap(issue) -> int:
+        hay = set(re.findall(r"[a-z]{4,}", f"{issue.id} {issue.title}".lower()))
+        return len(words & hay)
+
+    best = max(brief.issues, key=_overlap)
+    if _overlap(best) == 0:
+        best = brief.issues[0]  # no match — explain the top one
+
+    for e in best.evidence:
+        _ev(ctx, e.label, e.value)
+    trend = {"up": " Trend: up.", "down": " Trend: down.", "flat": " Trend: flat."}.get(
+        best.direction or "", ""
+    )
+    return f"{best.title}. {best.summary}{trend}", best.action
+
+
 # --------------------------------------------------------------- registry
 
 _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
@@ -274,8 +305,25 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
         ("member", re.compile(r"how('?s| is)|doing|state|status|update on", re.I), _trainer_member),
     ],
     "owner": [
-        ("punctuality", re.compile(r"punctual|on time|late|attendance", re.I), _owner_punctuality),
-        ("last_week", re.compile(r"last week|this week|weekly|past week", re.I), _owner_last_week),
+        (
+            "explain",
+            re.compile(
+                r"tell me more|more detail|why (is|are|was|were).*(flag|this|that)|"
+                r"^why\b|explain|what does (this|that) mean",
+                re.I,
+            ),
+            _owner_explain,
+        ),
+        (
+            "punctuality",
+            re.compile(r"punctual|on time|\blate\b|attendance", re.I),
+            _owner_punctuality,
+        ),
+        (
+            "last_week",
+            re.compile(r"last week|this week|weekly|past week|what changed", re.I),
+            _owner_last_week,
+        ),
         (
             "attention",
             re.compile(r"attention|needs?|issue|problem|what should i|priorit", re.I),
@@ -350,13 +398,14 @@ def answer(
     if audience == "member" and member is None:
         ctx.member = db.scalar(select(Member).where(Member.user_id == user.id))
 
+    # Intents that need the whole question text, not just the matched slice —
+    # to hunt for an exercise name, or to word-match an owner issue.
+    _WANT_FULL_QUESTION = {"next_weight", "explain"}
+
     for intent_name, pattern, handler in _INTENTS[audience]:
         m = pattern.search(q)
         if m:
-            ctx.match = pattern.search(q) or m
-            # next_weight wants the whole question to hunt for an exercise name.
-            if intent_name == "next_weight":
-                ctx.match = re.match(r".*", q)
+            ctx.match = re.match(r".*", q) if intent_name in _WANT_FULL_QUESTION else m
             try:
                 text, action = handler(ctx)
             except Exception:  # noqa: BLE001 — never 500 on a question

@@ -140,6 +140,81 @@ def test_owner_punctuality_question(client, world, auth):
     assert body["intent"] == "punctuality"
 
 
+def test_owner_tell_me_more_explains_the_matching_issue(client, db, world, auth):
+    """The dashboard "Tell me more" entry point: the question carries the
+    issue's title and the answer re-explains that specific issue."""
+    from datetime import date, timedelta
+
+    from intelligence_helpers import add_attendance
+
+    from app.db.models import AttendanceStatus
+
+    t = world["trainer_ngk"]
+    b = world["branches"]["ngk"].id
+    add_attendance(
+        db, t.id, b, on=date.today() - timedelta(days=1), status=AttendanceStatus.ABSENT, n=4
+    )
+    db.commit()
+
+    body = _ask(
+        client,
+        auth(world["owner"]),
+        "Tell me more about: 4 unworked shifts this month",
+    ).json()
+    assert body["intent"] == "explain"
+    assert "unworked" in body["answer"].lower()
+    assert body["data"]  # the evidence behind that issue
+
+
+def test_owner_why_is_this_flagged_falls_back_to_the_top_issue(client, db, world, auth):
+    from datetime import date, timedelta
+
+    from intelligence_helpers import add_attendance
+
+    from app.db.models import AttendanceStatus
+
+    add_attendance(
+        db,
+        world["trainer_ngk"].id,
+        world["branches"]["ngk"].id,
+        on=date.today() - timedelta(days=1),
+        status=AttendanceStatus.ABSENT,
+        n=4,
+    )
+    db.commit()
+    body = _ask(client, auth(world["owner"]), "Why is this flagged?").json()
+    assert body["intent"] == "explain"
+    assert body["answer"]
+
+
+def test_a_branch_manager_explain_stays_in_scope(client, db, world, auth):
+    """`_owner_explain` re-runs the daily brief with the caller's
+    scoped_branch_filter — a branch manager never sees another branch's issue."""
+    from datetime import date, timedelta
+
+    from intelligence_helpers import add_attendance
+
+    from app.db.models import AttendanceStatus
+
+    # An absence at Boganhalli — outside the NGK manager's scope.
+    add_attendance(
+        db,
+        world["trainer_bgh"].id,
+        world["branches"]["bgh"].id,
+        on=date.today() - timedelta(days=1),
+        status=AttendanceStatus.ABSENT,
+        n=5,
+    )
+    db.commit()
+    body = _ask(client, auth(world["manager_ngk"]), "Tell me more about unworked shifts").json()
+    assert body["intent"] == "explain"
+    # The Boganhalli absence (5 unworked shifts) is outside the NGK manager's
+    # scope, so it can never be the issue explained.
+    assert "5 unworked" not in body["answer"]
+    blob = " ".join(f"{d['label']} {d['value']}" for d in body["data"])
+    assert "5" not in blob or "unworked" not in blob.lower()
+
+
 # --------------------------------------------------------------- suggestions
 
 
