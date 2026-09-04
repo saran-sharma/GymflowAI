@@ -22,10 +22,11 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.clock import now_utc
+from app.core.clock import branch_today, now_utc
 from app.core.config import settings
 from app.core.deps import MANAGEMENT_ROLES
 from app.db.models import (
+    Branch,
     Member,
     ProgressPhoto,
     ProgressPhotoAngle,
@@ -77,7 +78,11 @@ def add_photo(
         raise PhotoError("The image is empty.")
     if len(data) > settings.progress_photo_max_bytes:
         raise PhotoError("The image is larger than the allowed size.")
-    if taken_on > now_utc().date():
+    # "Future" is judged against the member's branch-local date, not UTC: a
+    # member picks "today" from their phone's date picker, and near midnight
+    # UTC a legitimate local-today is a calendar day ahead of the UTC date.
+    branch = db.get(Branch, member.branch_id)
+    if taken_on > branch_today(branch.timezone if branch else None):
         raise PhotoError("A photo cannot be dated in the future.")
 
     key = photo_storage.build_storage_key(
