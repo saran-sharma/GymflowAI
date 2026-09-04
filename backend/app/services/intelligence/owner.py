@@ -38,6 +38,7 @@ from app.db.models import (
 from app.domain.shift_engine import ON_TIME_STATUSES, PRESENT_STATUSES
 from app.services import automation_service
 from app.services.incentive_service import month_bounds
+from app.services.intelligence import _cache
 from app.services.intelligence.narrator import (
     NarrationRequest,
     TemplateNarrator,
@@ -325,6 +326,26 @@ def build_owner_daily_brief(
     if today is None:
         today = branch_today(None)
 
+    # Aggregate-only, read on every dashboard load (mount + focus); 45s stale
+    # is fine for "what needs attention today". See intelligence._cache.
+    key = (
+        "owner_daily_brief",
+        tuple(sorted(branch_ids)) if branch_ids is not None else None,
+        scope_label,
+        today.isoformat(),
+    )
+    return _cache.get_or_compute(
+        key, lambda: _build_owner_daily_brief(db, branch_ids, scope_label, today, narrator)
+    )
+
+
+def _build_owner_daily_brief(
+    db: Session,
+    branch_ids: list[int] | None,
+    scope_label: str,
+    today: date,
+    narrator,
+) -> OwnerDailyBrief:
     issues: list[OwnerIssue] = []
     for builder in _BUILDERS:
         issue = builder(db, branch_ids, today)

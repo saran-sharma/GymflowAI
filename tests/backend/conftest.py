@@ -116,6 +116,9 @@ def _clean(_schema):
         db.commit()
     limiter.reset()
     clock.freeze(None)
+    from app.services.intelligence import _cache as _intel_cache
+
+    _intel_cache.clear()
     yield
     clock.freeze(None)
 

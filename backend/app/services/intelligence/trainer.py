@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today, now_utc
 from app.db.models import Branch, Member, PTSession, SessionStatus, Trainer
+from app.services.intelligence import _cache
 from app.services.intelligence import signals as sig
 from app.services.intelligence.member import build_member_intelligence
 from app.services.intelligence.narrator import TemplateNarrator
@@ -289,6 +290,18 @@ def build_attention_queue(
         branch = db.get(Branch, trainer.branch_id)
         today = branch_today(branch.timezone if branch else None)
 
+    # The queue fans out a handful of signal queries per assigned member and is
+    # read on every desk load; a 45s-stale answer is fine for "who needs a
+    # look". See intelligence._cache.
+    return _cache.get_or_compute(
+        ("attention_queue", trainer.id, today.isoformat(), limit),
+        lambda: _build_attention_queue(db, trainer, today, limit),
+    )
+
+
+def _build_attention_queue(
+    db: Session, trainer: Trainer, today: date, limit: int
+) -> TrainerAttentionQueue:
     members = (
         db.scalars(
             select(Member)
