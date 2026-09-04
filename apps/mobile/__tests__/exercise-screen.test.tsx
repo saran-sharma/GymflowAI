@@ -34,6 +34,7 @@ const mockLog = jest.fn();
 const mockUpdate = jest.fn();
 const mockDelete = jest.fn();
 const mockSetItem = jest.fn();
+const mockRecommendation = jest.fn();
 
 jest.mock('../src/api/endpoints', () => ({
   todayWorkout: (...a: unknown[]) => mockToday(...a),
@@ -43,6 +44,7 @@ jest.mock('../src/api/endpoints', () => ({
   updateWorkoutSet: (...a: unknown[]) => mockUpdate(...a),
   deleteWorkoutSet: (...a: unknown[]) => mockDelete(...a),
   setWorkoutItem: (...a: unknown[]) => mockSetItem(...a),
+  myExerciseRecommendation: (...a: unknown[]) => mockRecommendation(...a),
 }));
 
 /**
@@ -165,6 +167,18 @@ beforeEach(() => {
   mockToday.mockResolvedValue(aSession());
   mockSets.mockResolvedValue([]);
   mockHistory.mockResolvedValue(noHistory());
+  // Default: not enough history for a suggestion — the card renders nothing.
+  mockRecommendation.mockResolvedValue({
+    exercise: 'Barbell Bench Press',
+    action: 'insufficient_data',
+    last_weight_kg: null,
+    last_reps: null,
+    last_rpe: null,
+    recommended_weight_kg: null,
+    target_reps: null,
+    delta_kg: null,
+    rationale: 'Log one more session of this lift and GymFlow can suggest a next weight.',
+  });
 });
 
 /* ------------------------------------------------------------- loading */

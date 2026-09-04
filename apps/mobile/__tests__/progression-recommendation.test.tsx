@@ -4,7 +4,7 @@
  * it stays out of the way when it has nothing to say.
  */
 
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import { ApiError } from '../src/api/client';
@@ -86,4 +86,35 @@ it('stays silent on error — it is an enhancement, not core content', () => {
     />,
   );
   expect(toJSON()).toBeNull();
+});
+
+describe('compact mode (mid-workout)', () => {
+  it('shows the weight, the why, and the "not a change to your programme" line', () => {
+    render(<RecommendationCard data={rec()} loading={false} error={null} compact />);
+    expect(screen.getByText('Recommended')).toBeTruthy();
+    expect(screen.getByText('62.5 kg')).toBeTruthy();
+    expect(screen.getByText(/Try 62.5 kg next time/)).toBeTruthy();
+    expect(
+      screen.getByText('A suggestion — not a change to your programme.'),
+    ).toBeTruthy();
+  });
+
+  it('"Use" only reports the weight — it never mutates anything itself', () => {
+    const onUse = jest.fn();
+    render(<RecommendationCard data={rec()} loading={false} error={null} compact onUse={onUse} />);
+    fireEvent.press(screen.getByText('Use 62.5 kg'));
+    expect(onUse).toHaveBeenCalledWith(62.5);
+  });
+
+  it('renders nothing in compact mode when there is no suggestion yet', () => {
+    const { toJSON } = render(
+      <RecommendationCard
+        data={rec({ action: 'insufficient_data', recommended_weight_kg: null })}
+        loading={false}
+        error={null}
+        compact
+      />,
+    );
+    expect(toJSON()).toBeNull();
+  });
 });

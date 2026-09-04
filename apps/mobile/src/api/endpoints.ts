@@ -303,13 +303,20 @@ export const ownerDailyBrief = (token: string, branchId?: number) =>
     { token },
   );
 
-export const myExerciseRecommendation = (exercise: string, token: string, targetReps?: string) =>
-  request<ProgressionRecommendation>(
-    `/intelligence/me/exercises/${encodeURIComponent(exercise)}/recommendation${
-      targetReps ? `?target_reps=${encodeURIComponent(targetReps)}` : ''
-    }`,
+export const myExerciseRecommendation = (
+  exercise: string,
+  token: string,
+  opts?: { targetReps?: string; beforeSessionId?: number },
+) => {
+  const params = new URLSearchParams();
+  if (opts?.targetReps) params.set('target_reps', opts.targetReps);
+  if (opts?.beforeSessionId) params.set('before_session_id', String(opts.beforeSessionId));
+  const qs = params.toString();
+  return request<ProgressionRecommendation>(
+    `/intelligence/me/exercises/${encodeURIComponent(exercise)}/recommendation${qs ? `?${qs}` : ''}`,
     { token },
   );
+};
 
 export const askGymFlow = (
   question: string,

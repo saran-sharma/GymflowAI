@@ -22,10 +22,12 @@ import { ApiError, OFFLINE_CODE } from '../../../src/api/client';
 import * as api from '../../../src/api/endpoints';
 import type {
   PersonalRecord,
+  ProgressionRecommendation,
   WorkoutSession,
   WorkoutSet,
   WorkoutSetHistory,
 } from '../../../src/api/types';
+import { RecommendationCard } from '../../../src/components/intelligence';
 import {
   ExerciseHistorySheet,
   PreviousPerformance,
@@ -87,6 +89,17 @@ export default function ExerciseScreen() {
     (token) => api.exerciseHistory(sessionId, itemId, token),
     [sessionId, itemId],
   );
+  // The next-weight suggestion, from the *previous* session (the open one is
+  // excluded). Advisory only — it never touches the trainer's programme. The
+  // fetch waits for the workout to load so it knows the exercise name.
+  const recommendation = useApi<ProgressionRecommendation>((token) => {
+    const forItem = workout.data?.items.find((e) => e.id === itemId);
+    if (!forItem) throw new ApiError(0, 'pending', 'workout not loaded yet');
+    return api.myExerciseRecommendation(forItem.exercise, token, {
+      targetReps: forItem.reps || undefined,
+      beforeSessionId: sessionId,
+    });
+  }, [workout.data, itemId, sessionId]);
 
   /* `null` means "nothing typed yet, show the suggestion". A concrete object
    * means the member has taken over the fields, and from then on what they
@@ -321,6 +334,19 @@ export default function ExerciseScreen() {
         <PreviousPerformance history={history.data} onOpenHistory={() => setShowHistory(true)} />
 
         <RecordNote records={records} />
+
+        {!closed ? (
+          <RecommendationCard
+            data={recommendation.data}
+            loading={recommendation.loading}
+            error={recommendation.error}
+            compact
+            onUse={(weightKg) => {
+              setDraft({ ...active, weight: String(weightKg) });
+              haptics.selection();
+            }}
+          />
+        ) : null}
 
         <Divider />
 

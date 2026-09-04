@@ -740,10 +740,17 @@ export function RecommendationCard({
   data,
   loading,
   error,
+  compact = false,
+  onUse,
 }: {
   data: ProgressionRecommendation | null;
   loading: boolean;
   error: ApiError | null;
+  /** A tighter layout for the mid-workout screen. */
+  compact?: boolean;
+  /** When set, offer "Use" — which only prefills the weight field, never
+   * changes the trainer's programme. */
+  onUse?: (weightKg: number) => void;
 }) {
   const styles = useThemedStyles(buildStyles);
 
@@ -752,7 +759,7 @@ export function RecommendationCard({
       <Card gap="sm">
         <Eyebrow>Recommended next</Eyebrow>
         <Skeleton width="55%" height={14} />
-        <Skeleton width="85%" height={12} />
+        {!compact ? <Skeleton width="85%" height={12} /> : null}
       </Card>
     );
   }
@@ -769,6 +776,40 @@ export function RecommendationCard({
         : data.delta_kg < 0
           ? `${data.delta_kg} kg`
           : 'same weight';
+
+  if (compact) {
+    if (data.action === 'insufficient_data') return null;
+    return (
+      <Card gap="xxs" style={[styles.card, { borderColor: alpha(meta.hue, 0.35) }]}>
+        <Row gap="sm" align="baseline">
+          <Eyebrow>Recommended</Eyebrow>
+          <Spacer />
+          <Text variant="heading" tone={meta.hue}>
+            {data.recommended_weight_kg != null ? `${data.recommended_weight_kg} kg` : '—'}
+          </Text>
+          {data.target_reps ? (
+            <Text variant="label" tone={color.textTertiary}>
+              × {data.target_reps}
+            </Text>
+          ) : null}
+        </Row>
+        <Text variant="label" tone={color.textSecondary}>
+          {data.rationale}
+        </Text>
+        <Row gap="sm">
+          <Text variant="label" tone={color.textTertiary} style={styles.grow}>
+            A suggestion — not a change to your programme.
+          </Text>
+          {onUse && data.recommended_weight_kg != null ? (
+            <LinkButton
+              title={`Use ${data.recommended_weight_kg} kg`}
+              onPress={() => onUse(data.recommended_weight_kg!)}
+            />
+          ) : null}
+        </Row>
+      </Card>
+    );
+  }
 
   return (
     <Card gap="sm" style={[styles.card, { borderColor: alpha(meta.hue, 0.35) }]}>
