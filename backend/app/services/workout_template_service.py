@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.clock import to_branch_time
 from app.db.models import (
     Member,
     MemberWorkoutProgram,
@@ -123,45 +124,54 @@ def active_program(db: Session, member_id: int) -> MemberWorkoutProgram | None:
     )
 
 
-def program_anchor_date(program: MemberWorkoutProgram) -> date:
-    """Day 0 of the rotation — the date the programme was set up.
+def program_anchor_date(program: MemberWorkoutProgram, tz_name: str | None = None) -> date:
+    """Day 0 of the rotation — the calendar date the programme was set up.
 
-    ``created_at`` is a UTC instant; its date is a stable reference point, and
-    since the rotation only needs to advance one step per calendar day the
-    exact anchor does not matter, only that every caller uses the same one.
+    ``created_at`` is a UTC instant, so its *date* depends on the timezone it
+    is read in. The rotation steps against ``on``, which callers derive from
+    ``branch_today(...)`` — a branch-local date — so the anchor must be the
+    branch-local date of ``created_at`` too. Reading it as the UTC date
+    (the old behaviour) put the anchor a day off in the hours where the
+    branch-local calendar day is ahead of UTC, landing "start workout" on the
+    wrong programme day.
     """
-    return program.created_at.date()
+    return to_branch_time(program.created_at, tz_name).date()
 
 
 def resolve_program_day_for_date(
-    program: MemberWorkoutProgram, on: date
+    program: MemberWorkoutProgram,
+    on: date,
+    *,
+    tz_name: str | None = None,
 ) -> MemberWorkoutProgramDay | None:
     """Which of this programme's days falls on ``on``, on a calendar rotation.
 
     Day 1, Day 2, Day 3, Day 1, … stepping once per calendar day from
-    ``program_anchor_date``, in the order the trainer arranged them. This is
-    a pure function of the date, so "what does the Workout screen preview
-    say" and "what does Start actually open" can never disagree, and asking
-    twice on the same day gives the same day — the previous rule counted
-    ``WorkoutSession`` rows, which drifted every time a workout was started
-    and never lined up with the calendar the week strip shows.
+    ``program_anchor_date`` (in ``tz_name``, the branch's zone), in the order
+    the trainer arranged them. A pure function of the date, so "what does the
+    Workout screen preview say" and "what does Start actually open" can never
+    disagree, and asking twice on the same day gives the same day — the
+    previous rule counted ``WorkoutSession`` rows, which drifted every time a
+    workout was started and never lined up with the week strip's calendar.
     """
     days = sorted(program.days, key=lambda d: d.order_index)
     if not days:
         return None
-    offset = (on - program_anchor_date(program)).days
+    offset = (on - program_anchor_date(program, tz_name)).days
     return days[offset % len(days)]
 
 
 def resolve_today_program_day(
-    program: MemberWorkoutProgram, *, on: date
+    program: MemberWorkoutProgram, *, on: date, tz_name: str | None = None
 ) -> MemberWorkoutProgramDay | None:
     """``resolve_program_day_for_date`` for the branch's current date.
 
-    ``on`` is always the caller's ``branch_today(...)`` — never a device
-    clock — so "today" here is the same date the server uses everywhere else.
+    ``on`` is always the caller's ``branch_today(tz_name)`` — never a device
+    clock — and ``tz_name`` is the same branch zone, so the anchor and the
+    step are read in one timezone and "today" is the date the server uses
+    everywhere else.
     """
-    return resolve_program_day_for_date(program, on)
+    return resolve_program_day_for_date(program, on, tz_name=tz_name)
 
 
 def apply_template(

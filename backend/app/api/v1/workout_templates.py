@@ -108,7 +108,7 @@ def member_program_today(
     if program is None:
         return None
     day = workout_template_service.resolve_today_program_day(
-        program, on=branch_today(member.branch.timezone)
+        program, on=branch_today(member.branch.timezone), tz_name=member.branch.timezone
     )
     return ProgramDayOut.model_validate(day) if day else None
 

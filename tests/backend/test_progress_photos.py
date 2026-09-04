@@ -6,11 +6,13 @@ and a share payload that never leaks anything identifying.
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from conftest import make_member
 
+from app.core import clock
+from app.core.clock import branch_today
 from app.core.config import settings
 from app.db.models import AuditLog, ProgressPhoto, ProgressPhotoShare
 from app.services import photo_storage
@@ -87,6 +89,65 @@ def test_a_future_date_is_rejected(client, world, auth):
         taken_on=date.today() + timedelta(days=1),
     )
     assert r.status_code == 422
+
+
+# --------------------------------------------------------- taken_on date semantics
+#
+# "Future" is judged against the *member's branch-local* date, not the UTC
+# date. The seed branch is Asia/Kolkata; these freeze the clock at an instant
+# where the IST calendar day is already ahead of the UTC one, which is exactly
+# the window the old ``> now_utc().date()`` check wrongly rejected a legitimate
+# "today" upload.
+
+# 2026-06-03 20:00 UTC == 2026-06-04 01:30 IST — UTC still on the 3rd, IST on the 4th.
+_ACROSS_MIDNIGHT_UTC = datetime(2026, 6, 3, 20, 0, tzinfo=UTC)
+_IST = "Asia/Kolkata"
+
+
+@pytest.fixture
+def _at_ist_midnight():
+    """Freeze the server clock straddling the UTC/IST date boundary."""
+    clock.freeze(_ACROSS_MIDNIGHT_UTC)
+    yield
+    clock.freeze(None)
+
+
+def test_todays_photo_in_the_branch_timezone_is_accepted(client, world, auth, _at_ist_midnight):
+    """The regression: a member picks today (IST) from the date picker while
+    UTC is still on the previous calendar day."""
+    headers = auth(world["member_ngk_user"])
+    ist_today = branch_today(_IST)
+    assert ist_today == date(2026, 6, 4)
+    assert ist_today > _ACROSS_MIDNIGHT_UTC.date()  # UTC would have called this "future"
+
+    r = _upload(client, headers, taken_on=ist_today)
+    assert r.status_code == 201, r.text
+    assert r.json()["taken_on"] == ist_today.isoformat()
+
+
+def test_the_utc_date_is_still_a_valid_past_date(client, world, auth, _at_ist_midnight):
+    """Yesterday in IST is still fine — nothing about the fix rejects real
+    historical dates."""
+    r = _upload(client, auth(world["member_ngk_user"]), taken_on=_ACROSS_MIDNIGHT_UTC.date())
+    assert r.status_code == 201, r.text
+
+
+def test_a_date_beyond_branch_today_is_still_rejected(client, world, auth, _at_ist_midnight):
+    r = _upload(
+        client,
+        auth(world["member_ngk_user"]),
+        taken_on=branch_today(_IST) + timedelta(days=1),
+    )
+    assert r.status_code == 422
+
+
+def test_a_valid_historical_date_is_accepted(client, world, auth, _at_ist_midnight):
+    r = _upload(
+        client,
+        auth(world["member_ngk_user"]),
+        taken_on=branch_today(_IST) - timedelta(days=45),
+    )
+    assert r.status_code == 201, r.text
 
 
 def test_the_bytes_are_not_in_the_database(client, db, world, auth):

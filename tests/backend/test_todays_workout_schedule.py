@@ -204,6 +204,40 @@ def test_program_day_is_a_pure_function_of_the_date(db, world):
     assert seen[n + 1] == program.days[1].id
 
 
+def test_start_workout_anchors_the_rotation_in_the_branch_timezone(db, world):
+    """Regression: the rotation anchor is ``program.created_at`` read in the
+    *branch* timezone, not UTC.
+
+    Created at 20:00 UTC, the programme's IST calendar date is the next day.
+    Reading the anchor as the UTC date put it one day behind the branch-local
+    ``on`` the rotation steps against, landing "start workout" on day 2 on the
+    very day the programme was set up.
+    """
+    member = world["member_ngk"]
+    program = _apply_ppl_program(db, member)
+    program.created_at = datetime(2026, 6, 3, 20, 0, tzinfo=ZoneInfo("UTC"))  # 2026-06-04 01:30 IST
+    db.commit()
+
+    # "Today" in IST is the same calendar day the programme was created.
+    _freeze_ist(date(2026, 6, 4))
+    started = journey_service.start_workout(db, member=member)
+    db.commit()
+    assert started.member_program_day_id == program.days[0].id
+
+    preview = workout_template_service.resolve_today_program_day(
+        program,
+        on=clock.branch_today(member.branch.timezone),
+        tz_name=member.branch.timezone,
+    )
+    assert preview.id == program.days[0].id
+
+    # And the day after still steps to day 2, not day 3.
+    _freeze_ist(date(2026, 6, 5))
+    tomorrow = journey_service.start_workout(db, member=member)
+    db.commit()
+    assert tomorrow.member_program_day_id == program.days[1].id
+
+
 def test_program_preview_and_start_agree_on_and_across_days(db, world):
     member = world["member_ngk"]
     journey_service.start_journey(db, member=member, start_date=JOURNEY_START)
