@@ -54,6 +54,18 @@ def test_consistency_low_when_well_under_target(db, world):
     assert s.ratio < T.consistency_low_ratio
 
 
+def test_consistency_steady_sits_between_low_and_strong(db, world):
+    member = world["member_ngk"]
+    # 8 sessions across 4 weeks = 2/week against a 3/week target: ratio 0.67,
+    # above the 0.5 "low" line and below the 0.85 "strong" line.
+    add_weekly_workouts(db, member, ending=TODAY, weeks=4, per_week=2)
+    db.commit()
+    s = sig.consistency(db, member.id, today=TODAY)
+    assert s.sessions_in_window == 8
+    assert T.consistency_low_ratio <= s.ratio < T.consistency_strong_ratio
+    assert s.level == "steady"
+
+
 # --------------------------------------------------------------- inactivity
 
 
@@ -121,6 +133,29 @@ def test_old_pr_is_not_recent(db, world):
     assert sig.recent_records(db, member.id, today=TODAY).count == 0
 
 
+def test_matching_the_previous_best_is_not_a_record(db, world):
+    """A tie is not a PR — the check is a strict `>`."""
+    member = world["member_ngk"]
+    add_workout(db, member, on=TODAY - timedelta(days=20), sets=[(90.0, 5)])
+    add_workout(db, member, on=TODAY - timedelta(days=3), sets=[(90.0, 5)])
+    db.commit()
+    assert sig.recent_records(db, member.id, today=TODAY).count == 0
+
+
+def test_an_escalating_set_within_one_session_is_the_record(db, world):
+    """Ramp sets in a single session: the top set beats the member's prior
+    best, so it registers once — dated to that session, no phantom extras.
+    (The DB's one-session-per-day constraint rules out same-day duplicates.)"""
+    member = world["member_ngk"]
+    add_workout(db, member, on=TODAY - timedelta(days=10), sets=[(80.0, 5)])
+    add_workout(db, member, on=TODAY - timedelta(days=3), sets=[(80.0, 5), (85.0, 4), (90.0, 2)])
+    db.commit()
+    s = sig.recent_records(db, member.id, today=TODAY)
+    assert s.count == 1
+    assert s.records[0].weight_kg == 90.0
+    assert s.records[0].achieved_on == TODAY - timedelta(days=3)
+
+
 # --------------------------------------------------------------- trend
 
 
@@ -153,6 +188,37 @@ def test_trend_declining_on_volume_drop(db, world):
     add_weekly_workouts(db, member, ending=TODAY, weeks=4, per_week=3, weight_kg=45.0)
     db.commit()
     assert sig.training_trend(db, member.id, today=TODAY).direction == "declining"
+
+
+def test_trend_exactly_at_the_meaningful_change_boundary_is_a_trend(db, world):
+    """±12% is inclusive — a move of exactly the threshold is not "steady"."""
+    member = world["member_ngk"]
+    span = T.trend_window_days
+    prev_end = TODAY - timedelta(days=span)
+    # 6 sets of 100 kg × 5 previous (3000 kg), 6 sets of 112 kg × 5 now
+    # (3360 kg) → exactly +12.0%.
+    add_weekly_workouts(db, member, ending=prev_end, weeks=4, per_week=3, weight_kg=100.0)
+    add_weekly_workouts(db, member, ending=TODAY, weeks=4, per_week=3, weight_kg=112.0)
+    db.commit()
+    s = sig.training_trend(db, member.id, today=TODAY)
+    assert s.volume_change_pct == 12.0
+    assert s.direction == "improving"
+
+
+def test_trend_with_no_previous_volume_is_insufficient_not_improving(db, world):
+    """Coming back from a window with zero logged load → we cannot compute a
+    percentage, so it is insufficient data, never "improving from nothing"."""
+    member = world["member_ngk"]
+    span = T.trend_window_days
+    prev_end = TODAY - timedelta(days=span)
+    # Previous window: bodyweight only (weight 0 → no volume).
+    add_weekly_workouts(db, member, ending=prev_end, weeks=4, per_week=3, weight_kg=0.0)
+    add_weekly_workouts(db, member, ending=TODAY, weeks=4, per_week=3, weight_kg=60.0)
+    db.commit()
+    s = sig.training_trend(db, member.id, today=TODAY)
+    assert s.previous_volume_kg == 0.0
+    assert s.volume_change_pct is None
+    assert s.direction == "insufficient_data"
 
 
 # --------------------------------------------------------------- plateau
@@ -188,6 +254,21 @@ def test_plateau_not_called_when_weight_is_moving(db, world):
     db.commit()
     s = sig.plateau(db, member.id, today=TODAY)
     assert s.detected is False
+
+
+def test_plateau_needs_the_full_minimum_span(db, world):
+    """Flat weights over a stretch one day short of the minimum span do not
+    yet count; add the day and the same data does."""
+    member = world["member_ngk"]
+    just_under = T.plateau_min_span_days - 1
+    step = just_under // 4
+    for i in range(5):
+        add_workout(db, member, on=TODAY - timedelta(days=just_under - i * step), sets=[(60.0, 8)])
+    db.commit()
+    s = sig.plateau(db, member.id, today=TODAY)
+    assert s.span_days == just_under
+    assert s.detected is False
+    assert "too soon" in s.reason
 
 
 def test_plateau_yields_to_a_recent_pr(db, world):

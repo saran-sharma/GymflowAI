@@ -243,6 +243,34 @@ def test_http_provider_maps_a_timeout_to_a_narration_error(monkeypatch):
         provider.complete(system="s", user="u", timeout=0.01, max_tokens=10)
 
 
+def test_http_provider_maps_403_to_an_auth_error(monkeypatch):
+    import urllib.error
+
+    from app.services.intelligence import narrator as mod
+
+    def boom(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", boom)
+    provider = mod.HttpNarrationProvider(base_url="https://x/v1", api_key="k", model="m")
+    with pytest.raises(NarrationAuthError):
+        provider.complete(system="s", user="u", timeout=1, max_tokens=10)
+
+
+def test_http_provider_maps_an_unreachable_host_to_a_narration_error(monkeypatch):
+    import urllib.error
+
+    from app.services.intelligence import narrator as mod
+
+    def down(req, timeout=None):
+        raise urllib.error.URLError("name or service not known")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", down)
+    provider = mod.HttpNarrationProvider(base_url="https://x/v1", api_key="k", model="m")
+    with pytest.raises(NarrationError):
+        provider.complete(system="s", user="u", timeout=1, max_tokens=10)
+
+
 def test_http_provider_rejects_a_response_with_no_content(monkeypatch):
     from app.services.intelligence import narrator as mod
 
