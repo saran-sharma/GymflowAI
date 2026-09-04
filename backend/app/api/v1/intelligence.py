@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -26,6 +27,7 @@ from app.core.deps import get_current_user, require_management, scoped_branch_fi
 from app.db.models import Branch, Member, RoleKey, Trainer, User
 from app.db.session import get_db
 from app.services.intelligence import build_member_intelligence, build_narrator
+from app.services.intelligence import nudges as nudge_service
 from app.services.intelligence.ask import answer as ask_answer
 from app.services.intelligence.ask import suggestions_for
 from app.services.intelligence.owner import build_owner_daily_brief
@@ -48,6 +50,12 @@ from .journeys import _load_member, _trainer_of, assert_can_read_member
 from .trainers import _my_trainer
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
+
+
+class NudgeSweepResult(BaseModel):
+    raised: int
+    #: The Alert.key of each nudge raised this sweep (deduped/cooldown-filtered).
+    keys: list[str] = []
 
 
 @router.get("/members/{member_id}", response_model=MemberIntelligence)
@@ -227,6 +235,33 @@ def ask_suggestions(
 ) -> AskSuggestions:
     member = _ask_member_context(db, user, member_id)
     return AskSuggestions(suggestions=suggestions_for(user, member))
+
+
+@router.post("/nudges/sweep", response_model=NudgeSweepResult)
+def sweep_nudges(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> NudgeSweepResult:
+    """Evaluate and raise the caller's own contextual nudges.
+
+    Idempotent and cooldown-guarded — safe to call on every app foreground.
+    A member sweeps their own nudges; a trainer sweeps nudges about their
+    assigned members. Raised nudges appear in the caller's ``GET /alerts``
+    feed. Management has the daily brief and does not use this.
+    """
+    if user.role.key == RoleKey.MEMBER.value:
+        member = db.scalar(select(Member).where(Member.user_id == user.id))
+        if member is None:
+            raise HTTPException(status_code=404, detail="This account has no member record")
+        raised = nudge_service.sweep_member(db, member)
+    elif user.role.key == RoleKey.TRAINER.value:
+        trainer = _my_trainer(db, user)
+        raised = nudge_service.sweep_trainer(db, trainer)
+    else:
+        raise HTTPException(
+            status_code=403, detail="Nudges are for members and trainers; use the daily brief."
+        )
+    return NudgeSweepResult(raised=len(raised), keys=[a.key for a in raised])
 
 
 @router.get("/members/{member_id}/brief", response_model=TrainerBrief)
