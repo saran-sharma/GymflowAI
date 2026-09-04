@@ -60,9 +60,11 @@ def _member_overview(ctx: AskContext) -> tuple[str, InsightAction | None]:
     intel = build_member_intelligence(ctx.db, ctx.member, today=ctx.today)
     if intel.state == "insufficient_data":
         return intel.headline, intel.next_action
+    # Headline, then just the titles of the top few insights — the numbers
+    # behind them ride in the data rows, so the prose stays short.
     lines = [intel.headline]
     for insight in intel.insights[:3]:
-        lines.append(f"• {insight.title}: {insight.summary}")
+        lines.append(f"• {insight.title}")
         for e in insight.evidence[:1]:
             _ev(ctx, e.label, e.value)
     return "\n".join(lines), intel.next_action
