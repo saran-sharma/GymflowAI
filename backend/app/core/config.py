@@ -135,13 +135,20 @@ class Settings(BaseSettings):
     # the top of an intelligence section: "template" (the default) assembles it
     # from those figures with string templates and needs nothing external;
     # "llm" asks a configured provider to rephrase the template sentence, and
-    # falls back to it on timeout, error or an off-brief response. No provider
-    # package ships in V1, so "llm" currently logs and behaves as "template".
-    # Any provider credential is read here, server-side only, and is never sent
-    # to the mobile app.
+    # falls back to it on timeout, error, an unauthorized response or an
+    # off-brief one. The "llm" path uses an OpenAI-compatible chat-completions
+    # endpoint (OpenAI, Azure OpenAI, a local server, or a proxy) over the
+    # stdlib HTTP client — no new dependency. It stays inert until BOTH
+    # `intelligence_llm_api_key` and `intelligence_llm_model` are set.
+    #
+    # The credential is read here, server-side only, and is never sent to the
+    # mobile app or written to a log. The model is handed only the minimised,
+    # allow-listed scalar context from `intelligence.prompts.minimal_context` —
+    # never a member record, an email, a credential, or revenue/incentive data.
     intelligence_narrator: Literal["template", "llm"] = "template"
     intelligence_llm_model: str = ""
     intelligence_llm_api_key: str = ""
+    intelligence_llm_base_url: str = "https://api.openai.com/v1"
     intelligence_llm_timeout_seconds: float = 6.0
     intelligence_llm_max_output_tokens: int = 400
 
