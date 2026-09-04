@@ -350,13 +350,23 @@ def training_trend(db: Session, member_id: int, *, today: date) -> TrendSignal:
     )
 
 
-def plateau(db: Session, member_id: int, *, today: date) -> PlateauSignal:
+def plateau(
+    db: Session,
+    member_id: int,
+    *,
+    today: date,
+    records: RecordsSignal | None = None,
+) -> PlateauSignal:
     """One lift, one conservative call.
 
     Picks the exercise the member trains most, looks at its recent top-set
     weights, and only reports a plateau when those weights have genuinely not
     moved *and* have had long enough to. Anything short of that returns
     ``detected=False`` with the reason it fell short.
+
+    ``records`` may be passed in when the caller has already computed the
+    recent-PR signal (``member_signals`` does) — a plateau yields to a recent
+    PR on the same lift, and recomputing that scan here is pure waste.
     """
     none = PlateauSignal(
         exercise=None,
@@ -415,9 +425,8 @@ def plateau(db: Session, member_id: int, *, today: date) -> PlateauSignal:
 
     span_days = (sessions[0].session.session_date - sessions[-1].session.session_date).days
     weight_range = round(max(tops) - min(tops), 1)
-    recent_pr = any(
-        r.exercise == exercise for r in recent_records(db, member_id, today=today).records
-    )
+    pr_records = records if records is not None else recent_records(db, member_id, today=today)
+    recent_pr = any(r.exercise == exercise for r in pr_records.records)
     detected = (
         span_days >= T.plateau_min_span_days
         and weight_range <= T.plateau_weight_tolerance_kg
@@ -543,6 +552,7 @@ def member_signals(db: Session, member: Member, *, today: date) -> MemberSignals
     )
     weeks_of_history = ((today - first_session).days // 7) if first_session else 0
 
+    records = recent_records(db, member.id, today=today)
     return MemberSignals(
         member_id=member.id,
         generated_for=today,
@@ -551,9 +561,9 @@ def member_signals(db: Session, member: Member, *, today: date) -> MemberSignals
         has_minimum_data=int(completed) >= T.min_sessions_for_insights,
         consistency=consistency(db, member.id, today=today),
         inactivity=inactivity(db, member, today=today),
-        records=recent_records(db, member.id, today=today),
+        records=records,
         trend=training_trend(db, member.id, today=today),
-        plateau=plateau(db, member.id, today=today),
+        plateau=plateau(db, member.id, today=today, records=records),
         journey=journey_status(db, member, today=today),
         membership=membership_status(db, member, today=today),
     )
