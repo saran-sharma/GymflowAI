@@ -293,6 +293,53 @@ this pass (unreachable while signed in) — deterministic one-line change.
 
 Stop-conditions: all ticked for the five fixes. No P0 found.
 
+## 2026-09-04 — Intelligence completion + production hardening (device pass)
+
+Scope — the intelligence surfaces added since the overnight build: owner daily
+brief contextual entry points, owner + member weekly summary cards, the
+progression recommendation card, Ask GymFlow (all three roles), and a font
+scale 1.3 / reduced-motion pass on the member Progress intelligence section.
+
+Rendered on — Pixel 6a (33181JEGR09774), real backend over `adb reverse`.
+
+Verified live end-to-end:
+  - Owner Dashboard — "This morning" issue cards now carry a quiet "Tell me more"
+    beside the deep link; tapping it opens the Ask GymFlow sheet pre-seeded with
+    "Tell me more about: <issue title>" and auto-answers (explain intent, evidence
+    rows, "Open trainers" link). "Ask about your gyms" row + "Last week"
+    WeeklySummaryCard (date range, Ahead/Steady/Behind badge, metrics with
+    previous + arrow) render below the brief.
+  - Member Progress — WeeklySummaryCard, and the full RecommendationCard on a
+    lift's detail (ADD LOAD badge, "80 kg × 12" → "82.5 kg", "+2.5 kg · 12-15
+    reps", the why, and "A suggestion from your logged sets — not a change to
+    your programme."). Ask GymFlow: chip → answer with data rows + deep link.
+  - Font scale 1.3 + OS reduced-motion — the "What stands out" section, its
+    insight cards, evidence rows and deep-link buttons all scale and wrap with
+    no clipping, no horizontal scroll; entrances render without stagger. No JS
+    errors in logcat across the session.
+
+Fixes from this pass:
+  P2 — Owner weekly headline "No shifts recorded last week." sat above a
+       "(was 81.8%)" metric. → "No trainer shifts recorded last week, down from
+       81.8% on time the week before." + moves to "Behind".
+  P2 — Member weekly "Total load" row read "0 kg (was 22.1 t)" — mixed units.
+       → `_load_pair` formats both sides in one unit (the larger of the two).
+  P2 — Ask GymFlow "How am I progressing?" answered with headline + three bullets
+       each repeating a title AND its full summary, over data rows carrying the
+       same numbers — a chatbot wall. → bullets are titles only; detail stays in
+       the rows.
+  P2 — info-severity insight used a bare outline circle. → information icon.
+  P2 — owner punctuality issue fired on a 1-shift sample. → min-shift guard (10).
+
+Also this pass (not device-driven): the UTC-vs-branch-local date defect —
+`progress_photo_service` "future date" check and the program-day rotation anchor
+both compared a UTC date against a branch-local one, failing in the ~5.5h window
+where the IST calendar day is ahead of UTC. Both fixed to `branch_today(tz)`;
+deterministic frozen-clock regression tests added. Backend suite: 1204 pass / 0
+fail (was 1132 / 21). Mobile: 54 suites / 583 tests. tsc + ruff clean.
+
+Stop-conditions: ticked for the fixes above. No P0 found.
+
 ---
 
 _(newest entry goes above this line)_

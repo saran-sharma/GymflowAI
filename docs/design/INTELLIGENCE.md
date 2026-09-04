@@ -139,8 +139,47 @@ surfaces differ only in which subset they show.
 | GET | `/api/v1/intelligence/{me,members/{id}}/weekly`, `/owner/weekly` | member / staff / management | `WeeklySummary` — one reusable shape, member or owner metrics, `?week_ending=` |
 | POST | `/api/v1/intelligence/ask` | any role (`{question, member_id?}`) | `AskAnswer` — one intent-matched deterministic answer + the data behind it |
 | GET | `/api/v1/intelligence/ask/suggestions` | any role (`?member_id=`) | `AskSuggestions` — role-aware starter chips |
+| POST | `/api/v1/intelligence/nudges/sweep` | member (own) / trainer (own assigned); owner 403 | `{raised, keys}` — evaluate and raise the caller's contextual nudges; idempotent + cooldown-guarded |
 
 `?on=YYYY-MM-DD` overrides "today" for deterministic tests.
+
+### Contextual nudges (`nudges.py`)
+
+A nudge is a small factual prompt from the signals, raised through the existing
+`Alert` table (`raise_alert`, `target_user_id`), so it lands in the recipient's
+own `GET /alerts` feed with the same audit trail — no new channel, no push
+infra. On top of that: **deterministic source** (every candidate from
+`signals.member_signals`), **dedup** (`dedupe_key` carries a period bucket —
+ISO week / date / milestone), **cooldown** (`cooldown_days` per `dedupe_base`,
+measured against `payload["raised_at"]` so it uses the one freezable clock).
+Candidates — member: inactivity, fresh PR, journey milestone (day 15/30/complete);
+trainer: assigned-member-inactive, journey-days-missed. The mobile alert centre
+calls the sweep on open for members/trainers.
+
+### Live narration provider (`prompts.py`, `narrator.HttpNarrationProvider`)
+
+`INTELLIGENCE_NARRATOR=llm` + `INTELLIGENCE_LLM_API_KEY` + `INTELLIGENCE_LLM_MODEL`
+turns on `LLMNarrator` over `HttpNarrationProvider` — an OpenAI-compatible
+chat-completions client on the stdlib (no new dependency; point
+`INTELLIGENCE_LLM_BASE_URL` at OpenAI, Azure, a proxy or a local server). The
+key rides only the `Authorization` header, never a body or a log. The model
+gets only `prompts.minimal_context` (an allow-list of scalar figures — no
+member record, email, id, credential, revenue or incentive). It must return
+`{headline, reason?, action?}` JSON; `parse_structured` validates the headline
+(≤180 chars, no markup/links, ≤3 sentences, string only) and screens
+reason/action; anything malformed, over-long, off-brief, timed-out, empty or
+`401` falls to the template. **No key in this environment → live end-to-end
+verification pending**; the wire format, parsing, auth, timeout and every
+fallback are covered by tests against a fake provider and a stubbed `urlopen`.
+
+### Performance (`_cache.py`)
+
+`build_owner_daily_brief` and `build_attention_queue` fan out per member/branch
+and are read on every dashboard load (mount + focus). A 45s process-local TTL
+cache keyed on `(scope, date[, limit])` de-dupes that; deterministic, self-
+pruning, never load-bearing (cold cache just recomputes). Everything else is
+one member's ~8 signal queries or a bounded aggregate — no N+1, no AI call per
+render (narration is one call per payload, template by default).
 
 ### Workout progression rule (`progression.py`, thresholds centralised)
 
@@ -184,9 +223,10 @@ Trainer punctuality: MTD on-time `< owner_punctuality_floor_pct` (85), but only 
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `INTELLIGENCE_NARRATOR` | `template` | `template` or `llm`. `llm` needs a provider (none in V1). |
-| `INTELLIGENCE_LLM_MODEL` | `""` | Provider model id. Server-side only. |
-| `INTELLIGENCE_LLM_API_KEY` | `""` | Provider credential. **Server-side only — never sent to mobile.** |
+| `INTELLIGENCE_NARRATOR` | `template` | `template` or `llm`. `llm` also needs a key **and** a model, or it logs once and stays template. |
+| `INTELLIGENCE_LLM_MODEL` | `""` | Provider model id (e.g. `gpt-4o-mini`). Server-side only. |
+| `INTELLIGENCE_LLM_API_KEY` | `""` | Provider credential. **Server-side only — header-only, never a body, never a log, never sent to mobile.** |
+| `INTELLIGENCE_LLM_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible chat-completions root (OpenAI, Azure, proxy, local). |
 | `INTELLIGENCE_LLM_TIMEOUT_SECONDS` | `6.0` | Per-narration timeout; on breach → template. |
 | `INTELLIGENCE_LLM_MAX_OUTPUT_TOKENS` | `400` | Output ceiling. |
 
@@ -217,14 +257,28 @@ All business thresholds live in `app/services/intelligence/thresholds.py`
   open-session exclusion, the read-rule on the endpoint.
 - `test_intelligence_weekly.py` — member ahead/behind/steady/zero, default-week
   resolution, owner punctuality movement + counts, the endpoint gates.
-- `test_intelligence_ask.py` — each member/trainer/owner intent, unrecognised
-  fallback, `member_id` ignored for a member, cross-branch 403, role-aware
-  suggestion chips.
+- `test_intelligence_ask.py` — each member/trainer/owner intent (incl. the
+  slowdown, focus-today, branch and explain intents), unrecognised fallback,
+  `member_id` ignored for a member, cross-branch 403, branch-manager-scoped
+  "explain", role-aware suggestion chips.
+- `test_intelligence_prompts.py` — `minimal_context` drops every non-allow-listed
+  key (member id, email, name, credential, revenue, incentive, nested objects),
+  truncates long strings, and the user message carries no PII.
+- `test_intelligence_nudges.py` — each candidate, dedup on a same-day re-sweep,
+  cooldown expiry across a period, healthy-member silence, trainer scope, the
+  endpoint role gate, and that a nudge lands only in the recipient's own feed.
+- `test_intelligence_cache.py` — TTL hit/miss/expiry/clear, and the attention
+  queue served from cache.
+- `test_progress_photos.py` / `test_todays_workout_schedule.py` — deterministic
+  UTC/branch-local date-boundary regression tests (clock frozen straddling
+  midnight UTC).
 
 Mobile: `__tests__/{member-intelligence,trainer-copilot,owner-daily-brief,
-progression-recommendation,weekly-summary,ask-gymflow}.test.tsx` — loading /
-insufficient-data / provider-error / calm / normal states, evidence rendering,
-action deep-linking, list caps, and (Ask) chip→answer and type→answer flows.
+progression-recommendation,weekly-summary,ask-gymflow,alert-centre}.test.tsx` —
+loading / insufficient-data / provider-error / calm / normal states, evidence
+rendering, action deep-linking, list caps, Ask chip→answer / type→answer /
+initialQuestion flows, the owner "Tell me more" wiring, compact recommendation
+"Use" (prefill only), and the nudge sweep on alert-centre open.
 
 ---
 
@@ -237,36 +291,38 @@ action deep-linking, list caps, and (Ask) chip→answer and type→answer flows.
 - **Owner Dashboard** — "This morning" section verified: scope, headline, three
   issue cards (critical absence, renewals, PT-ready) with evidence and deep
   links; the small-sample punctuality issue correctly suppressed after the fix.
-- **Trainer** — `/intelligence/members/{id}/brief` and
-  `/intelligence/trainer/attention` verified via authenticated curl against the
-  running backend (brief split correct, queue ranked, reasons specific); the UI
-  renders through the same `InsightCard`/section components validated on the
-  member and owner surfaces. On-device screenshot deferred (device instability
-  during the session — notification spam, dev-menu overlay).
-- Font scale 1.3 / reduced motion: the sections use only `Section`/`Card`/
-  `Text`/`Row`/`Stack` (text wraps, no fixed heights) and add no animation of
-  their own — they inherit each screen's existing `<Staggered>` entrance, which
-  already honours `useReducedMotion`.
+- **Owner Dashboard** (second pass) — the daily brief with per-issue "Tell me
+  more" opening Ask GymFlow pre-seeded, the "Ask about your gyms" row, and the
+  "Last week" `WeeklySummaryCard` all verified live end-to-end.
+- **Member** (second pass) — the weekly recap card, the full
+  `RecommendationCard` on a lift's detail ("ADD LOAD", 80 kg × 12 → 82.5 kg,
+  with the "not a change to your programme" line), and Ask GymFlow (chip →
+  answer with data rows + deep link) all verified live. Font scale 1.3 +
+  OS reduced-motion pass: no clipping, text wraps, deep-link buttons intact,
+  entrances render without stagger. No JS errors in logcat.
+- **Trainer** — brief + Needs Attention + the new "Ask about your clients" /
+  "Ask about <first name>" rows render through the same components validated on
+  the member and owner surfaces; endpoints verified via authenticated curl.
 
 ---
 
 ## 8. Remaining / pending
 
-- **Live LLM provider** wiring + verification — no key in this environment. The
-  abstraction (`IntelligenceNarrator`), schemas, deterministic fallback, output
-  validation, tests, UI and endpoints are all in place; only a real key + a
-  provider client class remain. `INTELLIGENCE_NARRATOR=llm` currently logs and
-  behaves as `template`.
-- **Weekly summary as a stored artefact** — today every read recomputes. A
-  `member_weekly_summaries` / `owner_weekly_summaries` table would make
-  "since last week" language stable and let a digest be sent.
-- **Owner weekly UI** — the `/owner/weekly` endpoint ships but is not surfaced
-  (the daily brief leads that dashboard).
-- **Ask GymFlow entry points** for trainer client-detail and owner dashboard —
-  the reusable `AskGymFlowRow`/`AskGymFlowSheet` support a `memberId`; only the
-  member Progress entry point is wired.
-- **Contextual nudges** (P2) — not started. Would build on the same signals
-  with dedupe + cooldown tables and the existing alert channel.
-- **Adaptive workout** (P2) — the progression recommendation is the safe first
-  version (explicit advice, never a silent program change); a fuller
-  CURRENT/LAST/NEXT/WHY panel mid-workout is the next step.
+- **Live LLM provider verification** — the real `HttpNarrationProvider` client,
+  prompts, minimisation, structured-output validation, timeout/auth handling,
+  fallback, config and tests are all in place. No API key is available in this
+  environment, so an end-to-end call has not been made; set
+  `INTELLIGENCE_NARRATOR=llm` + `INTELLIGENCE_LLM_API_KEY` + `_MODEL` and it
+  runs. Until then it logs once and behaves as `template`.
+- **Weekly summary as a stored artefact** — today every read recomputes (the
+  45s cache covers the double-load). A `*_weekly_summaries` table would make
+  "since last week" language stable and let a digest be pushed.
+- **Trainer on-device screenshot pass** — brief / Needs Attention / the trainer
+  Ask entry points were verified via the shared components + curl, not a
+  dedicated device capture this session.
+- **Adaptive workout, fuller version** (P2) — the progression recommendation
+  (compact card mid-workout, full card on the lift's detail; "Use" prefills
+  only) is the safe first version. A dedicated CURRENT / RECENT / RECOMMENDED /
+  WHY panel with Accept / Keep / Ask-trainer actions is the next step, and
+  "Accept" as a real programme mutation only if a member gains programme-edit
+  permission (they do not today).
