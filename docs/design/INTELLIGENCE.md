@@ -238,12 +238,17 @@ All business thresholds live in `app/services/intelligence/thresholds.py`
 ## 6. Tests (`tests/backend/`)
 
 - `test_intelligence_signals.py` — each calculator's classification boundaries
-  and insufficient-data paths, deterministic dates.
+  and insufficient-data paths, deterministic dates. Includes the consistency
+  "steady" band, tie-is-not-a-PR, an escalating top set within one session,
+  ±12% trend inclusivity, zero-previous-volume → insufficient, and a stretch one
+  day short of the plateau span.
 - `test_intelligence_member.py` — insight assembly, severity ordering, empty
   state, evidence-on-every-insight, and that a broken narrator does not take the
   read down.
 - `test_intelligence_narrator.py` — template pass-through; LLM used when valid;
-  fallback on provider error / timeout / markup / empty / off-brief; `safe_narrate`.
+  fallback on provider error / timeout / 401 / 403 / unreachable host / markup /
+  empty / off-brief; the HTTP provider sends the key only in the header;
+  `safe_narrate`.
 - `test_intelligence_api.py` — authorization matrix (self / cross-member /
   cross-branch / unauth / 404), insufficient-data over HTTP, no-PII check.
 - `test_intelligence_trainer.py` — brief progress/watch split, specific
@@ -310,10 +315,19 @@ initialQuestion flows, the owner "Tell me more" wiring, compact recommendation
 
 - **Live LLM provider verification** — the real `HttpNarrationProvider` client,
   prompts, minimisation, structured-output validation, timeout/auth handling,
-  fallback, config and tests are all in place. No API key is available in this
-  environment, so an end-to-end call has not been made; set
-  `INTELLIGENCE_NARRATOR=llm` + `INTELLIGENCE_LLM_API_KEY` + `_MODEL` and it
-  runs. Until then it logs once and behaves as `template`.
+  fallback, config and tests are all in place. GymFlow is not configured for a
+  hosted model (`INTELLIGENCE_NARRATOR=template`, no `INTELLIGENCE_LLM_API_KEY`),
+  so no call to a real provider has been made. The wire path *was* exercised
+  end-to-end over a live local socket (2026-09-04): `source="llm"`, structured
+  JSON parsed, key only in the `Authorization` header, unlisted context keys
+  stripped, `response_format=json_object`, key absent from logs. To go live: set
+  `INTELLIGENCE_NARRATOR=llm` + `INTELLIGENCE_LLM_API_KEY` + `_MODEL`.
+- **On-device QA of the intelligence surfaces** — the 2026-09-04 validation pass
+  could not render on the Pixel 6a (not connected, no emulator). Member /
+  Trainer / Owner device walkthroughs, font-scale 1.3, reduced-motion and
+  cold-launch checks are still owed. Everything not needing a device (signal
+  boundaries, authorization matrix, adversarial Ask, LLM chaos, performance) was
+  covered.
 - **Weekly summary as a stored artefact** — today every read recomputes (the
   45s cache covers the double-load). A `*_weekly_summaries` table would make
   "since last week" language stable and let a digest be pushed.

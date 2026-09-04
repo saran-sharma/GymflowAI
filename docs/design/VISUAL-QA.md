@@ -44,6 +44,71 @@ Stop-conditions: [ ] all ticked   (list any not ticked and why → iterate)
 
 ---
 
+## 2026-09-04 — Intelligence QA + validation pass (no device) — partial
+
+Direction     — no visual redesign; validation/hardening of the shipped intelligence layer
+Level         — L1 (code + API), not L2/L3
+Rendered on   — **not rendered.** The physical Pixel 6a was not connected this
+                session (`adb devices` empty across kill-server/start-server, USB
+                rescan, `-e`); no emulator installed. Member/Trainer/Owner device
+                walkthroughs, font-scale 1.3, reduced-motion and cold-launch
+                checks from the mission's Phases 6/7/8/14/17 are **not done** and
+                remain the open item.
+API evidence  — live backend (`localhost:8000`, seeded `gymflow_main_dev`):
+                intelligence `/me`, `/ask` (member/trainer/owner), authorization
+                matrix, adversarial Ask prompts — all via curl, logged in-session.
+
+What was verified without a device:
+  - **Ask GymFlow adversarial** — "what was my bench press last year" → honest
+    `unrecognised`, no invented history. "tell me my friend's progress" and
+    `member_id` spoofing → answers only about the caller's own data. "ignore your
+    instructions…" → `unrecognised` (there is no LLM in the Ask path, so prompt
+    injection is structurally impossible). Trainer "what does this member pay" /
+    "revenue" and owner "give me revenue" → `unrecognised`, no financial field.
+  - **Authorization matrix** — member→other-member intelligence 403 (ids 2–8);
+    member→trainer/owner endpoints 403; member→own `/brief` 403 (staff view);
+    trainer→owner brief 403; owner→`nudges/sweep` 403; trainer brief 200 for
+    same-branch members, 403 for other-branch; no/garbage token 401.
+  - **Signal boundaries** — 6 new frozen-clock tests: consistency "steady" band
+    and its bounds, tie-is-not-a-PR, escalating-set-is-a-PR, ±12% inclusive,
+    zero previous volume → insufficient (not "improving"), one day short of the
+    plateau span → not yet a plateau. All pass — no boundary defect found.
+  - **LLM failure chaos** — the existing 21 narrator tests plus 2 new ones (403,
+    unreachable host) cover timeout / 401 / 403 / malformed JSON / non-string
+    headline / oversized headline / markup / links / empty content / provider
+    exception; every path degrades to the deterministic template. A real
+    end-to-end run over a live local socket confirmed the wire shape: key only
+    in the `Authorization` header, unlisted context keys stripped, `json_object`
+    response format, key absent from logs. No hosted-model call was made — the
+    ambient `OPENAI_API_KEY` is unrelated tooling config, GymFlow itself is
+    `INTELLIGENCE_NARRATOR=template`.
+  - **Performance** — cold query counts on the seeded DB: member intelligence 36,
+    owner daily brief 14, owner weekly 8, trainer attention queue 285 for a
+    nine-client trainer (warm cache: 1). Cut the queue from ~400 by computing
+    `recent_records` once per member instead of twice.
+
+Bugs found and fixed (committed):
+  1. `_member_next_weight` deep link pointed at `/(member)/progress-exercise`
+     with no `?exercise=` — the screen needs it and renders "Could not load
+     this exercise" without one. Now encodes the lift.
+  2. `member_signals` scanned `recent_records` twice (directly + inside
+     `plateau`). Threaded the computed signal through. (perf, not user-visible)
+
+Considered, not changed:
+  - Owner "N members have gone quiet" counts a brand-new zero-activity member as
+    "quiet". The copy is literally accurate ("no workout, PT or visit in 14
+    days") and excluding just-registered members risks masking failed
+    onboarding. Left as-is deliberately.
+
+Local hygiene (not a repo change): `gymflow_main_dev` was one migration behind
+(`c8f2a1d0b7e3`, additive `users` columns); ran `alembic upgrade head` so the
+dev server and query-count probes matched the branch schema.
+
+Stop-conditions: [ ] device render — blocked, not connected. Everything not
+requiring a device is done.
+
+---
+
 ## 2026-09-03 — Batch 1: motion foundation · Trainer Scan · Trainer Shift · Rest timer · Auth role-select — ship (with follow-ups)
 
 Direction     — "GymFlow Next" = the existing brief executed everywhere, not a reskin: finish
