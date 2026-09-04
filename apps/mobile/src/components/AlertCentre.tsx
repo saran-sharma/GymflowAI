@@ -7,7 +7,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet } from 'react-native';
 
 import { ApiError, OFFLINE_CODE } from '../api/client';
@@ -82,9 +82,26 @@ function routeFor(alert: AppAlert): string | null {
 
 export function AlertCentre({ title = 'Updates' }: { title?: string }) {
   const router = useRouter();
-  const { withToken } = useAuth();
+  const { withToken, user } = useAuth();
   const alerts = useApi<AppAlert[]>((token) => api.listAlerts(token), []);
   const [error, setError] = useState<string | null>(null);
+
+  // Opportunistically raise the caller's contextual nudges when this screen
+  // opens, then reload so they show. The endpoint is idempotent and
+  // cooldown-guarded; it only applies to members and trainers.
+  const swept = useRef(false);
+  useEffect(() => {
+    if (swept.current) return;
+    if (user?.role !== 'member' && user?.role !== 'trainer') return;
+    swept.current = true;
+    void withToken((token) => api.sweepNudges(token))
+      .then((res) => {
+        if (res.raised > 0) void alerts.refresh();
+      })
+      .catch(() => {
+        /* nudges are best-effort */
+      });
+  }, [user?.role, withToken, alerts]);
 
   /* An alert that opens a screen is still acted on when it does — the member
    * read it and went where it pointed. Only an alert with nowhere to go is a

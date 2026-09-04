@@ -597,6 +597,14 @@ export const completeSupportSession = (sessionId: number, token: string) =>
 
 export const listAlerts = (token: string) => request<AppAlert[]>('/alerts', { token });
 
+/** Evaluate and raise the caller's own contextual nudges (member / trainer).
+ * Idempotent and cooldown-guarded — safe to call whenever the alert feed opens. */
+export const sweepNudges = (token: string) =>
+  request<{ raised: number; keys: string[] }>('/intelligence/nudges/sweep', {
+    method: 'POST',
+    token,
+  });
+
 export const unreadAlertCount = (token: string) =>
   request<{ count: number }>('/alerts/unread-count', { token });
 

@@ -21,12 +21,16 @@ jest.mock('expo-router', () => ({
 
 const mockList = jest.fn();
 const mockAck = jest.fn();
+const mockSweep = jest.fn();
 jest.mock('../src/api/endpoints', () => ({
   listAlerts: (...a: unknown[]) => mockList(...a),
   acknowledgeAlert: (...a: unknown[]) => mockAck(...a),
+  sweepNudges: (...a: unknown[]) => mockSweep(...a),
 }));
 
-const mockAuth = { withToken: (action: (t: string) => Promise<unknown>) => action('token') };
+const mockAuth: { withToken: (a: (t: string) => Promise<unknown>) => Promise<unknown>; user?: { role: string } } = {
+  withToken: (action: (t: string) => Promise<unknown>) => action('token'),
+};
 jest.mock('../src/store/AuthContext', () => ({ useAuth: () => mockAuth }));
 
 function anAlert(partial: Partial<AppAlert> = {}): AppAlert {
@@ -58,6 +62,31 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockAck.mockResolvedValue(anAlert({ status: 'acknowledged' }));
   mockList.mockResolvedValue([]);
+  mockSweep.mockResolvedValue({ raised: 0, keys: [] });
+  delete mockAuth.user;
+});
+
+describe('contextual nudges', () => {
+  it('sweeps the caller’s nudges on open for a member', async () => {
+    mockAuth.user = { role: 'member' };
+    await open();
+    expect(mockSweep).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the feed only when a nudge was actually raised', async () => {
+    mockAuth.user = { role: 'trainer' };
+    mockSweep.mockResolvedValue({ raised: 1, keys: ['nudge.trainer.member_inactive'] });
+    await open();
+    await act(async () => {});
+    // listAlerts: once on mount, once after the sweep raised something.
+    expect(mockList.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does not sweep for an owner', async () => {
+    mockAuth.user = { role: 'owner' };
+    await open();
+    expect(mockSweep).not.toHaveBeenCalled();
+  });
 });
 
 describe('an alert with somewhere to go', () => {
