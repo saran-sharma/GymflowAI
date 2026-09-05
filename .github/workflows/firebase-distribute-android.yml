@@ -1,0 +1,194 @@
+name: Pilot — Android to Firebase App Distribution
+
+# Manual only, and separate from the plain "EAS Android build" workflow: this
+# one waits for the build (~15-25 min of Actions time) and then pushes it
+# straight to pilot testers. Use the other workflow when you just want a
+# build artifact without notifying anyone.
+#
+# Requires two things this repo does not create for you (see
+# docs/PILOT_DISTRIBUTION.md):
+#   - repository secret EXPO_TOKEN            (already used by eas-build-android.yml)
+#   - repository secret FIREBASE_SERVICE_ACCOUNT_JSON
+#       the full JSON key of a service account with the "Firebase App
+#       Distribution Admin" role — nothing else. Never committed, never
+#       logged; written to a runner-local temp file for the one CLI call
+#       that needs it and gone when the job ends.
+# The Firebase App ID (an identifier, not a secret — it is visible in the
+# Firebase console URL) is a required input below rather than repo state, so
+# this workflow needs zero one-time repo configuration beyond the two
+# secrets above.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'eas.json build profile'
+        required: true
+        default: preview
+        type: choice
+        options: [preview, production]
+      api_url:
+        description: 'API the build talks to, e.g. https://gymflow-api.example'
+        required: true
+        type: string
+      firebase_app_id:
+        description: 'Firebase Android app id, e.g. 1:1234567890:android:abcdef — Firebase console → Project settings → General → Your apps'
+        required: true
+        type: string
+      testers_or_groups:
+        description: 'Comma-separated tester emails, or a Firebase tester group alias (see mode below)'
+        required: true
+        type: string
+      mode:
+        description: 'Whether testers_or_groups holds emails or a group alias'
+        required: true
+        default: groups
+        type: choice
+        options: [groups, testers]
+      release_notes:
+        description: 'What changed in this build (shown to testers)'
+        required: false
+        default: 'GymFlow AI pilot build'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-distribute:
+    name: Build ${{ inputs.profile }} and push to Firebase testers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Fail here with a readable message rather than 20 minutes later inside
+      # EAS or Firebase, or — worse — with an APK nobody can reach or a build
+      # nobody can be notified about.
+      - name: Check prerequisites
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          API_URL: ${{ inputs.api_url }}
+          APP_ID: ${{ inputs.firebase_app_id }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          [ -n "${EXPO_TOKEN:-}" ] || fail \
+            "EXPO_TOKEN is not set. See docs/ANDROID_BUILD.md."
+
+          [ -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ] || fail \
+            "FIREBASE_SERVICE_ACCOUNT_JSON is not set. See docs/PILOT_DISTRIBUTION.md to create a service account with the 'Firebase App Distribution Admin' role and add its JSON key as this repository secret."
+
+          case "$API_URL" in
+            https://*|http://*) ;;
+            *) fail "api_url must start with http:// or https:// (got '$API_URL')." ;;
+          esac
+
+          case "$API_URL" in
+            *localhost*|*127.0.0.1*|*10.0.2.2*)
+              fail "api_url points at a loopback address. A pilot tester's phone cannot reach any of those — use a public URL." ;;
+          esac
+
+          case "$APP_ID" in
+            1:*:android:*) ;;
+            *) fail "firebase_app_id doesn't look like a Firebase Android app id (expected '1:<project-number>:android:<hash>'). Copy it from Firebase console → Project settings → General → Your apps." ;;
+          esac
+
+          PROJECT_ID=$(node -p "require('./apps/mobile/app.json').expo.extra.eas.projectId")
+          if [ "$PROJECT_ID" = "00000000-0000-0000-0000-000000000000" ]; then
+            fail "app.json still carries the placeholder EAS projectId. Run 'eas init' once and commit the real id."
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: apps/mobile
+
+      # Same technique as eas-build-android.yml: the chosen API URL is written
+      # into the profile the build will use. Never committed — this edit
+      # exists only in the runner's checkout.
+      - name: Point the build at the chosen API
+        env:
+          API_URL: ${{ inputs.api_url }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            const profile = eas.build[process.env.PROFILE];
+            profile.env = { ...profile.env, EXPO_PUBLIC_API_URL: process.env.API_URL };
+            fs.writeFileSync("eas.json", JSON.stringify(eas, null, 2) + "\n");
+            console.log(`${process.env.PROFILE} → ${profile.env.EXPO_PUBLIC_API_URL}`);
+          '
+        working-directory: apps/mobile
+
+      - name: Verify the bundle before spending build minutes
+        run: npx expo export --platform android --output-dir /tmp/preflight
+        working-directory: apps/mobile
+
+      # Blocking: this workflow's whole point is the artifact, not just a
+      # queued build. Expect 15-25 minutes here.
+      - name: Build on EAS and capture the artifact URL
+        id: eas_build
+        run: |
+          set -euo pipefail
+          eas build \
+            --platform android \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            --json \
+            > /tmp/eas-build-result.json
+          BUILD_URL=$(node -p "require('/tmp/eas-build-result.json')[0].artifacts.buildUrl")
+          if [ -z "$BUILD_URL" ] || [ "$BUILD_URL" = "undefined" ]; then
+            echo "::error::EAS build did not report an artifact URL — the build likely failed. See the eas build logs above."
+            exit 1
+          fi
+          echo "build_url=$BUILD_URL" >> "$GITHUB_OUTPUT"
+        working-directory: apps/mobile
+
+      - name: Download the build artifact
+        run: curl -fL --retry 3 -o /tmp/gymflow-pilot.apk "${{ steps.eas_build.outputs.build_url }}"
+
+      - name: Push to Firebase App Distribution
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          APP_ID: ${{ inputs.firebase_app_id }}
+          MODE: ${{ inputs.mode }}
+          TARGET: ${{ inputs.testers_or_groups }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          CRED_FILE="$(mktemp)"
+          trap 'rm -f "$CRED_FILE"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CRED_FILE"
+          export GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE"
+
+          TARGET_FLAG="--groups"
+          if [ "$MODE" = "testers" ]; then
+            TARGET_FLAG="--testers"
+          fi
+
+          npx --yes firebase-tools@15.29.0 appdistribution:distribute /tmp/gymflow-pilot.apk \
+            --app "$APP_ID" \
+            "$TARGET_FLAG" "$TARGET" \
+            --release-notes "$NOTES"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "### GymFlow pilot build distributed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Profile: \`${{ inputs.profile }}\`  ·  API: \`${{ inputs.api_url }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Testers were notified by email from Firebase App Distribution. They install a one-time 'Firebase App Tester' helper on first invite; every later build updates through it." >> "$GITHUB_STEP_SUMMARY"

@@ -38,6 +38,15 @@ htmlcov
 # agent-device tooling state
 .agent-device/
 
+# Firebase credentials — a service-account key or app config, never committed.
+# The pilot distribution workflow (docs/PILOT_DISTRIBUTION.md) reads its
+# service-account key from a GitHub Actions secret, not a file in the repo;
+# these patterns exist in case one is ever downloaded here by habit.
+*firebase-adminsdk*.json
+firebase-service-account*.json
+google-services.json
+GoogleService-Info.plist
+
 # private progress-photo store (LocalDiskPhotoStorage default location) —
 # member personal data, never committed
 /backend/var/

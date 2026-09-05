@@ -119,3 +119,10 @@ the profile before building, so no fake domain can be shipped by accident.
 The same profiles cover iOS and the app bundles cleanly for it. Producing an
 `.ipa` additionally needs an Apple Developer Program membership; add the
 platform to the same workflow once that exists.
+
+## Getting a preview build to pilot testers
+
+Producing the APK (this document) is one half of a pilot. For handing it to
+testers — Firebase App Distribution, tester onboarding, revoking a tester,
+and the free-tier iOS path — see
+[`PILOT_DISTRIBUTION.md`](PILOT_DISTRIBUTION.md).
