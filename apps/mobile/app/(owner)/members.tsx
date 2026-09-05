@@ -134,6 +134,25 @@ export default function OwnerMembersScreen() {
           />
         </Row>
 
+        {/* The searchable roster — how you reach any member, not only those on
+            a journey or in a PT package below. */}
+        <TappableCard
+          testID="open-member-roster"
+          onPress={() => router.push('/(owner)/members/roster' as never)}
+        >
+          <Row justify="space-between" align="center" gap="sm">
+            <View style={styles.grow}>
+              <Text variant="heading">Find a member</Text>
+              <Text variant="label" tone={color.textSecondary}>
+                Search everyone by name, mobile, code or Yoactiv ID
+              </Text>
+            </View>
+            <Text variant="label" tone={color.textTertiary}>
+              ›
+            </Text>
+          </Row>
+        </TappableCard>
+
         {/* Live, and marked as such — the only figure here that moves. */}
         <Section title="Currently in gym">
           {(branches.data?.length ?? 0) > 1 ? (

@@ -13,11 +13,16 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.clock import branch_today
-from app.core.deps import assert_branch_access, get_current_user, require_management
+from app.core.deps import (
+    assert_branch_access,
+    get_current_user,
+    require_management,
+    scoped_branch_filter,
+)
 from app.core.rate_limit import checkin_rate_limit
 from app.core.security import hash_password
 from app.db.models import (
@@ -47,6 +52,8 @@ from app.schemas.common import (
     MemberIntakeIn,
     MemberIntakeOut,
     MemberMeOut,
+    MemberRosterPage,
+    MemberRosterRow,
     MembershipOut,
     MemberVisitOut,
     MessageOut,
@@ -548,6 +555,110 @@ def update_my_intake(
             setattr(intake, field, value)
     db.flush()
     return MemberIntakeOut.model_validate(intake)
+
+
+@router.get("/roster", response_model=MemberRosterPage)
+def member_roster(
+    q: str | None = Query(default=None, description="Name, mobile, member code or Yoactiv id."),
+    branch_id: int | None = Query(default=None),
+    status: str = Query(default="active", pattern="^(active|expired|all)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_management),
+) -> MemberRosterPage:
+    """The owner's searchable member list — the canonical way into member
+    detail, working for every member and not only those on a journey, in a PT
+    package, or currently checked in.
+
+    Branch scope is the same predicate as everywhere else: management see
+    their own branches, ``?branch_id=`` narrows within that. ``status``
+    filters on the member's active flag (Yoactiv-derived). Results are
+    ordered by most recent visit so the people worth chasing surface first.
+    """
+    allowed = scoped_branch_filter(user, branch_id)
+
+    # Most recent member check-in per user, for the "last visit" column and
+    # the default sort. Correlated so it also works as an ORDER BY key.
+    last_visit = (
+        select(func.max(AttendanceEvent.work_date))
+        .where(
+            AttendanceEvent.user_id == Member.user_id,
+            AttendanceEvent.person_type == PersonType.MEMBER,
+            AttendanceEvent.event_type == EventType.CHECK_IN,
+        )
+        .correlate(Member)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(Member, User, Branch, last_visit.label("last_visit_on"))
+        .join(User, User.id == Member.user_id)
+        .join(Branch, Branch.id == Member.branch_id)
+    )
+    if allowed is not None:
+        stmt = stmt.where(Member.branch_id.in_(allowed))
+    if status == "active":
+        stmt = stmt.where(Member.is_active.is_(True))
+    elif status == "expired":
+        stmt = stmt.where(Member.is_active.is_(False))
+
+    term = (q or "").strip()
+    if term:
+        digits = "".join(ch for ch in term if ch.isdigit())
+        like = f"%{term}%"
+        clauses = [User.full_name.ilike(like), Member.member_code.ilike(like)]
+        if digits:
+            clauses.append(User.phone.ilike(f"%{digits}%"))
+            clauses.append(User.login_phone == digits)
+            clauses.append(Member.external_ref == digits)
+        stmt = stmt.where(or_(*clauses))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    rows = db.execute(
+        stmt.order_by(
+            last_visit.desc().nulls_last(),
+            User.full_name.asc(),
+        )
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    member_ids = [m.id for (m, _u, _b, _lv) in rows]
+    latest_membership: dict[int, Membership] = {}
+    if member_ids:
+        for ms in db.scalars(
+            select(Membership)
+            .where(Membership.member_id.in_(member_ids))
+            .order_by(Membership.member_id, Membership.ends_on.desc())
+        ).all():
+            latest_membership.setdefault(ms.member_id, ms)
+
+    today = branch_today(None)
+    out: list[MemberRosterRow] = []
+    for member, u, branch, last_visit_on in rows:
+        ms = latest_membership.get(member.id)
+        days_remaining = None
+        if ms is not None and ms.ends_on is not None:
+            days_remaining = (ms.ends_on - today).days
+        out.append(
+            MemberRosterRow(
+                member_id=member.id,
+                member_code=member.member_code,
+                full_name=u.full_name,
+                mobile=u.phone or u.login_phone,
+                branch_id=branch.id,
+                branch_name=branch.name,
+                is_active=member.is_active,
+                membership_plan=ms.plan_name if ms else None,
+                membership_status=ms.status.value if ms and ms.status else None,
+                membership_ends_on=ms.ends_on if ms else None,
+                days_remaining=days_remaining,
+                last_visit_on=last_visit_on,
+            )
+        )
+    return MemberRosterPage(total=int(total), members=out)
 
 
 @router.get("/{member_id}", response_model=TrainerClientDetailOut)

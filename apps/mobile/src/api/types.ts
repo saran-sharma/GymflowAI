@@ -961,6 +961,29 @@ export interface TrainerClient {
   visits_last_30: number;
 }
 
+/** One row of the owner's searchable member roster. */
+export interface MemberRosterRow {
+  member_id: number;
+  member_code: string;
+  full_name: string;
+  mobile: string | null;
+  branch_id: number;
+  branch_name: string;
+  is_active: boolean;
+  membership_plan: string | null;
+  membership_status: string | null;
+  membership_ends_on: string | null;
+  days_remaining: number | null;
+  last_visit_on: string | null;
+}
+
+export interface MemberRosterPage {
+  total: number;
+  members: MemberRosterRow[];
+}
+
+export type RosterStatus = 'active' | 'expired' | 'all';
+
 export interface TrainerClientDetail {
   client: TrainerClient;
   recent_sessions: PTSession[];

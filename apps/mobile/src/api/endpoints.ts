@@ -13,6 +13,8 @@ import type {
   LoginResponse,
   MemberCreateRequest,
   MemberCreateResult,
+  MemberRosterPage,
+  RosterStatus,
   MemberMe,
   MemberVisit,
   Occupancy,
@@ -182,6 +184,26 @@ export const memberAttendance = (
 
 export const registerMember = (body: MemberCreateRequest, token: string) =>
   request<MemberCreateResult>('/members', { method: 'POST', body, token });
+
+export const ownerMemberRoster = (
+  token: string,
+  opts: {
+    q?: string;
+    branchId?: number | null;
+    status?: RosterStatus;
+    limit?: number;
+    offset?: number;
+  } = {},
+) => {
+  const params = new URLSearchParams();
+  if (opts.q?.trim()) params.set('q', opts.q.trim());
+  if (opts.branchId != null) params.set('branch_id', String(opts.branchId));
+  if (opts.status) params.set('status', opts.status);
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  if (opts.offset != null) params.set('offset', String(opts.offset));
+  const qs = params.toString();
+  return request<MemberRosterPage>(`/members/roster${qs ? `?${qs}` : ''}`, { token });
+};
 
 /* ------------------------------------------------------------------- system */
 

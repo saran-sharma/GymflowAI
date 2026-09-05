@@ -431,6 +431,35 @@ class MemberVisitOut(BaseModel):
     minutes: int | None = None
 
 
+# ------------------------------------------------------------- roster
+
+
+class MemberRosterRow(BaseModel):
+    """One member in the owner's roster list. Enough to recognise and triage
+    them; the full picture is the member-detail screen this row opens."""
+
+    member_id: int
+    member_code: str
+    full_name: str
+    mobile: str | None = None
+    branch_id: int
+    branch_name: str
+    is_active: bool
+    membership_plan: str | None = None
+    membership_status: str | None = None
+    membership_ends_on: date | None = None
+    days_remaining: int | None = None
+    last_visit_on: date | None = None
+
+
+class MemberRosterPage(BaseModel):
+    """A page of the roster plus the unfiltered-by-pagination total, so the UI
+    can show "showing 50 of 1,094"."""
+
+    total: int
+    members: list[MemberRosterRow] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------- registration
 
 
