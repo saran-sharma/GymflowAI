@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -28,12 +28,14 @@ from app.core.config import settings
 from app.core.deps import require_admin
 from app.db.models import Branch, User, YoactivDeadLetter, YoactivSyncCursor
 from app.db.session import get_db
+from app.integrations.yoactiv import exports as export_bridge
 from app.integrations.yoactiv.client import YoactivClient
 from app.integrations.yoactiv.sync import (
     SYNC_ENDPOINTS,
     run_endpoint_sync,
     run_reconciliation,
 )
+from app.services import audit
 
 router = APIRouter(prefix="/admin/yoactiv", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -158,6 +160,169 @@ def yoactiv_reconcile(
     branch = _resolve_branch(db)
     outcomes = run_reconciliation(db, client, branch=branch)
     return {"branch_id": branch.id, "outcomes": [o.as_dict() for o in outcomes]}
+
+
+# ------------------------------------------------- export-file bridge (temporary)
+#
+# While the Data API is blocked on credentials, the same operational facts are
+# imported from the two Yoactiv console exports. Two steps on purpose:
+# `preview` writes nothing and is what an operator reads; `import` repeats the
+# upload and commits. The file is never staged server-side, so real member PII
+# is never at rest in GymFlow outside the rows it legitimately becomes.
+
+#: Refuse anything larger rather than reading an arbitrary upload into memory.
+MAX_EXPORT_BYTES = 15 * 1024 * 1024
+
+ACTION_EXPORT_IMPORT = "yoactiv.export_import"
+
+
+def _mask(phone: str) -> str:
+    return f"******{phone[-4:]}" if len(phone) >= 4 else "******"
+
+
+async def _read_export(file: UploadFile) -> bytes:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="The uploaded file is empty.")
+    if len(raw) > MAX_EXPORT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Export is larger than {MAX_EXPORT_BYTES // (1024 * 1024)} MB.",
+        )
+    return raw
+
+
+def _require_branch(db: Session, branch_id: int) -> Branch:
+    branch = db.get(Branch, branch_id)
+    if branch is None or not branch.is_active:
+        raise HTTPException(
+            status_code=422, detail=f"branch_id {branch_id} is not an active branch."
+        )
+    return branch
+
+
+def _parse_or_422(filename: str, raw: bytes):
+    try:
+        return export_bridge.parse_upload(filename or "export.xlsx", raw)
+    except export_bridge.HeaderValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+def _problem_rows(rows, limit: int = 100) -> list[dict[str, Any]]:
+    """Rows a human must act on. Mobile numbers are masked — this response is
+    read in a browser and may be pasted into a ticket."""
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if row.classification in (
+            export_bridge.Classification.MATCHED,
+            export_bridge.Classification.DUPLICATE,
+        ):
+            continue
+        record = row.membership or row.checkin
+        out.append(
+            {
+                "row": row.row_number,
+                "classification": row.classification.value,
+                "detail": row.detail,
+                "yoactiv_member_id": record.yoactiv_member_id if record else None,
+                "name": (record.name[:40] if record else None),
+                "mobile": _mask(record.mobile) if record and record.mobile else None,
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+@router.post("/exports/preview")
+async def preview_export(
+    file: UploadFile = File(...),
+    branch_id: int = Form(...),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Parse and classify a Yoactiv export. **Writes nothing.**
+
+    Returns what an import would do: the report kind detected, row counts by
+    classification, and the rows that need a human. Run this first, always.
+    """
+    raw = await _read_export(file)
+    branch = _require_branch(db, branch_id)
+    parsed = _parse_or_422(file.filename or "", raw)
+    rows = export_bridge.classify(db, parsed)
+    plans, conflicts = export_bridge.plan_accounts(db, rows)
+    return {
+        "file": file.filename,
+        "report": parsed.kind.value,
+        "branch": {"id": branch.id, "name": branch.name},
+        "columns_detected": parsed.header,
+        "counts": export_bridge.summarize(rows),
+        "would_create_accounts": len(plans),
+        "account_conflicts": [
+            {"yoactiv_member_id": c.yoactiv_member_id, "reason": c.reason, "detail": c.detail}
+            for c in conflicts[:50]
+        ],
+        "problems": _problem_rows(rows),
+        "committed": False,
+    }
+
+
+@router.post("/exports/import")
+async def import_export(
+    file: UploadFile = File(...),
+    branch_id: int = Form(...),
+    confirm: bool = Form(False),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Commit a Yoactiv export's MATCHED rows.
+
+    Idempotent: membership terms upsert on ``(plan_name, starts_on)`` and
+    check-ins are guarded by both their own key and a natural-key check, so
+    re-uploading the same file writes nothing new. Never creates member
+    accounts — that is the CLI's ``--create-missing-members``, which requires
+    an operator-supplied temporary password from the environment.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=422,
+            detail="Set confirm=true to write. Use /exports/preview first.",
+        )
+    raw = await _read_export(file)
+    branch = _require_branch(db, branch_id)
+    parsed = _parse_or_422(file.filename or "", raw)
+    rows = export_bridge.classify(db, parsed)
+
+    if parsed.kind is export_bridge.ExportKind.MEMBERSHIP:
+        result = export_bridge.import_memberships(db, rows)
+    else:
+        result = export_bridge.import_checkins(db, rows, branch=branch)
+
+    audit.record(
+        db,
+        action=ACTION_EXPORT_IMPORT,
+        actor_user_id=actor.id,
+        actor_role=actor.role.key,
+        entity_type="yoactiv_export",
+        entity_id=parsed.kind.value,
+        branch_id=branch.id,
+        details={
+            "file": file.filename,
+            "report": parsed.kind.value,
+            "counts": result.counts,
+            "written": result.written,
+            "source": export_bridge.SOURCE,
+        },
+    )
+    db.commit()
+    return {
+        "file": file.filename,
+        "report": parsed.kind.value,
+        "branch": {"id": branch.id, "name": branch.name},
+        "counts": result.counts,
+        "written": result.written,
+        "problems": _problem_rows(rows),
+        "committed": True,
+    }
 
 
 @router.get("/dead-letters")

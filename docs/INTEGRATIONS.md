@@ -128,6 +128,101 @@ reactivate, history retained).
 **Still required before this can run for real:** the five unblock items
 above. Nothing else in the connector is waiting on code.
 
+### The export bridge — real Yoactiv data *now*, while the API is blocked
+
+`app/integrations/yoactiv/exports.py` reads the two reports SLAM can export
+from the Yoactiv web console today. It is a **bridge, not a replacement**: the
+Data API connector above stays the intended production path, and both write
+the same rows through the same code.
+
+| Yoactiv report | Console page | Gives GymFlow |
+| --- | --- | --- |
+| **Membership Report** | Reports → Client Management → Membership (`memshiprpt.aspx`) | members + membership terms |
+| **Member Check-ins** | Reports → Client Management → Client Check-Ins (`clientcheckins.aspx`) | attendance |
+
+Columns consumed (everything else in the file is ignored, so Yoactiv adding a
+column does not break the import):
+
+* Membership: `Member ID`, `Member Name`, `Mobile`, `Service Name`,
+  `Start Date`, `End Date` — required; `Attendance Id`, `Bill No`,
+  `Bill Amount`, `Pay Mode`, `Lead Source`, `Sales Rep Name`,
+  `Last Check-In Date` — used when present.
+* Check-ins: `Member ID`, `Name`, `Date` — required; `Mobile`, `Clock In`,
+  `Clock Out`, `Location`, `Service Name`, `Medium/Staff` — used when present.
+
+**Shared with the API connector, deliberately** — `mapping.parse_dmy` /
+`parse_clock` for `dd-MM-yyyy` and `hh:mm AM/PM`, `identity.resolve_member`
+for matching (`external_ref` → exact email → unique active phone → ambiguous
+→ none; never a name), and `lifecycle.apply_invoice` for membership terms. An
+export-imported member is indistinguishable from an API-synced one.
+
+**The one genuine incompatibility, handled not hidden.** The check-in export
+carries no `Service_card_id`, which is part of the API's composed
+`external_event_id`. The same visit therefore hashes differently from the two
+sources, and writing both would double-count attendance.
+`exports.attendance_natural_key_exists()` is the shared guard —
+`(user_id, work_date, event_type, occurred_at)` — and **both**
+`exports.import_checkins()` and `sync._apply_checkin()` consult it before
+inserting. This is the only change the bridge made to the API connector.
+
+**Format.** Yoactiv names its exports `.xls` regardless of what they contain;
+the Membership Report is actually an HTML table (the ASP.NET
+`application/vnd.ms-excel` trick). `exports.sniff()` reads the bytes — xlsx
+(zip), legacy OLE2, HTML or CSV — and refuses a real binary `.xls` with an
+instruction to re-save rather than misparsing it.
+
+**Multi-branch.** Each SLAM branch is a **separate Yoactiv console login**, so
+each exports its own files and is imported with its own `--branch-id`. The
+export carries no GymFlow branch id, which is why that argument is required
+and never guessed. Attendance is always filed against the *member's* branch,
+so a mis-selected branch cannot move history to another club.
+
+**Row handling.** Every row is classified MATCHED / AMBIGUOUS / UNMATCHED /
+DUPLICATE / INVALID before anything is written; only MATCHED is imported, and
+everything else is reported for a human. Nothing is ever guessed at.
+
+**Creating accounts for people GymFlow does not know** is opt-in and separate
+(`--create-missing-members`): it creates a `User` (Login ID = mobile) plus a
+`Member` stamped with the Yoactiv id, with `must_change_password` set from an
+operator-supplied `YOACTIV_BOOTSTRAP_PASSWORD` that is never defaulted,
+logged, printed or stored in plaintext. It creates **no `Membership`** —
+commercial state only ever comes from importing a billing row. A mobile shared
+by two Yoactiv members, or already used by a GymFlow account, is a conflict a
+human resolves, never an auto-created account.
+
+**Interfaces.**
+
+```bash
+# Always preview first — writes nothing.
+python -m app.scripts.import_yoactiv_export <file> --branch-id 1 --dry-run
+
+# Commit the MATCHED rows.
+python -m app.scripts.import_yoactiv_export <file> --branch-id 1 --import --yes
+
+# Optionally create accounts for UNMATCHED people (needs the env var).
+YOACTIV_BOOTSTRAP_PASSWORD='<temp>' python -m app.scripts.import_yoactiv_export \
+    <file> --branch-id 1 --import --yes --create-missing-members
+```
+
+OWNER / SUPER_ADMIN only, over HTTP:
+`POST /api/v1/admin/yoactiv/exports/preview` (multipart `file` + `branch_id`,
+writes nothing) then `POST .../exports/import` (same, plus `confirm=true`).
+Mobile numbers are masked in both responses. The upload is never staged
+server-side, so member PII is never at rest in GymFlow beyond the rows it
+legitimately becomes. Every commit writes an `audit_logs` row
+(`yoactiv.export_import`) carrying counts and `source: yoactiv-export`.
+
+**Rollback.** The bridge only ever inserts; it never deletes or rewrites a
+GymFlow-maintained field. To undo an import: delete the `attendance_events`
+whose `external_event_id` starts `yoactiv:export:checkin:`, and the
+`memberships` rows created by the run (the audit entry records the counts and
+the file). Members created by `--create-missing-members` are identifiable by
+`external_ref` plus `must_change_password`.
+
+**Real customer exports are never committed to this repository.** The test
+fixtures in `tests/backend/test_yoactiv_exports.py` reproduce the real column
+structure with sanitized values.
+
 ---
 
 ## InBody

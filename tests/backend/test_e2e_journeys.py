@@ -123,7 +123,7 @@ def test_owner_journey_branches_to_trainer_to_incentive(client, world, auth):
 
     # 3. Branch comparison shows all three side by side.
     comparison = client.get("/api/v1/reports/branches", headers=owner_headers).json()
-    assert {b["branch_code"] for b in comparison} == {"SLAM-NGK", "SLAM-BGH", "SLAM-ALD"}
+    assert {b["branch_code"] for b in comparison} == {"SLAM-NGK", "SLAM-BGH", "SLAM-KDG"}
 
     # 4. Open the trainer.
     trainer_id = world["trainer_ngk"].id

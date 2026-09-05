@@ -47,7 +47,7 @@ from app.db.models import (
     YoactivDeadLetter,
     YoactivSyncCursor,
 )
-from app.integrations.yoactiv import identity, lifecycle
+from app.integrations.yoactiv import exports, identity, lifecycle
 from app.integrations.yoactiv.client import YoactivAuthError, YoactivClient
 from app.integrations.yoactiv.mapping import (
     parse_checkin,
@@ -149,6 +149,20 @@ def _apply_checkin(db: Session, *, row: dict, branch: Branch, seen: set[str]) ->
             select(AttendanceEvent.id).where(AttendanceEvent.external_event_id == key)
         ):
             continue
+        occurred_at = combine_branch(checkin.attendance_date, clock_t, tz)
+        # The same visit may already be here from the export bridge, whose key
+        # cannot match this one (the export carries no Service_card_id). Fall
+        # back to the natural key so a window covered by a file import is not
+        # counted twice when the API later syncs it. See
+        # app/integrations/yoactiv/exports.py.
+        if exports.attendance_natural_key_exists(
+            db,
+            user_id=member.user_id,
+            work_date=checkin.attendance_date,
+            event_type=event_type,
+            occurred_at=occurred_at,
+        ):
+            continue
         db.add(
             AttendanceEvent(
                 branch_id=member.branch_id,
@@ -160,7 +174,7 @@ def _apply_checkin(db: Session, *, row: dict, branch: Branch, seen: set[str]) ->
                 # so its timestamp is authoritative here — a deliberate,
                 # documented exception to the "server clock only" rule that
                 # governs GymFlow-originated events. See docs/INTEGRATIONS.md.
-                occurred_at=combine_branch(checkin.attendance_date, clock_t, tz),
+                occurred_at=occurred_at,
                 work_date=checkin.attendance_date,
                 device_info=f"yoactiv:{checkin.medium}"[:255] if checkin.medium else "yoactiv",
                 notes=(

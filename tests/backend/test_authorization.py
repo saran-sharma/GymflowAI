@@ -19,7 +19,7 @@ def ids(payload) -> set:
 def test_owner_sees_every_branch(client, world, auth):
     response = client.get("/api/v1/branches", headers=auth(world["owner"]))
     assert response.status_code == 200
-    assert {b["code"] for b in response.json()} == {"SLAM-NGK", "SLAM-BGH", "SLAM-ALD"}
+    assert {b["code"] for b in response.json()} == {"SLAM-NGK", "SLAM-BGH", "SLAM-KDG"}
 
 
 def test_owner_sees_every_trainer(client, world, auth):

@@ -279,7 +279,7 @@ def world(db: Session) -> dict:
 
     nagalkeni = make_branch(db, "SLAM-NGK", "SLAM Nagalkeni", 90)
     boganhalli = make_branch(db, "SLAM-BGH", "SLAM Boganhalli", 120)
-    alandur = make_branch(db, "SLAM-ALD", "SLAM Alandur", 75)
+    kandigai = make_branch(db, "SLAM-KDG", "SLAM Kandigai", 75)
 
     owner = make_user(db, roles, RoleKey.OWNER, None, name="Owner")
     admin = make_user(db, roles, RoleKey.SUPER_ADMIN, None, name="Admin")
@@ -294,7 +294,7 @@ def world(db: Session) -> dict:
     db.commit()
     return {
         "roles": roles,
-        "branches": {"ngk": nagalkeni, "bgh": boganhalli, "ald": alandur},
+        "branches": {"ngk": nagalkeni, "bgh": boganhalli, "ald": kandigai},
         "owner": owner,
         "admin": admin,
         "manager_ngk": manager_ngk,

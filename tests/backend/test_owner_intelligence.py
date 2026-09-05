@@ -314,7 +314,7 @@ def test_a_branch_manager_cannot_target_a_member_outside_their_branch(client, wo
 
 def test_dashboard_reports_total_members_and_per_branch_counts(client, db, world, auth):
     ald = world["branches"]["ald"]
-    # `world` seeds one member at NGK only; Alandur starts at zero.
+    # `world` seeds one member at NGK only; Kandigai starts at zero.
     response = client.get(f"{API}/reports/dashboard", headers=auth(world["owner"]))
     body = response.json()
     assert body["total_members"] >= 1

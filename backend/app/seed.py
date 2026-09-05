@@ -111,10 +111,10 @@ BRANCHES = [
         "capacity": 120,
     },
     {
-        "code": "SLAM-ALD",
-        "name": "SLAM Alandur",
+        "code": "SLAM-KDG",
+        "name": "SLAM Kandigai",
         "city": "Chennai",
-        "address": "Alandur, near Metro",
+        "address": "Kandigai",
         "capacity": 75,
     },
 ]
@@ -178,7 +178,7 @@ TRAINERS = [
     ),
     ("SLAM-BGH", "Anita Kulkarni", "Trainer", "Group Classes", time(6, 0), time(13, 0), "punctual"),
     (
-        "SLAM-ALD",
+        "SLAM-KDG",
         "Kiran Prasad",
         "Head Trainer",
         "Strength & Athletics",
@@ -187,7 +187,7 @@ TRAINERS = [
         "punctual",
     ),
     (
-        "SLAM-ALD",
+        "SLAM-KDG",
         "Meera Shetty",
         "Trainer",
         "Yoga & Recovery",
@@ -213,12 +213,12 @@ MEMBERS = [
     ("SLAM-BGH", "Isha Patel", "Annual", 0, 12, "facebook", "WEEKEND-TRIAL", None),
     ("SLAM-BGH", "Dev Anand", "Monthly", 0, 1, "banner", None, None),
     ("SLAM-BGH", "Nisha Rao", "Quarterly", 0, None, "website", None, None),
-    ("SLAM-ALD", "Nikhil Verma", "Quarterly", 0, 22, "referral", None, "Tara Suresh"),
-    ("SLAM-ALD", "Tara Suresh", "Elite Annual + PT", 12, 47, "instagram", "AUG-TRANSFORM", None),
-    ("SLAM-ALD", "Vivek Nambiar", "Monthly", 0, 3, "whatsapp", None, None),
+    ("SLAM-KDG", "Nikhil Verma", "Quarterly", 0, 22, "referral", None, "Tara Suresh"),
+    ("SLAM-KDG", "Tara Suresh", "Elite Annual + PT", 12, 47, "instagram", "AUG-TRANSFORM", None),
+    ("SLAM-KDG", "Vivek Nambiar", "Monthly", 0, 3, "whatsapp", None, None),
     # Finished the journey and has not converted — this is the member the
     # owner's PT opportunity list exists for.
-    ("SLAM-ALD", "Priyanka Das", "Annual", 0, 46, "google", None, None),
+    ("SLAM-KDG", "Priyanka Das", "Annual", 0, 46, "google", None, None),
     # A second cohort, so the lists, charts and marketing report have enough
     # rows to look like a working gym rather than a fixture file. Journey days
     # are spread deliberately across the assessment window, the middle of the
@@ -232,9 +232,9 @@ MEMBERS = [
     ("SLAM-BGH", "Karthik Nair", "Annual", 0, 27, "facebook", None, None),
     ("SLAM-BGH", "Deepa Raman", "Elite Annual + PT", 20, 39, "instagram", None, None),
     ("SLAM-BGH", "Suresh Kumar", "Monthly", 0, 2, "walk_in", None, None),
-    ("SLAM-ALD", "Lakshmi Iyer", "Annual + PT", 30, 19, "google", "AUG-TRANSFORM", None),
-    ("SLAM-ALD", "Rohit Desai", "Quarterly", 0, 43, "referral", None, "Nikhil Verma"),
-    ("SLAM-ALD", "Ayesha Khan", "Monthly", 0, 11, "website", None, None),
+    ("SLAM-KDG", "Lakshmi Iyer", "Annual + PT", 30, 19, "google", "AUG-TRANSFORM", None),
+    ("SLAM-KDG", "Rohit Desai", "Quarterly", 0, 43, "referral", None, "Nikhil Verma"),
+    ("SLAM-KDG", "Ayesha Khan", "Monthly", 0, 11, "website", None, None),
     # Discontinued — demonstrates lifecycle handling. Registered long ago,
     # membership lapsed, and the account was deactivated rather than deleted;
     # marked `is_active=False` in a dedicated pass below, after creation, so
@@ -258,13 +258,13 @@ CLASSES = [
     ("SLAM-NGK", "Zumba", 1, 18, 30, "Divya Rao", 20),
     ("SLAM-NGK", "Strength Circuit", -3, 7, 0, "Vikas Menon", 16),
     ("SLAM-BGH", "HIIT Express", 2, 19, 0, "Anita Kulkarni", 24),
-    ("SLAM-ALD", "Yoga & Mobility", 3, 7, 30, "Meera Shetty", 18),
+    ("SLAM-KDG", "Yoga & Mobility", 3, 7, 30, "Meera Shetty", 18),
 ]
 
 MANAGERS = [
     ("SLAM-NGK", "Priya Menon"),
     ("SLAM-BGH", "Rohit Bhat"),
-    ("SLAM-ALD", "Lakshmi Iyer"),
+    ("SLAM-KDG", "Lakshmi Iyer"),
 ]
 
 # Days of attendance history to fabricate.
