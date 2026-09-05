@@ -73,10 +73,10 @@ class Settings(BaseSettings):
     # gym". The access hardware (X2008 fingerprint) only scans on *entry* —
     # there is no exit scan — so without this every member who entered today
     # would read as present until midnight. After this many minutes a stale
-    # check-in is treated as "left". Tune to the branch's real longest visit
-    # (a workout plus a shower); a value too low flips a long session to
-    # "left", too high keeps ghosts on the floor.
-    occupancy_presence_minutes: int = 90
+    # check-in is treated as "left". 60 is a typical workout; raise it toward
+    # 90 for a branch whose members routinely stay longer (a value too low
+    # drops a long session early, too high keeps ghosts on the floor).
+    occupancy_presence_minutes: int = 60
 
     # ---------------------------------------------------------- rate limits
     rate_limit_enabled: bool = True

@@ -262,31 +262,29 @@ def test_a_checkin_with_no_clock_is_still_a_real_visit():
     assert record.clock_in is None and record.clock_out is None
 
 
-def test_a_date_only_visit_is_a_closed_visit_at_branch_midnight(db, world):
-    """No clock time in the export → a CHECK_IN at 00:00 paired with a
-    CHECK_OUT one minute later. A one-minute span is a marker, not a duration
-    claim; leaving the visit open would make branch_occupancy report the
-    member as permanently in the gym. work_date is exact either way."""
+def test_a_date_only_visit_is_a_single_check_in_with_no_checkout(db, world):
+    """No clock time in the export → exactly one CHECK_IN at branch-local
+    midnight and NO CHECK_OUT. A synthetic checkout would be miscounted as a
+    genuine exit in exits_today / visit-duration analytics; a lone check-in
+    cannot be. work_date is exact regardless."""
     member = _matched_member(db, world)
     branch = world["branches"]["ngk"]
     parsed = ex.parse_csv(checkin_csv([checkin_row(clock_in="", clock_out="")]))
     result = ex.import_checkins(db, ex.classify(db, parsed), branch=branch)
     db.commit()
 
-    assert result.written == 2  # a closed visit, never a fabricated 5:42 PM
-    events = db.query(AttendanceEvent).order_by(AttendanceEvent.occurred_at).all()
-    assert [e.event_type for e in events] == [EventType.CHECK_IN, EventType.CHECK_OUT]
-    assert all(e.work_date == date(2026, 9, 5) for e in events)
-    assert all(e.user_id == member.user_id for e in events)
-    tz = ZoneInfo(branch.timezone)
-    assert events[0].occurred_at.astimezone(tz).strftime("%H:%M") == "00:00"
-    assert events[1].occurred_at.astimezone(tz).strftime("%H:%M") == "00:01"
-    assert "no clock time" in (events[0].notes or "")
+    assert result.written == 1
+    events = db.query(AttendanceEvent).all()
+    assert [e.event_type for e in events] == [EventType.CHECK_IN]
+    assert events[0].work_date == date(2026, 9, 5)
+    assert events[0].user_id == member.user_id
+    assert events[0].occurred_at.astimezone(ZoneInfo(branch.timezone)).strftime("%H:%M") == "00:00"
+    assert "no checkout" in (events[0].notes or "")
 
 
-def test_a_date_only_visit_is_not_counted_as_currently_in_the_gym(db, world):
-    """The defect device QA surfaced: an open date-only check-in showed every
-    imported member as 'In at 00:00' since import."""
+def test_a_date_only_import_does_not_inflate_exits_today(db, world):
+    """A date-only visit must not create a synthetic exit — exits_today stays
+    at zero even though a visit was recorded."""
     from app.services.attendance_service import branch_occupancy
 
     _matched_member(db, world)
@@ -297,8 +295,38 @@ def test_a_date_only_visit_is_not_counted_as_currently_in_the_gym(db, world):
     db.commit()
 
     occ = branch_occupancy(db, branch)
-    assert occ["inside"] == 0  # closed visit — not "in the gym"
-    assert occ["entries_today"] >= 1  # but the visit still happened today
+    assert occ["entries_today"] == 1  # the visit happened
+    assert occ["exits_today"] == 0  # …but nobody "left" — there is no checkout
+
+
+def test_a_date_only_visit_shows_no_checkout_and_no_duration_in_visit_history(client, db, world):
+    """/members/me/visits pairs check-in/out and computes a duration. A
+    date-only imported day must show the visit with check_out_at=None and
+    minutes=None — never a fabricated one-minute session."""
+    from app.core.security import hash_password
+
+    member = _matched_member(db, world)
+    member.user.password_hash = hash_password("visit-history-probe")
+    member.user.is_active = True
+    db.commit()
+    branch = world["branches"]["ngk"]
+    on = (branch_today(branch.timezone) - __import__("datetime").timedelta(days=3)).strftime(
+        "%d-%m-%Y"
+    )
+    parsed = ex.parse_csv(checkin_csv([checkin_row(on=on, clock_in="", clock_out="")]))
+    ex.import_checkins(db, ex.classify(db, parsed), branch=branch)
+    db.commit()
+
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": member.user.email, "password": "visit-history-probe"},
+    ).json()["tokens"]["access_token"]
+    visits = client.get(
+        "/api/v1/members/me/visits", headers={"Authorization": f"Bearer {token}"}
+    ).json()
+    day = next(v for v in visits if v["check_in_at"] is not None)
+    assert day["check_out_at"] is None
+    assert day["minutes"] is None
 
 
 def test_a_date_only_visit_is_idempotent_on_re_import(db, world):
@@ -310,7 +338,7 @@ def test_a_date_only_visit_is_idempotent_on_re_import(db, world):
     second = ex.import_checkins(db, ex.classify(db, ex.parse_csv(raw)), branch=branch)
     db.commit()
     assert second.written == 0
-    assert db.query(AttendanceEvent).count() == 2  # in + out, unchanged
+    assert db.query(AttendanceEvent).count() == 1  # one CHECK_IN, unchanged
 
 
 def test_the_real_export_header_spellings_are_understood():

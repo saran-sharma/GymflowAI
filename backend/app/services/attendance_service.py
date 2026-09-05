@@ -566,7 +566,9 @@ def member_event(
     )
 
     work_date = branch_today(branch.timezone)
-    inside = is_inside(db, user.id, branch.id, work_date)
+    # Write path: a real check-out may follow any raw check-in, regardless of
+    # how long ago it was — freshness is only a display concern.
+    inside = is_inside(db, user.id, branch.id, work_date, fresh=False)
     if event_type is EventType.CHECK_IN and inside:
         raise AttendanceError("You are already checked in.", "already_checked_in")
     if event_type is EventType.CHECK_OUT and not inside:
@@ -698,7 +700,7 @@ def record_fingerprint_scan(
             existing.id,
         )
         return existing
-    inside = is_inside(db, member.user_id, branch.id, work_date)
+    inside = is_inside(db, member.user_id, branch.id, work_date, fresh=False)
     event_type = EventType.CHECK_OUT if inside else EventType.CHECK_IN
 
     try:
@@ -754,7 +756,19 @@ def _presence_floor() -> datetime:
     return now_utc() - timedelta(minutes=settings.occupancy_presence_minutes)
 
 
-def is_inside(db: Session, user_id: int, branch_id: int, work_date: date) -> bool:
+def is_inside(
+    db: Session, user_id: int, branch_id: int, work_date: date, *, fresh: bool = True
+) -> bool:
+    """Is this member's most recent event today a check-in?
+
+    ``fresh`` (the default) additionally requires that check-in to be newer
+    than ``settings.occupancy_presence_minutes`` — the display definition, so
+    a member who entered this morning is not shown as present all evening
+    when the hardware never records an exit. Pass ``fresh=False`` on the
+    *write* path: whether a real check-out event may be recorded depends only
+    on the raw last event, never on a guess about whether they have since
+    wandered off.
+    """
     last = db.scalar(
         select(AttendanceEvent)
         .where(
@@ -767,9 +781,7 @@ def is_inside(db: Session, user_id: int, branch_id: int, work_date: date) -> boo
     )
     if last is None or last.event_type is not EventType.CHECK_IN:
         return False
-    # A check-in with no later check-out is only "inside" while it is fresh —
-    # otherwise a member who entered this morning shows as present all day.
-    return last.occurred_at >= _presence_floor()
+    return not fresh or last.occurred_at >= _presence_floor()
 
 
 def branch_occupancy(db: Session, branch: Branch) -> dict:

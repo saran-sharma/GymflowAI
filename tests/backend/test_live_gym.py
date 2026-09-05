@@ -69,14 +69,24 @@ def test_checking_out_removes_them(client, db, world, auth):
     assert body["count"] == 0
 
 
+def test_the_presence_window_defaults_to_sixty_minutes_and_is_configurable():
+    """A typical workout. Raise it per branch, but the default must not drift
+    back up — 90 lets a 7pm entry still read as present at 8:29pm."""
+    from app.core.config import Settings, settings
+
+    assert settings.occupancy_presence_minutes == 60
+    assert Settings(occupancy_presence_minutes=45).occupancy_presence_minutes == 45
+
+
 def test_a_stale_check_in_with_no_checkout_is_treated_as_left(client, db, world, auth):
     """The access hardware only scans on entry — a visit never gets a
     check-out. Without a freshness cutoff every member who entered this
-    morning would show as present until midnight."""
+    morning would show as present until midnight. And a stale check-in must
+    NOT be counted as an exit."""
     from app.core.config import settings
 
     member, branch = world["member_ngk"], world["branches"]["ngk"]
-    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes + 30)
+    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes + 1)
 
     body = client.get(
         f"{API}/attendance/inside?branch_id={branch.id}", headers=auth(world["admin"])
@@ -84,18 +94,18 @@ def test_a_stale_check_in_with_no_checkout_is_treated_as_left(client, db, world,
     assert body["count"] == 0
     assert body["members"] == []
 
-    # The visit still happened today — entries_today is unaffected.
     occ = client.get(f"{API}/branches/occupancy", headers=auth(world["owner"])).json()
     ngk = next(b for b in occ if b["branch_id"] == branch.id)
     assert ngk["inside"] == 0
-    assert ngk["entries_today"] == 1
+    assert ngk["entries_today"] == 1  # the visit happened
+    assert ngk["exits_today"] == 0  # nobody left — a timed-out check-in is not an exit
 
 
 def test_a_check_in_just_inside_the_window_still_counts(client, db, world, auth):
     from app.core.config import settings
 
     member, branch = world["member_ngk"], world["branches"]["ngk"]
-    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes - 10)
+    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes - 1)
     body = client.get(
         f"{API}/attendance/inside?branch_id={branch.id}", headers=auth(world["admin"])
     ).json()

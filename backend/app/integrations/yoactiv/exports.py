@@ -848,19 +848,19 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
             continue
 
         # A date-only row (the Excel export carries no clock columns) becomes a
-        # *closed* visit at branch-local midnight: CHECK_IN at 00:00 paired
-        # with a CHECK_OUT one minute later. Inventing a plausible 5:42 PM
-        # would read as a real recorded time; leaving the visit *open* is
-        # worse still — `branch_occupancy` would report the member as
-        # currently in the gym forever. The one-minute span is a marker, not a
-        # duration claim, and the note says so. Every signal that uses
-        # attendance keys on `work_date`, which is exact either way.
+        # *single* CHECK_IN at branch-local midnight — no CHECK_OUT at all.
+        # Inventing a plausible 5:42 PM would read as a real recorded time,
+        # and inventing a synthetic checkout would show up in `exits_today`,
+        # visit-duration analytics and reporting as a genuine exit that never
+        # happened. A lone check-in cannot be misread that way: occupancy
+        # stops counting it once it is older than
+        # `occupancy_presence_minutes` (the access hardware never scans on
+        # exit, so real fingerprint check-ins are handled the same way), and
+        # `/members/me/visits` shows the day with no checkout and no duration.
+        # `work_date` — which every attendance signal keys on — is exact.
         dateless = record.clock_in is None and record.clock_out is None
         pairs = (
-            (
-                ("in", time(0, 0), EventType.CHECK_IN),
-                ("out", time(0, 1), EventType.CHECK_OUT),
-            )
+            (("in", time(0, 0), EventType.CHECK_IN),)
             if dateless
             else (
                 ("in", record.clock_in, EventType.CHECK_IN),
@@ -899,8 +899,8 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
                         "Yoactiv export check-in"
                         + (f" ({record.service_name})" if record.service_name else "")
                         + (
-                            " — the export carried no clock time; recorded as a "
-                            "closed visit at branch-local midnight, the date is exact"
+                            " — the export carried no clock time; filed at "
+                            "branch-local midnight with no checkout, the date is exact"
                             if dateless
                             else ""
                         )
