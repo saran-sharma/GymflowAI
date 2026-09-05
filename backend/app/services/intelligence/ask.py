@@ -277,12 +277,37 @@ def _owner_attention(ctx: AskContext) -> tuple[str, InsightAction | None]:
     return brief.headline, brief.issues[0].action
 
 
+def _owner_member_visits(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """ "How is attendance trending?" — for an owner or member this means
+    *member* visits, not trainer shifts. Reads the weekly Member visits row
+    (distinct member check-in days, this week vs last)."""
+    s = owner_weekly_summary(ctx.db, branch_ids=ctx.branch_ids)
+    row = next((m for m in s.metrics if m.label == "Member visits"), None)
+    if row is None or (row.value == "0" and not row.previous):
+        return "No member check-ins recorded for last week yet.", None
+    _ev(ctx, "Member visits last week", row.value)
+    if row.previous:
+        _ev(ctx, "Week before", row.previous)
+    move = {
+        "up": "up on the week before",
+        "down": "down on the week before",
+        "flat": "about level with the week before",
+    }.get(row.direction or "", "recorded")
+    prev = f", against {row.previous} the week before" if row.previous else ""
+    return (
+        f"Member attendance last week: {row.value} visit-days{prev} — {move}.",
+        InsightAction(label="Open members", route="/(owner)/members"),
+    )
+
+
 def _owner_punctuality(ctx: AskContext) -> tuple[str, InsightAction | None]:
+    """Trainer punctuality — only reached when the question names trainers,
+    staff, shifts or punctuality; bare "attendance" routes to member visits."""
     s = owner_weekly_summary(ctx.db, branch_ids=ctx.branch_ids)
     row = next((m for m in s.metrics if m.label == "Trainer punctuality"), None)
     if row is None or row.value == "—":
-        return "No shifts recorded for last week yet.", None
-    _ev(ctx, "Last week", row.value)
+        return "No trainer shifts recorded for last week yet.", None
+    _ev(ctx, "Trainer punctuality last week", row.value)
     if row.previous:
         _ev(ctx, "Week before", row.previous)
     return s.headline, InsightAction(label="Open trainers", route="/(owner)/trainers")
@@ -372,7 +397,11 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
     "member": [
         (
             "consistency",
-            re.compile(r"\bconsist|\bregular|\bcadence|often enough\b", re.I),
+            re.compile(
+                r"\bconsist|\bregular|\bcadence|often enough\b|"
+                r"\battendance\b|how often|my visits?\b",
+                re.I,
+            ),
             _member_consistency,
         ),
         (
@@ -441,9 +470,29 @@ _INTENTS: dict[str, list[tuple[str, re.Pattern, Handler]]] = {
             _owner_explain,
         ),
         (
+            # Trainer punctuality — only when the question actually names
+            # trainers / staff / shifts / punctuality / lateness. Bare
+            # "attendance" is member attendance and falls through to
+            # member_visits below.
             "punctuality",
-            re.compile(r"punctual|on time|\blate\b|attendance", re.I),
+            re.compile(
+                r"punctual|\bon.?time\b|\blate\b|(trainer|staff|coach)s?\b.*"
+                r"(attend|shift|punctual|on.?time|late|show)|"
+                r"(attend|shift|punctual).*(trainer|staff|coach)|unworked|no.?show",
+                re.I,
+            ),
             _owner_punctuality,
+        ),
+        (
+            # Member attendance / visits / footfall — the default reading of
+            # "attendance" for an owner.
+            "member_visits",
+            re.compile(
+                r"member.?(attend|visit|check)|attendance|\bvisits?\b|footfall|"
+                r"walk.?ins?|how busy|how many (people|members)|traffic",
+                re.I,
+            ),
+            _owner_member_visits,
         ),
         (
             "last_week",
@@ -482,9 +531,9 @@ _SUGGESTIONS = {
     ],
     "owner": [
         "What needs my attention?",
-        "How is attendance trending?",
+        "How is member attendance trending?",
+        "How are trainers doing on punctuality?",
         "Which branch needs attention?",
-        "What changed this week?",
     ],
 }
 
@@ -493,8 +542,8 @@ _FALLBACK = {
     "records, what weight to try next on a lift, and how last week went.",
     "trainer": "Open a client and ask how they are or what to focus on, or ask who needs "
     "attention across your clients.",
-    "owner": "I can answer about what needs your attention today, trainer punctuality, and how "
-    "last week went.",
+    "owner": "I can answer about what needs your attention today, how member attendance is "
+    "trending, trainer punctuality, and how last week went.",
 }
 
 

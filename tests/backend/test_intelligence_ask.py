@@ -143,6 +143,64 @@ def test_owner_punctuality_question(client, world, auth):
     assert body["intent"] == "punctuality"
 
 
+def test_owner_attendance_means_member_visits_not_trainer_shifts(client, db, world, auth):
+    """The bug device QA surfaced: the weekly card shows member visits up,
+    but Ask read "attendance" as trainer shifts and said "no shifts
+    recorded". Bare "attendance" for an owner is member attendance."""
+    from datetime import UTC, date, datetime
+
+    from app.db.models import AttendanceEvent, CaptureMethod, EventType, PersonType
+
+    branch = world["branches"]["ngk"]
+    for day in (26, 27, 29):
+        db.add(
+            AttendanceEvent(
+                branch_id=branch.id,
+                user_id=world["member_ngk"].user_id,
+                person_type=PersonType.MEMBER,
+                event_type=EventType.CHECK_IN,
+                method=CaptureMethod.QR,
+                occurred_at=datetime(2026, 8, day, 8, tzinfo=UTC),
+                work_date=date(2026, 8, day),
+            )
+        )
+    db.commit()
+
+    body = _ask(client, auth(world["owner"]), "How is attendance trending?").json()
+    assert body["intent"] == "member_visits"
+    assert "member attendance" in body["answer"].lower()
+    assert body["action"]["route"] == "/(owner)/members"
+    assert any("member visits" in d["label"].lower() for d in body["data"])
+
+
+def test_owner_trainer_attendance_still_resolves_to_punctuality(client, world, auth):
+    for q in (
+        "How are the trainers doing with attendance?",
+        "trainer shift attendance",
+        "staff punctuality this week",
+        "any unworked shifts?",
+    ):
+        body = _ask(client, auth(world["owner"]), q).json()
+        assert body["intent"] == "punctuality", q
+
+
+def test_owner_footfall_and_busy_questions_route_to_member_visits(client, world, auth):
+    for q in ("What was footfall last week?", "How busy was the gym?", "member visits"):
+        body = _ask(client, auth(world["owner"]), q).json()
+        assert body["intent"] == "member_visits", q
+
+
+def test_member_attendance_question_means_their_own_consistency(client, db, world, auth):
+    from datetime import date
+
+    from intelligence_helpers import add_weekly_workouts
+
+    add_weekly_workouts(db, world["member_ngk"], ending=date.today(), weeks=4, per_week=3)
+    db.commit()
+    body = _ask(client, auth(world["member_ngk_user"]), "How is my attendance?").json()
+    assert body["intent"] == "consistency"
+
+
 def test_owner_tell_me_more_explains_the_matching_issue(client, db, world, auth):
     """The dashboard "Tell me more" entry point: the question carries the
     issue's title and the answer re-explains that specific issue."""
@@ -233,6 +291,13 @@ def test_suggestions_are_role_aware(client, db, world, auth):
     ]
     assert any("attention" in c.lower() for c in owner_chips)
     assert any("branch" in c.lower() for c in owner_chips)
+    # The attendance chip must name *member* attendance, and there is a
+    # separate trainer-punctuality chip — the two are no longer conflated.
+    assert any("member attendance" in c.lower() for c in owner_chips)
+    assert any("punctuality" in c.lower() for c in owner_chips)
+    # Every owner chip resolves to a real intent (no unrecognised fallback).
+    for chip in owner_chips:
+        assert _ask(client, auth(world["owner"]), chip).json()["intent"] != "unrecognised", chip
 
     trainer_chips_no_ctx = client.get(
         f"{API}/ask/suggestions", headers=auth(world["trainer_ngk_user"])
