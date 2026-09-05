@@ -42,6 +42,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Best-effort by design: a diagnostic must never be why the API fails to
     start, so a database that is unreachable here is left to `/health`.
     """
+    # Say which database this process actually opened. A silent disagreement
+    # between the API and the CLI about that is invisible until an import
+    # "does nothing" — see app/core/config.py. Credentials are never logged.
+    try:
+        from sqlalchemy.engine import make_url
+
+        url = make_url(settings.database_url)
+        logger.info("Database target: %s/%s", url.host or "local", url.database)
+    except Exception:  # pragma: no cover - a diagnostic must not block startup
+        logger.debug("Could not report the database target", exc_info=True)
+
     try:
         from app.db.schema_state import check
         from app.db.session import engine

@@ -33,15 +33,22 @@ Yoactiv member id — so their history can attach. It does **not** create a
 ``Membership``: that only ever comes from importing the Membership Report,
 so commercial state always traces to a Yoactiv billing row.
 
-Guards, all required:
+**Passwords.** By default each created account gets its own random secret
+that is hashed immediately and retained nowhere. The member record and all
+its history exist — owner and trainer views are fully populated — but nobody
+can sign in as that member. That is deliberate: GymFlow has no
+password-reset or invite flow today (``/auth/password`` requires the current
+password), so the alternative is minting hundreds of live logins that all
+share one secret, where knowing it plus any member's mobile number is a
+sign-in. ``--shared-temp-password`` opts into exactly that, reading
+``YOACTIV_BOOTSTRAP_PASSWORD`` from the environment (no default) — take it
+only with a plan to distribute and rotate. Either way
+``must_change_password`` is set and no plaintext is stored, logged or
+printed.
+
+Other guards:
 
 * ``--branch-id`` — which GymFlow branch these people belong to.
-* ``YOACTIV_BOOTSTRAP_PASSWORD`` in the environment — the temporary password
-  created accounts start on. There is **no default**; the script refuses to
-  create accounts without it, it is never written to the database in
-  plaintext, never logged, and never printed. Every created account has
-  ``must_change_password`` set, so the member must replace it on first
-  sign-in.
 * A mobile number shared by two Yoactiv members, or one an existing GymFlow
   account already uses, is never auto-created — it is listed for a human.
 """
@@ -50,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 from pathlib import Path
 
 from sqlalchemy import select
@@ -117,7 +125,20 @@ def main() -> None:
     parser.add_argument(
         "--create-missing-members",
         action="store_true",
-        help=f"Also create accounts for UNMATCHED rows. Needs {_BOOTSTRAP_PASSWORD_ENV}.",
+        help=(
+            "Also create accounts for UNMATCHED rows. Each gets its own random "
+            "secret that nobody retains, so the record exists (and staff views "
+            "work) but the member cannot sign in yet."
+        ),
+    )
+    parser.add_argument(
+        "--shared-temp-password",
+        action="store_true",
+        help=(
+            f"Start every created account on one shared secret from "
+            f"{_BOOTSTRAP_PASSWORD_ENV} instead, so members CAN sign in. Only "
+            "with a plan to distribute and rotate it — see the warning below."
+        ),
     )
     args = parser.parse_args()
 
@@ -125,11 +146,14 @@ def main() -> None:
         parser.error("--import also needs --yes (this writes to the database).")
 
     bootstrap_password = os.environ.get(_BOOTSTRAP_PASSWORD_ENV, "")
-    if args.create_missing_members and not bootstrap_password:
+    if args.shared_temp_password and not args.create_missing_members:
+        parser.error("--shared-temp-password only means anything with --create-missing-members.")
+    # A dry run creates nothing, so the account plan must be readable before
+    # anyone goes looking for a password.
+    if args.do_import and args.shared_temp_password and not bootstrap_password:
         parser.error(
-            f"--create-missing-members needs {_BOOTSTRAP_PASSWORD_ENV} in the environment. "
-            "There is no default; created accounts start on this temporary password and "
-            "are forced to change it at first sign-in."
+            f"--shared-temp-password needs {_BOOTSTRAP_PASSWORD_ENV} in the environment. "
+            "There is no default."
         )
 
     raw = args.path.read_bytes()
@@ -180,12 +204,28 @@ def main() -> None:
             role = db.scalar(select(Role).where(Role.key == RoleKey.MEMBER.value))
             if role is None:
                 raise SystemExit("No MEMBER role in this database.")
+            if args.shared_temp_password:
+                # One secret for everyone: usable, but until each member
+                # changes it, knowing it plus any member's mobile number is a
+                # sign-in. Only worth it with a distribution plan.
+                secret_for = hash_password(bootstrap_password)
+            else:
+                # Default: a distinct, unguessable secret per account that is
+                # hashed immediately and never retained anywhere. The record
+                # and its history exist — owner and trainer views are fully
+                # populated — but nobody can sign in as this member until a
+                # password-reset / invite flow exists. GymFlow has none today
+                # (/auth/password requires the current password), so this is
+                # the safe default rather than minting 1,000+ live logins.
+                def secret_for() -> str:
+                    return hash_password(secrets.token_urlsafe(32))
+
             created = create_accounts(
                 db,
                 plans,
                 branch=branch,
                 role_id=role.id,
-                password_hash=hash_password(bootstrap_password),
+                password_hash=secret_for,
                 joined_on=branch_today(branch.timezone),
             )
             # Newly created members change the matching picture — reclassify so
@@ -218,7 +258,13 @@ def main() -> None:
 
         print(f"\nWrote {result.written} record(s).")
         if created:
-            print(f"Created {len(created)} member account(s), each must change password at login.")
+            how = (
+                "on the shared temporary password — distribute and rotate it"
+                if args.shared_temp_password
+                else "with a unique random secret nobody holds — they cannot sign in "
+                "until an invite/reset flow exists; staff views work now"
+            )
+            print(f"Created {len(created)} member account(s) {how}.")
         if result.problems:
             print(f"{len(result.problems)} row(s) need a human — see the report above.")
 

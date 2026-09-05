@@ -17,10 +17,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_SECRET = "dev-only-insecure-secret-change-me"
 
+#: ``backend/`` — resolved from this file, never from the working directory.
+#: A CWD-relative ``env_file`` meant the same checkout produced a *different*
+#: database depending on where the process was launched from: `uvicorn` run at
+#: the repo root found no ``.env`` and silently fell back to the
+#: ``database_url`` default below, while the same code run from ``backend/``
+#: read ``backend/.env``. Two populated databases, one of them serving the
+#: mobile app — the kind of split that makes an import look like it silently
+#: did nothing. Paths are absolute so every entry point (API, CLI scripts,
+#: alembic, tests) resolves the same file.
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _BACKEND_DIR.parent
+
 
 class Settings(BaseSettings):
+    # Later files win, preserving the original ``(".env", "../.env")``
+    # precedence as read from ``backend/``. An explicit ``DATABASE_URL`` in the
+    # environment still overrides both — which is how CI and the test suite
+    # pin their own databases.
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
+        env_file=(_BACKEND_DIR / ".env", _REPO_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

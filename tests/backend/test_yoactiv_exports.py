@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 from datetime import date, time
+from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import make_member
@@ -250,10 +251,60 @@ def test_end_before_start_is_invalid():
     assert record is None and any("before" in e for e in errors)
 
 
-def test_a_checkin_with_no_clock_at_all_is_invalid():
+def test_a_checkin_with_no_clock_is_still_a_real_visit():
+    """The on-screen check-in report shows Clock In / Clock Out; the Excel
+    export omits both. A date-only row is a real visit, not an invalid one."""
     parsed = ex.parse_csv(checkin_csv([checkin_row(clock_in="", clock_out="")]))
     record, errors = ex.normalize_checkin(parsed.rows[0])
-    assert record is None and errors
+    assert errors == []
+    assert record.on == date(2026, 9, 5)
+    assert record.clock_in is None and record.clock_out is None
+
+
+def test_a_date_only_visit_is_filed_at_branch_midnight_and_says_so(db, world):
+    """Midnight is a marker, not a claim — inventing a plausible 5:42 PM would
+    read as a recorded time. work_date, which every attendance signal keys on,
+    is exact either way."""
+    member = _matched_member(db, world)
+    branch = world["branches"]["ngk"]
+    parsed = ex.parse_csv(checkin_csv([checkin_row(clock_in="", clock_out="")]))
+    result = ex.import_checkins(db, ex.classify(db, parsed), branch=branch)
+    db.commit()
+
+    assert result.written == 1  # a single CHECK_IN, never a fabricated CHECK_OUT
+    event = db.query(AttendanceEvent).one()
+    assert event.event_type is EventType.CHECK_IN
+    assert event.work_date == date(2026, 9, 5)
+    assert event.user_id == member.user_id
+    local = event.occurred_at.astimezone(ZoneInfo(branch.timezone))
+    assert (local.hour, local.minute) == (0, 0)
+    assert "no clock time" in (event.notes or "")
+
+
+def test_a_date_only_visit_is_idempotent_on_re_import(db, world):
+    _matched_member(db, world)
+    branch = world["branches"]["ngk"]
+    raw = checkin_csv([checkin_row(clock_in="", clock_out="")])
+    ex.import_checkins(db, ex.classify(db, ex.parse_csv(raw)), branch=branch)
+    db.commit()
+    second = ex.import_checkins(db, ex.classify(db, ex.parse_csv(raw)), branch=branch)
+    db.commit()
+    assert second.written == 0
+    assert db.query(AttendanceEvent).count() == 1
+
+
+def test_the_real_export_header_spellings_are_understood():
+    """The workbook writes MemberID / Service_Name where the screen shows
+    'Member ID' / 'Service Name', and carries no clock columns at all."""
+    header = ["MemberID", "Name", "Mobile", "Service_Name", "Date", "Location"]
+    rows = [["2709792", "Someone", "9000000002", "Gym Workout", "05-09-2026", "Studio,Nagalkeni"]]
+    parsed = ex.parse_csv(_csv(header, rows))
+    assert parsed.kind is ex.ExportKind.CHECKINS
+    record, errors = ex.normalize_checkin(parsed.rows[0])
+    assert errors == []
+    assert record.yoactiv_member_id == "2709792"
+    assert record.service_name == "Gym Workout"
+    assert record.location_hint == "Studio,Nagalkeni"
 
 
 def test_a_float_formatted_member_id_is_normalised():

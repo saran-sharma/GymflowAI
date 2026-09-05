@@ -50,6 +50,7 @@ import hashlib
 import io
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from enum import Enum
@@ -142,7 +143,13 @@ _CHECKIN_OPTIONAL: dict[str, tuple[str, ...]] = {
 
 
 def _norm_header(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip().lower()
+    """Compare header text case-, space- and underscore-insensitively.
+
+    The on-screen report and its Excel export do not agree on spelling: the
+    table shows "Member ID" and "Service Name", the workbook writes "MemberID"
+    and "Service_Name". Underscores become spaces so one alias covers both.
+    """
+    return " ".join(str(value or "").replace("_", " ").split()).strip().lower()
 
 
 def _index_headers(header_row: list[Any]) -> dict[str, int]:
@@ -164,9 +171,11 @@ def _match(by_text: dict[str, int], aliases: tuple[str, ...]) -> int | None:
 def detect_kind(header_row: list[Any]) -> ExportKind:
     """Which of the two supported reports this file is.
 
-    Decided on the columns that actually distinguish them — a membership
-    export carries Start/End Date, a check-in export carries a Date plus a
-    clock column. Never guessed from the filename.
+    Decided on the columns that actually distinguish them: a membership export
+    carries a Start *and* an End Date; a check-in export carries a single
+    Date. Clock columns are **not** part of the test — the on-screen check-in
+    report shows Clock In / Clock Out but the Excel export omits them, so
+    requiring one would reject the real file. Never guessed from the filename.
     """
     by_text = _index_headers(header_row)
     has_member = _match(by_text, _MEMBERSHIP_COLUMNS["member_id"]) is not None
@@ -174,10 +183,9 @@ def detect_kind(header_row: list[Any]) -> ExportKind:
         _match(by_text, _MEMBERSHIP_COLUMNS["start_date"]) is not None
         and _match(by_text, _MEMBERSHIP_COLUMNS["end_date"]) is not None
     )
-    has_visit = _match(by_text, _CHECKIN_COLUMNS["date"]) is not None and (
-        _match(by_text, _CHECKIN_OPTIONAL["clock_in"]) is not None
-        or _match(by_text, _CHECKIN_OPTIONAL["clock_out"]) is not None
-    )
+    # "Last Check-In Date" on the membership report normalises to
+    # "last check-in date", so it never collides with this.
+    has_visit = _match(by_text, _CHECKIN_COLUMNS["date"]) is not None
     if has_member and has_terms:
         return ExportKind.MEMBERSHIP
     if has_member and has_visit:
@@ -185,7 +193,7 @@ def detect_kind(header_row: list[Any]) -> ExportKind:
     raise HeaderValidationError(
         "This does not look like a Yoactiv Membership Report or Member Check-ins "
         "export. Expected either 'Member ID' + 'Start Date' + 'End Date', or "
-        "'Member ID' + 'Date' + a clock column. Found: "
+        "'Member ID' + 'Date'. Found: "
         + ", ".join(sorted(t for t in by_text if t)[:15])
         + ". Refusing to guess — see docs/INTEGRATIONS.md."
     )
@@ -516,10 +524,11 @@ def normalize_checkin(row: ParsedRow) -> tuple[CheckinRecord | None, list[str]]:
     on = _to_date(row.get("date"))
     if on is None:
         errors.append("unreadable Date")
+    # Clock times are optional: the on-screen report shows them, the Excel
+    # export does not carry them at all. A visit with only a date is still a
+    # real visit — see `import_checkins` for how it is filed.
     clock_in = _to_time(row.get("clock_in"))
     clock_out = _to_time(row.get("clock_out"))
-    if clock_in is None and clock_out is None:
-        errors.append("neither Clock In nor Clock Out is readable")
     if errors:
         return None, errors
     assert on is not None
@@ -838,10 +847,22 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
             problems.append((row.row_number, "invalid", "member disappeared mid-import"))
             continue
 
-        for suffix, clock_t, event_type in (
-            ("in", record.clock_in, EventType.CHECK_IN),
-            ("out", record.clock_out, EventType.CHECK_OUT),
-        ):
+        # A date-only row (the Excel export carries no clock columns) becomes a
+        # single CHECK_IN filed at branch-local midnight, and says so in its
+        # notes. Midnight is a marker, not a claim: inventing a plausible
+        # 5:42 PM would read as a real recorded time. Every signal that uses
+        # attendance — inactivity, consistency, the weekly visit count — keys
+        # on `work_date`, which is exact either way.
+        dateless = record.clock_in is None and record.clock_out is None
+        pairs = (
+            (("in", time(0, 0), EventType.CHECK_IN),)
+            if dateless
+            else (
+                ("in", record.clock_in, EventType.CHECK_IN),
+                ("out", record.clock_out, EventType.CHECK_OUT),
+            )
+        )
+        for suffix, clock_t, event_type in pairs:
             if clock_t is None:
                 continue
             occurred_at = combine_branch(record.on, clock_t, branch.timezone)
@@ -869,9 +890,16 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
                     occurred_at=occurred_at,
                     work_date=record.on,
                     device_info=f"{SOURCE}:{record.medium}"[:255] if record.medium else SOURCE,
-                    notes=(f"Yoactiv export check-in ({record.service_name})")[:500]
-                    if record.service_name
-                    else "Yoactiv export check-in",
+                    notes=(
+                        "Yoactiv export check-in"
+                        + (f" ({record.service_name})" if record.service_name else "")
+                        + (
+                            " — the export carried no clock time; filed at "
+                            "branch-local midnight, the visit date is exact"
+                            if dateless
+                            else ""
+                        )
+                    )[:500],
                     external_event_id=key,
                 )
             )
@@ -1019,7 +1047,7 @@ def create_accounts(
     *,
     branch: Branch,
     role_id: int,
-    password_hash: str,
+    password_hash: str | Callable[[], str],
     joined_on: date,
     email_domain: str = "no-email.gymflow.app",
 ) -> list[int]:
@@ -1030,20 +1058,23 @@ def create_accounts(
     always traces to a Yoactiv billing row rather than to the mere existence
     of a person.
 
-    The mobile number is the Login ID (``login_phone``); the password is a
-    hash of an operator-supplied temporary secret and ``must_change_password``
-    is always set, so the member must replace it on first sign-in. The
-    plaintext never enters this module, the database, a log or a response.
-    ``is_demo`` stays ``False`` — these are real people.
+    The mobile number is the Login ID (``login_phone``). ``password_hash``
+    may be a single hash (every account starts on one operator-supplied
+    temporary secret) or a **callable invoked per account**, which is how
+    the CLI gives each account its own unguessable secret that nobody --
+    including this process -- retains. ``must_change_password`` is always
+    set. No plaintext enters this module, the database, a log or a
+    response. ``is_demo`` stays ``False`` -- these are real people.
     """
     created: list[int] = []
     for plan in plans:
+        secret = password_hash() if callable(password_hash) else password_hash
         user = User(
             email=f"{plan.phone}@{email_domain}",
             full_name=plan.full_name[:120],
             phone=plan.phone,
             login_phone=plan.phone,
-            password_hash=password_hash,
+            password_hash=secret,
             must_change_password=True,
             role_id=role_id,
             branch_id=branch.id,

@@ -30,6 +30,10 @@ htmlcov
 # source art / personal exports / vendor artifacts — never shipped
 /Images/
 *.xlsx
+# Legacy Excel too: Yoactiv names every console export .xls whatever it
+# actually contains, and a real member export landed in backend/ and was
+# stageable because only .xlsx was ignored here.
+*.xls
 *.csv
 *.msi
 # Vendor API collections carry live keys — kept locally, never committed.
