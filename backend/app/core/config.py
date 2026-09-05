@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     qr_window_seconds: int = 60
     qr_token_bytes: int = 12
 
+    # How long a check-in with no matching check-out still counts as "in the
+    # gym". The access hardware (X2008 fingerprint) only scans on *entry* —
+    # there is no exit scan — so without this every member who entered today
+    # would read as present until midnight. After this many minutes a stale
+    # check-in is treated as "left". Tune to the branch's real longest visit
+    # (a workout plus a shower); a value too low flips a long session to
+    # "left", too high keeps ghosts on the floor.
+    occupancy_presence_minutes: int = 90
+
     # ---------------------------------------------------------- rate limits
     rate_limit_enabled: bool = True
     # Comma-separated IPs of load balancers / reverse proxies whose

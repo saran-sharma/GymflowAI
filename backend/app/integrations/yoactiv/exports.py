@@ -848,14 +848,19 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
             continue
 
         # A date-only row (the Excel export carries no clock columns) becomes a
-        # single CHECK_IN filed at branch-local midnight, and says so in its
-        # notes. Midnight is a marker, not a claim: inventing a plausible
-        # 5:42 PM would read as a real recorded time. Every signal that uses
-        # attendance — inactivity, consistency, the weekly visit count — keys
-        # on `work_date`, which is exact either way.
+        # *closed* visit at branch-local midnight: CHECK_IN at 00:00 paired
+        # with a CHECK_OUT one minute later. Inventing a plausible 5:42 PM
+        # would read as a real recorded time; leaving the visit *open* is
+        # worse still — `branch_occupancy` would report the member as
+        # currently in the gym forever. The one-minute span is a marker, not a
+        # duration claim, and the note says so. Every signal that uses
+        # attendance keys on `work_date`, which is exact either way.
         dateless = record.clock_in is None and record.clock_out is None
         pairs = (
-            (("in", time(0, 0), EventType.CHECK_IN),)
+            (
+                ("in", time(0, 0), EventType.CHECK_IN),
+                ("out", time(0, 1), EventType.CHECK_OUT),
+            )
             if dateless
             else (
                 ("in", record.clock_in, EventType.CHECK_IN),
@@ -894,8 +899,8 @@ def import_checkins(db: Session, rows: list[ClassifiedRow], *, branch: Branch) -
                         "Yoactiv export check-in"
                         + (f" ({record.service_name})" if record.service_name else "")
                         + (
-                            " — the export carried no clock time; filed at "
-                            "branch-local midnight, the visit date is exact"
+                            " — the export carried no clock time; recorded as a "
+                            "closed visit at branch-local midnight, the date is exact"
                             if dateless
                             else ""
                         )

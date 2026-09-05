@@ -69,6 +69,39 @@ def test_checking_out_removes_them(client, db, world, auth):
     assert body["count"] == 0
 
 
+def test_a_stale_check_in_with_no_checkout_is_treated_as_left(client, db, world, auth):
+    """The access hardware only scans on entry — a visit never gets a
+    check-out. Without a freshness cutoff every member who entered this
+    morning would show as present until midnight."""
+    from app.core.config import settings
+
+    member, branch = world["member_ngk"], world["branches"]["ngk"]
+    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes + 30)
+
+    body = client.get(
+        f"{API}/attendance/inside?branch_id={branch.id}", headers=auth(world["admin"])
+    ).json()
+    assert body["count"] == 0
+    assert body["members"] == []
+
+    # The visit still happened today — entries_today is unaffected.
+    occ = client.get(f"{API}/branches/occupancy", headers=auth(world["owner"])).json()
+    ngk = next(b for b in occ if b["branch_id"] == branch.id)
+    assert ngk["inside"] == 0
+    assert ngk["entries_today"] == 1
+
+
+def test_a_check_in_just_inside_the_window_still_counts(client, db, world, auth):
+    from app.core.config import settings
+
+    member, branch = world["member_ngk"], world["branches"]["ngk"]
+    _event(db, member, branch, EventType.CHECK_IN, settings.occupancy_presence_minutes - 10)
+    body = client.get(
+        f"{API}/attendance/inside?branch_id={branch.id}", headers=auth(world["admin"])
+    ).json()
+    assert body["count"] == 1
+
+
 def test_a_duplicate_check_in_is_still_one_person(client, db, world, auth):
     """Two scans in a row must not read as two people in the building."""
     member, branch = world["member_ngk"], world["branches"]["ngk"]

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import and_, func, select
@@ -744,6 +744,16 @@ def record_fingerprint_scan(
     return event
 
 
+def _presence_floor() -> datetime:
+    """A check-in older than this no longer counts as "in the gym".
+
+    The access hardware only scans on entry, so a visit never gets a
+    check-out; a stale check-in is treated as a departure this many minutes
+    later. See ``settings.occupancy_presence_minutes``.
+    """
+    return now_utc() - timedelta(minutes=settings.occupancy_presence_minutes)
+
+
 def is_inside(db: Session, user_id: int, branch_id: int, work_date: date) -> bool:
     last = db.scalar(
         select(AttendanceEvent)
@@ -755,7 +765,11 @@ def is_inside(db: Session, user_id: int, branch_id: int, work_date: date) -> boo
         .order_by(AttendanceEvent.occurred_at.desc(), AttendanceEvent.id.desc())
         .limit(1)
     )
-    return last is not None and last.event_type is EventType.CHECK_IN
+    if last is None or last.event_type is not EventType.CHECK_IN:
+        return False
+    # A check-in with no later check-out is only "inside" while it is fresh —
+    # otherwise a member who entered this morning shows as present all day.
+    return last.occurred_at >= _presence_floor()
 
 
 def branch_occupancy(db: Session, branch: Branch) -> dict:
@@ -795,6 +809,8 @@ def branch_occupancy(db: Session, branch: Branch) -> dict:
                 AttendanceEvent.work_date == work_date,
                 AttendanceEvent.person_type == PersonType.MEMBER,
                 AttendanceEvent.event_type == EventType.CHECK_IN,
+                # No exit scan exists, so a check-in only counts while fresh.
+                AttendanceEvent.occurred_at >= _presence_floor(),
             )
         )
         or 0
@@ -958,6 +974,9 @@ def who_is_inside(db: Session, branch: Branch) -> list[dict]:
             AttendanceEvent.work_date == work_date,
             AttendanceEvent.person_type == PersonType.MEMBER,
             AttendanceEvent.event_type == EventType.CHECK_IN,
+            # Same freshness rule as branch_occupancy — the list and the count
+            # must never disagree.
+            AttendanceEvent.occurred_at >= _presence_floor(),
         )
         .order_by(AttendanceEvent.occurred_at)
     ).all()
